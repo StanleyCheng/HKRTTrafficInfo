@@ -13,6 +13,14 @@ Node 22.13 or later. Install with `npm ci`, then `npm run dev`. On Windows, the 
 
 Stack: React, TypeScript, Vinext/Vite, Cloudflare Worker API routes, Leaflet 1.9, Leaflet.markercluster, fast-xml-parser. OpenStreetMap supplies the basemap (non-government); all camera information comes from government sources.
 
+## Interface
+
+The desktop workbench has Layers, Search and Details tabs and can be collapsed. Selecting a map marker or road segment reopens Details. Search provides a keyboard-accessible alternative to the map, matches Chinese and English road names, route/segment identifiers and location districts, and displays 20 results per page. Road segments do not carry district metadata; district search applies to locations that publish it.
+
+On mobile, four labelled shortcuts (road speeds, incidents, snapshots and parking) sit beside a permanently visible More/Details button. The sheet preserves the selected item when dismissed. Its tabs support arrow keys, and Escape closes the sheet and restores focus.
+
+The map retains a labelled speed legend, official speed update age, mapped-segment coverage and partial-update status even when the workbench is collapsed. Fetch time is kept distinct from the official speed publication time. Retained road speeds older than ten minutes become unavailable/grey between refreshes. Map errors offer a retry action; the Sources dialog groups source details into expandable sections.
+
 ## Official sources
 
 - [Red-light junctions dataset](https://data.gov.hk/tc-data/dataset/hk-td-tis_25-junctions-with-rlc): [CSDI FeatureServer](https://portal.csdi.gov.hk/server/rest/services/common/td_rcd_1671693287017_1644/FeatureServer/0?f=pjson).

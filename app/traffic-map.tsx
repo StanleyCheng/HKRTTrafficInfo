@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { LocateFixed, Plus, Minus, LoaderCircle, MousePointer2 } from 'lucide-react';
+import { Maximize, Plus, Minus, LoaderCircle, MousePointer2, RefreshCw } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import { messages } from '@/lib/i18n';
 import { Camera, FlowSegment, Language, layerText, layers, speedLevelColors } from '@/lib/traffic';
+import type { TrafficSearchItem } from '@/lib/traffic-view';
 
 const symbols = {
   redlight: '<rect x="8" y="2" width="8" height="20" rx="3"/><path d="M5 5h3m8 0h3M5 12h3m8 0h3M5 19h3m8 0h3"/><circle cx="12" cy="7" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="17" r="1"/>',
@@ -20,8 +21,8 @@ const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright
 const OPENFREEMAP_ATTRIBUTION = '<a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> &copy; <a href="https://openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
 
 export type Basemap = 'osm' | 'positron';
-type Props = { cameras: Camera[]; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; loading: boolean; allDisabled: boolean; hasErrors: boolean; language: Language; basemap: Basemap; inactive?: boolean };
-export default function TrafficMap({ cameras, segments, selected, selectedSegmentId, onSelect, onSelectSegment, loading, allDisabled, hasErrors, language, basemap, inactive = false }: Props) {
+type Props = { cameras: Camera[]; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; language: Language; basemap: Basemap; inactive?: boolean };
+export default function TrafficMap({ cameras, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, language, basemap, inactive = false }: Props) {
   const copy = messages[language];
   const element = useRef<HTMLDivElement>(null);
   const map = useRef<Leaflet.Map | null>(null);
@@ -39,6 +40,7 @@ export default function TrafficMap({ cameras, segments, selected, selectedSegmen
   const onSelectSegmentRef = useRef(onSelectSegment);
   const [ready, setReady] = useState(false);
   const [mapError, setMapError] = useState(false);
+  const [basemapRetry, setBasemapRetry] = useState(0);
   useEffect(() => { selectRef.current = onSelect; }, [onSelect]);
   useEffect(() => { copyRef.current = copy; }, [copy]);
   useEffect(() => { onSelectSegmentRef.current = onSelectSegment; }, [onSelectSegment]);
@@ -115,7 +117,7 @@ export default function TrafficMap({ cameras, segments, selected, selectedSegmen
       basemapLayer.current?.removeFrom(m);
       basemapLayer.current = null;
     };
-  }, [basemap, ready]);
+  }, [basemap, ready, basemapRetry]);
   useEffect(() => {
     const L = library.current, m = map.current, group = cluster.current;
     if (!ready || !L || !m || !group) return;
@@ -166,14 +168,20 @@ export default function TrafficMap({ cameras, segments, selected, selectedSegmen
     }
     previousSegmentSelection.current = selectedSegmentId ?? null;
   }, [selectedSegmentId, segments]);
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m || !focusTarget) return;
+    const animate = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (focusTarget.segment) m.fitBounds(focusTarget.segment.path, { padding: [60, 90], maxZoom: 16, animate });
+    else m.setView([focusTarget.camera.lat, focusTarget.camera.lng], Math.max(m.getZoom(), 16), { animate });
+  }, [focusTarget, ready]);
   function fit() {
-    if (cameras.length && library.current) map.current?.fitBounds(library.current.latLngBounds(cameras.map(c => [c.lat, c.lng])), { padding: [42, 64], maxZoom: 13 });
-    else map.current?.setView([22.355, 114.13], 11);
+    map.current?.setView([22.355, 114.13], 11, { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
   }
   return <section className="map-area" aria-label={copy.mapLabel} aria-hidden={inactive || undefined} inert={inactive || undefined}>
     <div ref={element} className="map-canvas" data-basemap={basemap} role="group" aria-label={copy.mapKeyboardHelp} />
-    <div className="map-tools"><div className="zoom-buttons"><button aria-label={copy.zoomIn} title={copy.zoomIn} onClick={() => map.current?.zoomIn()}><Plus size={19}/></button><button aria-label={copy.zoomOut} title={copy.zoomOut} onClick={() => map.current?.zoomOut()}><Minus size={19}/></button></div><button aria-label={copy.showAll} title={copy.returnToHongKong} onClick={fit}><LocateFixed size={20}/></button></div>
-    {mapError && <div className="map-error" role="alert">{copy.mapLoadFailed}</div>}
+    <div className="map-tools"><div className="zoom-buttons"><button aria-label={copy.zoomIn} title={copy.zoomIn} onClick={() => map.current?.zoomIn()}><Plus size={19}/></button><button aria-label={copy.zoomOut} title={copy.zoomOut} onClick={() => map.current?.zoomOut()}><Minus size={19}/></button></div><button aria-label={copy.showAll} title={copy.returnToHongKong} onClick={fit}><Maximize size={20}/></button></div>
+    {mapError && <div className="map-error" role="alert">{copy.mapLoadFailed}<button type="button" className="map-retry" onClick={() => ready ? setBasemapRetry(value => value + 1) : window.location.reload()}><RefreshCw size={14}/>{copy.retry}</button></div>}
     {!ready && !mapError && <div className="map-loading"><LoaderCircle className="spin" size={20}/> {copy.mapLoading}</div>}
     {ready && !loading && cameras.length === 0 && !segments?.length && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
     <div className="map-hint"><MousePointer2 size={14}/><span>{copy.mapHint}</span></div>

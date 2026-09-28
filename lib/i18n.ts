@@ -9,6 +9,10 @@ type AppMessages = {
   collapseSidebar: string;
   expandSidebar: string;
   brandTitle: string;
+  brandCompactTitle: string;
+  mapStyle: string;
+  mapStyleStreet: string;
+  mapStyleLight: string;
   switchToPositron: string;
   switchToOsm: string;
   officialData: string;
@@ -27,6 +31,37 @@ type AppMessages = {
   noOfficialLocations: string;
   layerNote: string;
   cameraDetails: string;
+  clearSelection: string;
+  selectedLocation: string;
+  selectionAnnounced: (name: string) => string;
+  panelNavigation: string;
+  searchTab: string;
+  moreLayers: string;
+  searchTitle: string;
+  searchHelp: string;
+  searchScope: string;
+  searchRoads: string;
+  searchLocations: string;
+  searchRoadLabel: string;
+  searchLocationLabel: string;
+  clearSearch: string;
+  searchResults: (count: string) => string;
+  searchNoResults: string;
+  searchNoData: string;
+  inspectLocation: (name: string) => string;
+  segmentLabel: string;
+  searchPagination: string;
+  previousPage: string;
+  nextPage: string;
+  searchRange: (start: number, end: number, total: number) => string;
+  speedLegend: string;
+  speedLegendHelp: string;
+  liveSpeedsStale: string;
+  noOfficialUpdateTime: string;
+  updatedMinutes: (minutes: number) => string;
+  updating: string;
+  mappedSegments: (mapped: string, expected: string) => string;
+  incidentMapped: (mapped: string, notices: string) => string;
   closeCameraDetails: string;
   district: string;
   coordinates: string;
@@ -114,21 +149,36 @@ export const messages: Record<Language, AppMessages> = {
     languageControl: '語言選擇', english: '英文', chinese: '中文',
     collapseTopbar: '收起頂部工具列，讓地圖顯示更大', expandTopbar: '展開頂部工具列',
     collapseSidebar: '收起圖層面板，讓地圖顯示更大', expandSidebar: '展開圖層面板',
-    brandTitle: '香港實時交通資訊',
+    brandTitle: '香港實時交通資訊', brandCompactTitle: '香港交通',
+    mapStyle: '底圖樣式', mapStyleStreet: '街道', mapStyleLight: '淺灰',
     switchToPositron: '切換至 OpenFreeMap Positron 淺灰底圖', switchToOsm: '切換至 OpenStreetMap 底圖',
     officialData: '官方開放數據', sources: '資料來源', sidebarLabel: '圖層及詳情',
-    overviewEyebrow: '香港 · 交通概覽', overviewTitle: '全港相機一覽', publishedLocations: '個已公布位置',
+    overviewEyebrow: '香港 · 交通概覽', overviewTitle: '全港交通概覽', publishedLocations: '個已公布位置',
     completeInventory: '完整名冊', mapLayers: '地圖圖層', showingLocations: count => `顯示 ${count} 個`,
     layerSwitch: name => `${name}圖層`, layerUpdateFailed: '更新失敗，現顯示上次成功載入的名冊。', dataLoadFailed: '資料載入失敗。',
     retry: '重試', noOfficialLocations: '官方名冊暫無位置資料。',
     layerNote: '數字代表官方公布的位置數目，並非正在運作的相機數量。偵速機箱名冊不包括政府隧道及管制區。',
-    cameraDetails: '詳情', closeCameraDetails: '關閉詳情', district: '所屬地區', coordinates: '位置座標',
+    cameraDetails: '詳情', closeCameraDetails: '關閉詳情', clearSelection: '清除選取', selectedLocation: '已選位置',
+    selectionAnnounced: name => `已選取 ${name}。`,
+    panelNavigation: '交通面板', searchTab: '搜尋', moreLayers: '更多',
+    searchTitle: '搜尋道路及位置', searchHelp: '搜尋官方路段，或按地區查找相機、停車場及其他位置。選取結果可在地圖定位並查看詳情。',
+    searchScope: '搜尋類別', searchRoads: '道路車速', searchLocations: '其他位置',
+    searchRoadLabel: '道路名稱、路線或路段編號', searchLocationLabel: '位置名稱或地區', clearSearch: '清除搜尋',
+    searchResults: count => `${count} 個結果`, searchNoResults: '沒有符合的結果。請縮短搜尋字詞或使用另一語言的道路名稱。',
+    searchNoData: '暫無可供搜尋的資料。請查看圖層狀態並重試。', inspectLocation: name => `在地圖定位並查看 ${name} 的詳情`,
+    segmentLabel: '路段', searchPagination: '搜尋結果分頁', previousPage: '上一頁', nextPage: '下一頁',
+    searchRange: (start, end, total) => `${start}–${end} / ${total}`,
+    speedLegend: '道路車速圖例', speedLegendHelp: '顏色分類說明', liveSpeedsStale: '車速資料已超過 10 分鐘',
+    noOfficialUpdateTime: '暫無車速更新時間', updatedMinutes: minutes => minutes === 0 ? '車速剛剛更新' : `車速 ${minutes} 分鐘前更新`,
+    updating: '更新中', mappedSegments: (mapped, expected) => `${mapped} / ${expected} 個路段已配對`,
+    incidentMapped: (mapped, notices) => `${notices} 則消息中有 ${mapped} 個地圖位置`,
+    district: '所屬地區', coordinates: '位置座標',
     recordUpdated: '記錄更新', officialRemarks: '官方備註',
     layerDetail: {
       redlight: '此圖層提供衝紅燈攝影機系統路口位置。官方並無提供此相機的即時運作狀態或快拍影像。',
       speed: '此圖層提供偵速攝影機機箱位置。官方並無提供此相機的即時運作狀態或快拍影像。',
     },
-    officialSource: '運輸署 · 官方資料來源',
+    officialSource: '官方資料來源',
     liveDataTime: '數據時間', speedNow: '平均車速',
     speedLevels: { free: '暢通', moderate: '一般', slow: '緩慢', unknown: '暫無讀數' },
     noLiveSpeed: '官方暫未提供有效車速讀數', directionLabel: '行車方向', showDetectors: '顯示探測器位置', routeNumberLabel: '路線編號', speedLimitLabel: '道路限速',
@@ -144,7 +194,7 @@ export const messages: Record<Language, AppMessages> = {
     emptyDetailTitle: '每段路況，一目了然',
     emptyDetailBody: '點選地圖上的相機標記或車速路段，查看位置詳情、實時車速或最新交通快拍。',
     loadingOfficialData: '正在讀取官方資料…', loadingLiveSpeeds: '正在載入實時車速路段', partialUpdateFailure: '部分資料更新失敗',
-    inventoryFetched: time => `名冊讀取 ${time}`, noData: '未有可用資料', refreshAll: '重新讀取所有官方名冊',
+    inventoryFetched: time => `資料讀取 ${time}`, noData: '未有可用資料', refreshAll: '重新讀取所有官方資料',
     openControls: '開啟圖層及詳情', closeControls: '關閉圖層及詳情', panelTitle: '圖層及詳情',
     sourceDialogTitle: '資料來源與更新', closeSources: '關閉資料來源',
     sourceDescriptions: {
@@ -166,34 +216,49 @@ export const messages: Record<Language, AppMessages> = {
     snapshotNoUpdateTime: '來源未提供影像更新時間', snapshotWaiting: '等待官方影像', refreshSnapshot: '更新快拍',
     snapshotStale: '此影像已超過 10 分鐘未更新，可能暫停服務。',
     snapshotNote: '每 2 分鐘自動重新讀取 · 香港時間\n更新時間取自官方影像檔案；拍攝時間以圖中標示為準。若顯示「No Service」，代表官方暫未提供影像。',
-    mapLabel: '香港相機位置互動地圖', mapKeyboardHelp: '使用方向鍵移動地圖，點選數字群組放大',
+    mapLabel: '香港交通互動地圖', mapKeyboardHelp: '使用方向鍵移動地圖，點選數字群組放大；使用面板搜尋以鍵盤查找道路及位置',
     zoomIn: '放大地圖', zoomOut: '縮小地圖',
-    showAll: '顯示全部相機位置', returnToHongKong: '返回全港',
+    showAll: '顯示全港交通', returnToHongKong: '返回全港',
     mapLoadFailed: '互動地圖或底圖暫時未能完整載入。相機位置資料不受影響，請檢查網絡或重新載入。',
     mapLoading: '正在載入地圖', allLayersOff: '所有圖層已關閉', cameraLoadFailed: '暫時未能載入相機位置',
     noCameraLocations: '暫無相機位置資料', turnOnLayer: '開啟相機圖層，即可在地圖查看位置。',
-    checkLayers: '請查看圖層狀態，並按重新整理再試。', mapHint: '點選相機或路段查看詳情 · 點選數字展開相機群組',
+    checkLayers: '請查看圖層狀態，並按重新整理再試。', mapHint: '點選標記或路段查看詳情，或在面板搜尋道路及位置',
     clusterLabel: count => `${count} 個相機位置，按下展開`,
   },
   en: {
     languageControl: 'Language', english: 'English', chinese: 'Chinese',
     collapseTopbar: 'Collapse the top bar to free up map space', expandTopbar: 'Expand the top bar',
     collapseSidebar: 'Collapse the layers panel to free up map space', expandSidebar: 'Expand the layers panel',
-    brandTitle: 'HK Real-Time Traffic Info',
+    brandTitle: 'HK Real-Time Traffic Info', brandCompactTitle: 'HK Traffic',
+    mapStyle: 'Map style', mapStyleStreet: 'Street', mapStyleLight: 'Light',
     switchToPositron: 'Switch to the OpenFreeMap Positron light-gray basemap', switchToOsm: 'Switch to the OpenStreetMap basemap',
     officialData: 'Official open data', sources: 'Sources', sidebarLabel: 'Layers and details',
-    overviewEyebrow: 'HONG KONG · TRAFFIC OVERVIEW', overviewTitle: 'Camera overview', publishedLocations: 'published locations',
+    overviewEyebrow: 'HONG KONG · TRAFFIC OVERVIEW', overviewTitle: 'Traffic overview', publishedLocations: 'published locations',
     completeInventory: 'Complete list', mapLayers: 'Map layers', showingLocations: count => `Showing ${count}`,
     layerSwitch: name => `${name} layer`, layerUpdateFailed: 'Update failed. Showing the last successfully loaded list.', dataLoadFailed: 'Data could not be loaded.',
     retry: 'Retry', noOfficialLocations: 'The official list currently has no location data.',
     layerNote: 'Counts are published locations, not cameras confirmed to be operating. The speed-camera list excludes government tunnels and control areas.',
-    cameraDetails: 'Details', closeCameraDetails: 'Close details', district: 'District', coordinates: 'Coordinates',
+    cameraDetails: 'Details', closeCameraDetails: 'Close details', clearSelection: 'Clear selection', selectedLocation: 'Selected location',
+    selectionAnnounced: name => `Selected ${name}.`,
+    panelNavigation: 'Traffic panel', searchTab: 'Search', moreLayers: 'More',
+    searchTitle: 'Find a road or location', searchHelp: 'Search official road segments, or find cameras, parking and other locations by district. Select a result to locate it on the map and open its details.',
+    searchScope: 'Search category', searchRoads: 'Road speeds', searchLocations: 'Other locations',
+    searchRoadLabel: 'Road name, route or segment number', searchLocationLabel: 'Location name or district', clearSearch: 'Clear search',
+    searchResults: count => `${count} results`, searchNoResults: 'No matching results. Try fewer words or a road name in the other language.',
+    searchNoData: 'No data to search yet. Check the layer status and retry.', inspectLocation: name => `Locate ${name} on the map and open its details`,
+    segmentLabel: 'Segment', searchPagination: 'Search result pages', previousPage: 'Previous', nextPage: 'Next',
+    searchRange: (start, end, total) => `${start}–${end} of ${total}`,
+    speedLegend: 'Road speed legend', speedLegendHelp: 'How colours are classified', liveSpeedsStale: 'Speeds are over 10 minutes old',
+    noOfficialUpdateTime: 'No speed update time available', updatedMinutes: minutes => minutes === 0 ? 'Speeds updated just now' : `Speeds updated ${minutes} min ago`,
+    updating: 'Updating', mappedSegments: (mapped, expected) => `${mapped} of ${expected} segments mapped`,
+    incidentMapped: (mapped, notices) => `${mapped} mapped locations from ${notices} notices`,
+    district: 'District', coordinates: 'Coordinates',
     recordUpdated: 'Record updated', officialRemarks: 'Official remarks',
     layerDetail: {
       redlight: 'This layer shows red-light camera junctions. The official source does not provide live operating status or snapshot images for these cameras.',
       speed: 'This layer shows speed-camera housing locations. The official source does not provide live operating status or snapshot images for these cameras.',
     },
-    officialSource: 'Transport Department · Official source',
+    officialSource: 'Official source',
     liveDataTime: 'Data time', speedNow: 'Average speed',
     speedLevels: { free: 'Free flow', moderate: 'Moderate', slow: 'Slow', unknown: 'No reading' },
     noLiveSpeed: 'No valid speed reading from the official source', directionLabel: 'Direction', showDetectors: 'Show detector locations', routeNumberLabel: 'Route number', speedLimitLabel: 'Road speed limit',
@@ -209,7 +274,7 @@ export const messages: Record<Language, AppMessages> = {
     emptyDetailTitle: 'See every road at a glance',
     emptyDetailBody: 'Select a camera marker or a coloured road segment on the map to view location details, live speeds or the latest traffic snapshot.',
     loadingOfficialData: 'Loading official data…', loadingLiveSpeeds: 'Loading live road speeds', partialUpdateFailure: 'Some data failed to update',
-    inventoryFetched: time => `List fetched ${time}`, noData: 'No data available', refreshAll: 'Reload all official lists',
+    inventoryFetched: time => `Data fetched ${time}`, noData: 'No data available', refreshAll: 'Reload all official data',
     openControls: 'Open layers and details', closeControls: 'Close layers and details', panelTitle: 'Layers and details',
     sourceDialogTitle: 'Sources and updates', closeSources: 'Close sources',
     sourceDescriptions: {
@@ -231,13 +296,13 @@ export const messages: Record<Language, AppMessages> = {
     snapshotNoUpdateTime: 'The source did not provide an image update time', snapshotWaiting: 'Waiting for official image', refreshSnapshot: 'Refresh snapshot',
     snapshotStale: 'This image has not updated for more than 10 minutes and may be temporarily unavailable.',
     snapshotNote: 'Automatically refreshed every 2 minutes · Hong Kong time\nUpdate time comes from the official image file; see the image for its capture time. “No Service” means the official source has no image available.',
-    mapLabel: 'Interactive map of Hong Kong camera locations', mapKeyboardHelp: 'Use arrow keys to move the map and select a numbered cluster to zoom in',
+    mapLabel: 'Interactive map of Hong Kong traffic', mapKeyboardHelp: 'Use arrow keys to move the map and select a numbered cluster to zoom in; use panel search to find roads and locations by keyboard',
     zoomIn: 'Zoom in', zoomOut: 'Zoom out',
-    showAll: 'Show all camera locations', returnToHongKong: 'Return to all Hong Kong',
+    showAll: 'Show all Hong Kong traffic', returnToHongKong: 'Return to all Hong Kong',
     mapLoadFailed: 'The interactive map or basemap could not fully load. Camera location data is unaffected; check your connection or reload.',
     mapLoading: 'Loading map', allLayersOff: 'All layers are off', cameraLoadFailed: 'Camera locations could not be loaded',
     noCameraLocations: 'No camera location data is available', turnOnLayer: 'Turn on a camera layer to see its locations on the map.',
-    checkLayers: 'Check the layer status, then refresh and try again.', mapHint: 'Select a camera or road segment for details · Select a number to expand a cluster',
+    checkLayers: 'Check the layer status, then refresh and try again.', mapHint: 'Select a marker or road for details, or search in the panel',
     clusterLabel: count => `${count} camera locations; select to expand`,
   },
 };

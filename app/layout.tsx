@@ -9,6 +9,7 @@ const assetBase = process.env.STATIC_EXPORT === "1" ? "/HKRTTrafficInfo" : "";
 // screen and the browser toolbar blend into the icon instead of clashing.
 export const viewport: Viewport = {
   themeColor: "#130f0a",
+  viewportFit: "cover",
 };
 
 export const metadata: Metadata = {

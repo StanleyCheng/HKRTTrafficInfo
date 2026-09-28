@@ -8,6 +8,8 @@ import {
   speedLevel,
 } from '../lib/traffic.ts';
 import { parseCsv, parseSegmentRouteNumbers, pickLatestPeriod, popupFields } from '../lib/traffic-parsing.ts';
+import { cameraFromFlowSegment, displayFlowSegments, searchTrafficItems } from '../lib/traffic-view.ts';
+import type { FlowSegment } from '../lib/traffic.ts';
 
 test('speedLevel classifies urban-road traffic bands', () => {
   assert.equal(speedLevel(0), 'slow');
@@ -64,4 +66,34 @@ test('pickLatestPeriod is stable for single, missing and unordered periods', () 
   assert.equal(pickLatestPeriod(undefined), undefined);
   assert.deepEqual(pickLatestPeriod({ period_to: '10:00:00' }), { period_to: '10:00:00' });
   assert.deepEqual(pickLatestPeriod([{ period_to: '10:02:00' }, { period_to: '10:01:00' }]), { period_to: '10:02:00' });
+});
+
+const segment: FlowSegment = {
+  id: 'flow-segment-375', routeId: 375, routeNum: 1, name: '告士打道', nameEn: 'Gloucester Road',
+  speedKmh: 48, speedLimitKmh: 50, level: 'free', path: [[22.28, 114.17], [22.281, 114.172]],
+};
+
+test('retained live readings become unavailable when they age out between refreshes', () => {
+  const updated = '2026-09-20T11:00:00+08:00';
+  const now = Date.parse(updated);
+  const original = [segment];
+  assert.equal(displayFlowSegments(original, updated, now + liveTrafficMaxAgeMs), original);
+  const stale = displayFlowSegments(original, updated, now + liveTrafficMaxAgeMs + 1);
+  assert.equal(stale[0].level, 'unknown');
+  assert.equal(stale[0].speedKmh, null);
+  assert.deepEqual(stale[0].path, segment.path);
+  assert.equal(segment.level, 'free');
+  assert.equal(displayFlowSegments(original, undefined, now)[0].level, 'unknown');
+  assert.deepEqual(displayFlowSegments(undefined, updated, now), []);
+});
+
+test('traffic search matches both languages, district names and identifiers without inventing metadata', () => {
+  const road = { camera: cameraFromFlowSegment(segment), segment };
+  const parking = { camera: { id: 'parking-1', sourceId: '1', kind: 'parking' as const, name: '灣仔停車場', nameEn: 'Wan Chai Car Park', district: '灣仔', districtEn: 'Wan Chai', lat: 22.28, lng: 114.17 } };
+  assert.deepEqual(searchTrafficItems([road, parking], '  GLOUCESTER 375 ', 'en'), [road]);
+  assert.deepEqual(searchTrafficItems([road, parking], '告士打', 'zh'), [road]);
+  assert.deepEqual(searchTrafficItems([road, parking], '灣仔', 'en'), [parking]);
+  assert.deepEqual(searchTrafficItems([road, parking], 'Wan Chai', 'zh'), [parking]);
+  assert.deepEqual(searchTrafficItems([road, parking], 'missing road', 'en'), []);
+  assert.equal(road.camera.district, undefined);
 });
