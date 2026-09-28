@@ -56,6 +56,8 @@ type AppMessages = {
   searchRange: (start: number, end: number, total: number) => string;
   speedLegend: string;
   speedLegendHelp: string;
+  showTrafficInfo: string;
+  hideTrafficInfo: string;
   liveSpeedsStale: string;
   noOfficialUpdateTime: string;
   updatedMinutes: (minutes: number) => string;
@@ -168,7 +170,7 @@ export const messages: Record<Language, AppMessages> = {
     searchNoData: '暫無可供搜尋的資料。請查看圖層狀態並重試。', inspectLocation: name => `在地圖定位並查看 ${name} 的詳情`,
     segmentLabel: '路段', searchPagination: '搜尋結果分頁', previousPage: '上一頁', nextPage: '下一頁',
     searchRange: (start, end, total) => `${start}–${end} / ${total}`,
-    speedLegend: '道路車速圖例', speedLegendHelp: '顏色分類說明', liveSpeedsStale: '車速資料已超過 10 分鐘',
+    speedLegend: '道路車速圖例', speedLegendHelp: '顏色分類說明', showTrafficInfo: '展開交通資料及車速圖例', hideTrafficInfo: '收起交通資料及車速圖例', liveSpeedsStale: '車速資料已超過 10 分鐘',
     noOfficialUpdateTime: '暫無車速更新時間', updatedMinutes: minutes => minutes === 0 ? '車速剛剛更新' : `車速 ${minutes} 分鐘前更新`,
     updating: '更新中', mappedSegments: (mapped, expected) => `${mapped} / ${expected} 個路段已配對`,
     incidentMapped: (mapped, notices) => `${notices} 則消息中有 ${mapped} 個地圖位置`,
@@ -248,7 +250,7 @@ export const messages: Record<Language, AppMessages> = {
     searchNoData: 'No data to search yet. Check the layer status and retry.', inspectLocation: name => `Locate ${name} on the map and open its details`,
     segmentLabel: 'Segment', searchPagination: 'Search result pages', previousPage: 'Previous', nextPage: 'Next',
     searchRange: (start, end, total) => `${start}–${end} of ${total}`,
-    speedLegend: 'Road speed legend', speedLegendHelp: 'How colours are classified', liveSpeedsStale: 'Speeds are over 10 minutes old',
+    speedLegend: 'Road speed legend', speedLegendHelp: 'How colours are classified', showTrafficInfo: 'Show traffic information and speed legend', hideTrafficInfo: 'Hide traffic information and speed legend', liveSpeedsStale: 'Speeds are over 10 minutes old',
     noOfficialUpdateTime: 'No speed update time available', updatedMinutes: minutes => minutes === 0 ? 'Speeds updated just now' : `Speeds updated ${minutes} min ago`,
     updating: 'Updating', mappedSegments: (mapped, expected) => `${mapped} of ${expected} segments mapped`,
     incidentMapped: (mapped, notices) => `${mapped} mapped locations from ${notices} notices`,

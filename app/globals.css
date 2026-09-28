@@ -212,6 +212,7 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 
 .traffic-status { position: absolute; z-index: 450; left: 14px; top: var(--bar-offset); width: min(340px,calc(100% - 96px)); border-radius: 12px; background: #fff; padding: 8px 12px 12px; box-shadow: var(--elevation-panel); font-size: 12px; }
 .traffic-status.has-warning { background: #fff9ed; }
+.traffic-info-toggle { display: none; }
 .traffic-status-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .traffic-freshness { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 12px; color: #39525e; line-height: 1.5; }
 .traffic-freshness svg { color: #14625e; }
@@ -274,15 +275,15 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
   .map-hint { font-size: 11px; bottom: 36px; }
 }
 @media (max-width: 700px), (max-height: 520px) and (orientation: landscape) {
-  .app-shell { --sidebar-w: 0px; --sidebar-space: 0px; --bar-top: calc(8px + env(safe-area-inset-top)); --bar-left: calc(10px + env(safe-area-inset-left)); --bar-right: calc(10px + env(safe-area-inset-right)); --bar-height: 54px; }
-  .topbar { width: calc(100% - var(--bar-left) - var(--bar-right)); justify-content: space-between; gap: 8px; padding: 0 10px; border-radius: 12px; }
+  .app-shell { --sidebar-w: 0px; --sidebar-space: 0px; --bar-top: calc(8px + env(safe-area-inset-top)); --bar-left: calc(10px + env(safe-area-inset-left)); --bar-right: calc(10px + env(safe-area-inset-right)); --bar-height: 54px; --bar-padding: 10px; --brand-icon-width: 36px; --brand-icon-height: 36px; }
+  .topbar { width: calc(100% - var(--bar-left) - var(--bar-right)); justify-content: space-between; gap: 8px; padding: 0 var(--bar-padding); border-radius: 12px; }
   .topbar.collapsed { width: 62px; max-width: 62px; }
   .brand { gap: 8px; }
   .brand-copy { display: block; }
   .brand h1 { font-size: 16px; }
   .brand-full { display: none; }
   .brand-compact { display: inline; }
-  .brand-icon { width: 36px; height: 36px; border-radius: 8px; }
+  .brand-icon { width: var(--brand-icon-width); height: var(--brand-icon-height); border-radius: 8px; }
   .header-meta { gap: 6px; }
   .official-tag, .map-style-label, .live-loading-dot { display: none; }
   .language-toggle { padding: 2px; }
@@ -293,11 +294,11 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
   .workspace { display: block; overflow: clip; }
   .map-workspace { position: absolute; inset: 0; }
   .map-tools { right: calc(12px + env(safe-area-inset-right)); gap: 8px; }
-  .map-hint, .sidebar-collapsed .map-hint { bottom: calc(102px + env(safe-area-inset-bottom)); font-size: 11px; padding: 8px 12px; width: max-content; max-width: calc(100% - 32px); }
+  .map-hint, .sidebar-collapsed .map-hint { display: none; }
   .map-error { top: calc(var(--bar-offset) + 12px); right: 76px; font-size: 12px; }
   .map-empty { top: 45%; padding: 20px; }
-  .leaflet-control-attribution { max-width: calc(100% - 24px); margin-bottom: calc(150px + env(safe-area-inset-bottom)) !important; font-size: 9px !important; }
-  .leaflet-control-scale { margin-bottom: calc(150px + env(safe-area-inset-bottom)) !important; }
+  .leaflet-control-attribution { max-width: calc(100% - 24px); margin-bottom: calc(100px + env(safe-area-inset-bottom)) !important; font-size: 9px !important; }
+  .leaflet-control-scale { margin-bottom: calc(100px + env(safe-area-inset-bottom)) !important; }
   .sidebar-collapsed .desktop-layer-dock, .desktop-layer-dock, .panel-reopen, .sidebar-collapsed .panel-reopen, .sidebar-toggle { display: none; }
   .mobile-scrim { display: block; position: absolute; inset: 0; z-index: 650; border: 0; background: #0a223359; opacity: 0; visibility: hidden; transition: opacity .2s ease-out, visibility 0s .2s; }
   .mobile-scrim.visible { opacity: 1; visibility: visible; transition-delay: 0s; }
@@ -313,7 +314,16 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
   .detail dt { margin: 16px 0 4px; font-size: 12px; }
   .detail dd { font-size: 14px; }
   .snapshot-frame { max-width: 440px; }
-  .traffic-status { left: calc(12px + env(safe-area-inset-left)); width: min(330px,calc(100% - 88px - env(safe-area-inset-left) - env(safe-area-inset-right))); padding: 6px 10px 10px; }
+  .traffic-status { left: calc(var(--bar-left) + var(--bar-padding)); width: 44px; padding: 0; background: transparent; box-shadow: none; }
+  .traffic-status.has-warning { background: transparent; }
+  .traffic-status.is-expanded { width: min(330px,calc(100% - var(--bar-left) - var(--bar-padding) - 76px - env(safe-area-inset-right))); }
+  .traffic-info-toggle { display: block; width: 44px; height: 44px; padding: 4px; margin-left: -4px; border: 0; border-radius: 8px; background: transparent; }
+  .traffic-info-symbol { display: grid; place-items: center; position: relative; width: var(--brand-icon-width); height: var(--brand-icon-height); border-radius: 8px; background: #fff; color: #395867; box-shadow: var(--elevation-panel); }
+  .traffic-info-toggle:hover .traffic-info-symbol, .traffic-info-toggle[aria-expanded=true] .traffic-info-symbol { background: #e6f3f1; color: #14625e; }
+  .traffic-info-badge { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; background: #956911; }
+  .traffic-status-details { display: none; margin-top: 8px; padding: 6px 10px 10px; border-radius: 12px; background: #fff; box-shadow: var(--elevation-panel); max-height: calc(100dvh - var(--bar-offset) - 152px - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #b4c9cc transparent; }
+  .traffic-status.is-expanded .traffic-status-details { display: block; }
+  .traffic-status.has-warning .traffic-status-details { background: #fff9ed; }
   .status-refresh { width: 44px; height: 44px; }
   .flow-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; margin-top: 0; }
   .legend-explanation summary { min-height: 32px; padding-top: 8px; }
@@ -332,16 +342,14 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
   .sidebar, .app-shell.sidebar-collapsed .sidebar { top: var(--bar-offset); bottom: 0; left: auto; right: 0; width: min(390px,calc(100% - 80px - env(safe-area-inset-right))); height: auto; max-height: none; border-radius: 16px 0 0 16px; transform: translateX(calc(100% + env(safe-area-inset-right))); }
   .sidebar.mobile-open, .app-shell.sidebar-collapsed .sidebar.mobile-open { transform: translateX(0); }
   .mobile-dock { left: calc(12px + env(safe-area-inset-left)); bottom: calc(12px + env(safe-area-inset-bottom)); transform: none; width: min(380px,calc(100% - 90px)); }
-  .map-hint, .sidebar-collapsed .map-hint { display: none; }
-  .traffic-status { left: 12px; width: min(330px,calc(100% - 100px)); }
 }
 @media (max-width: 380px) {
+  .app-shell { --bar-padding: 8px; --brand-icon-width: 32px; --brand-icon-height: 34px; }
   .brand h1 { font-size: 14px; }
-  .brand-icon { width: 32px; height: 34px; }
   .brand { gap: 6px; }
   .language-toggle button { min-width: 28px; }
   .source-button { width: 32px; }
-  .topbar { gap: 6px; padding: 0 8px; }
+  .topbar { gap: 6px; }
   .header-meta { gap: 4px; }
   .basemap-toggle { min-width: 44px; padding: 0 6px; }
   .mobile-dock button span { font-size: 9px; }
