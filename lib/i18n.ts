@@ -142,7 +142,6 @@ type AppMessages = {
   noCameraLocations: string;
   turnOnLayer: string;
   checkLayers: string;
-  mapHint: string;
   clusterLabel: (count: number) => string;
 };
 
@@ -224,7 +223,7 @@ export const messages: Record<Language, AppMessages> = {
     mapLoadFailed: '互動地圖或底圖暫時未能完整載入。相機位置資料不受影響，請檢查網絡或重新載入。',
     mapLoading: '正在載入地圖', allLayersOff: '所有圖層已關閉', cameraLoadFailed: '暫時未能載入相機位置',
     noCameraLocations: '暫無相機位置資料', turnOnLayer: '開啟相機圖層，即可在地圖查看位置。',
-    checkLayers: '請查看圖層狀態，並按重新整理再試。', mapHint: '點選標記或路段查看詳情，或在面板搜尋道路及位置',
+    checkLayers: '請查看圖層狀態，並按重新整理再試。',
     clusterLabel: count => `${count} 個相機位置，按下展開`,
   },
   en: {
@@ -304,7 +303,7 @@ export const messages: Record<Language, AppMessages> = {
     mapLoadFailed: 'The interactive map or basemap could not fully load. Camera location data is unaffected; check your connection or reload.',
     mapLoading: 'Loading map', allLayersOff: 'All layers are off', cameraLoadFailed: 'Camera locations could not be loaded',
     noCameraLocations: 'No camera location data is available', turnOnLayer: 'Turn on a camera layer to see its locations on the map.',
-    checkLayers: 'Check the layer status, then refresh and try again.', mapHint: 'Select a marker or road for details, or search in the panel',
+    checkLayers: 'Check the layer status, then refresh and try again.',
     clusterLabel: count => `${count} camera locations; select to expand`,
   },
 };

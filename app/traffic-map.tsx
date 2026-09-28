@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Maximize, Plus, Minus, LoaderCircle, MousePointer2, RefreshCw } from 'lucide-react';
+import { Maximize, Plus, Minus, LoaderCircle, RefreshCw } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import { messages } from '@/lib/i18n';
 import { Camera, FlowSegment, Language, layerText, layers, speedLevelColors } from '@/lib/traffic';
@@ -184,6 +184,5 @@ export default function TrafficMap({ cameras, segments, selected, selectedSegmen
     {mapError && <div className="map-error" role="alert">{copy.mapLoadFailed}<button type="button" className="map-retry" onClick={() => ready ? setBasemapRetry(value => value + 1) : window.location.reload()}><RefreshCw size={14}/>{copy.retry}</button></div>}
     {!ready && !mapError && <div className="map-loading"><LoaderCircle className="spin" size={20}/> {copy.mapLoading}</div>}
     {ready && !loading && cameras.length === 0 && !segments?.length && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
-    <div className="map-hint"><MousePointer2 size={14}/><span>{copy.mapHint}</span></div>
   </section>;
 }

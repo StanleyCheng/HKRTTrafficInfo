@@ -29,17 +29,18 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .app-shell {
   --sidebar-w: 324px; --sidebar-space: calc(var(--sidebar-w) + 24px);
   --bar-top: 12px; --bar-left: 14px; --bar-right: 14px; --bar-height: 60px;
+  --bar-padding: 16px; --brand-icon-width: 43px; --brand-icon-height: 43px; --brand-icon-radius: 12px;
   --bar-offset: calc(var(--bar-top) + var(--bar-height) + 12px);
   height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
 }
 .app-shell.sidebar-collapsed { --sidebar-space: 0px; }
-.topbar { position: absolute; top: var(--bar-top); left: calc(var(--sidebar-space) + var(--bar-left)); width: fit-content; max-width: calc(100% - var(--sidebar-space) - var(--bar-left) - var(--bar-right)); height: var(--bar-height); z-index: 900; display: flex; align-items: center; gap: var(--space-6); padding: 0 var(--space-4); color: var(--header-ink); background: var(--header-surface); border-radius: 16px; box-shadow: var(--elevation-panel); }
+.topbar { position: absolute; top: var(--bar-top); left: calc(var(--sidebar-space) + var(--bar-left)); width: fit-content; max-width: calc(100% - var(--sidebar-space) - var(--bar-left) - var(--bar-right)); height: var(--bar-height); z-index: 900; display: flex; align-items: center; gap: var(--space-6); padding: 0 var(--bar-padding); color: var(--header-ink); background: var(--header-surface); border-radius: 16px; box-shadow: var(--elevation-panel); }
 .topbar.collapsed { width: 77px; overflow: hidden; background: transparent; box-shadow: none; pointer-events: none; }
 .topbar.collapsed .brand-copy, .topbar.collapsed .header-meta { visibility: hidden; }
 .brand { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .brand-toggle { display: block; border: 0; background: none; padding: 4px; margin: -4px; border-radius: 14px; flex-shrink: 0; pointer-events: auto; }
 .brand-copy { min-width: 0; }
-.brand-icon { display: block; width: 43px; height: 43px; border-radius: 12px; overflow: hidden; flex-shrink: 0; }
+.brand-icon { display: block; width: var(--brand-icon-width); height: var(--brand-icon-height); border-radius: var(--brand-icon-radius); overflow: hidden; flex-shrink: 0; }
 .topbar.collapsed .brand-icon { box-shadow: 0 3px 14px #0b253a40; }
 .brand-icon img { width: 100% !important; height: 100% !important; object-fit: cover; display: block; }
 .brand h1 { font-size: 20px; font-weight: 650; margin: 0; white-space: nowrap; }
@@ -185,8 +186,6 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .map-tools > button, .zoom-buttons { border-radius: 8px; background: #fff; box-shadow: var(--elevation-panel); overflow: hidden; }
 .map-tools button { width: 44px; height: 44px; display: grid; place-items: center; background: #fff; border: 0; }
 .zoom-buttons button + button { border-top: 1px solid var(--border); }
-.map-hint { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); background: #fff; border-radius: 12px; z-index: 450; padding: 10px 14px; color: #405965; font-size: 12px; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 40px); line-height: 1.5; pointer-events: none; }
-.sidebar-collapsed .map-hint { bottom: 96px; }
 .map-error { position: absolute; right: 76px; top: calc(var(--bar-offset) + 12px); z-index: 460; width: min(340px,calc(100% - 100px)); background: #fff9ed; border-radius: 12px; padding: 12px; color: #785019; font-size: 13px; line-height: 1.6; box-shadow: var(--elevation-panel); }
 .map-retry { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; margin-top: 8px; background: #f1e4c8; color: #694619; border: 0; border-radius: 8px; }
 .map-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: #405965; font-size: 14px; pointer-events: none; z-index: 450; }
@@ -210,9 +209,15 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 @keyframes rotate { to { transform: rotate(360deg); } }
 @keyframes live-dot-blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
 
-.traffic-status { position: absolute; z-index: 450; left: 14px; top: var(--bar-offset); width: min(340px,calc(100% - 96px)); border-radius: 12px; background: #fff; padding: 8px 12px 12px; box-shadow: var(--elevation-panel); font-size: 12px; }
-.traffic-status.has-warning { background: #fff9ed; }
-.traffic-info-toggle { display: none; }
+.traffic-status { position: absolute; z-index: 450; left: calc(var(--bar-left) + var(--bar-padding)); top: var(--bar-offset); width: max(44px,calc(var(--brand-icon-width) + 8px)); font-size: 12px; }
+.traffic-status.is-expanded { width: min(340px,calc(100% - var(--bar-left) - var(--bar-padding) - 76px - env(safe-area-inset-right))); }
+.traffic-info-toggle { display: block; width: calc(var(--brand-icon-width) + 8px); height: calc(var(--brand-icon-height) + 8px); min-width: 44px; min-height: 44px; padding: 4px; margin-left: -4px; border: 0; border-radius: var(--brand-icon-radius); background: transparent; }
+.traffic-info-symbol { display: grid; place-items: center; position: relative; width: var(--brand-icon-width); height: var(--brand-icon-height); border-radius: var(--brand-icon-radius); background: #fff; color: #395867; box-shadow: var(--elevation-panel); }
+.traffic-info-toggle:hover .traffic-info-symbol, .traffic-info-toggle[aria-expanded=true] .traffic-info-symbol { background: #e6f3f1; color: #14625e; }
+.traffic-info-badge { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; background: #956911; }
+.traffic-status-details { display: none; margin-top: 8px; padding: 8px 12px 12px; border-radius: 12px; background: #fff; box-shadow: var(--elevation-panel); max-height: calc(100dvh - var(--bar-offset) - var(--brand-icon-height) - 40px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #b4c9cc transparent; }
+.traffic-status.is-expanded .traffic-status-details { display: block; }
+.traffic-status.has-warning .traffic-status-details { background: #fff9ed; }
 .traffic-status-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .traffic-freshness { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 12px; color: #39525e; line-height: 1.5; }
 .traffic-freshness svg { color: #14625e; }
@@ -270,12 +275,12 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 }
 @media (min-width: 701px) and (max-width: 900px) {
   .app-shell:not(.sidebar-collapsed) .brand-copy { display: none; }
-  .traffic-status { font-size: 11px; padding: 8px; }
+  .traffic-status { font-size: 11px; }
+  .traffic-status-details { padding: 8px; }
   .flow-legend { display: grid; grid-template-columns: 1fr 1fr; }
-  .map-hint { font-size: 11px; bottom: 36px; }
 }
 @media (max-width: 700px), (max-height: 520px) and (orientation: landscape) {
-  .app-shell { --sidebar-w: 0px; --sidebar-space: 0px; --bar-top: calc(8px + env(safe-area-inset-top)); --bar-left: calc(10px + env(safe-area-inset-left)); --bar-right: calc(10px + env(safe-area-inset-right)); --bar-height: 54px; --bar-padding: 10px; --brand-icon-width: 36px; --brand-icon-height: 36px; }
+  .app-shell { --sidebar-w: 0px; --sidebar-space: 0px; --bar-top: calc(8px + env(safe-area-inset-top)); --bar-left: calc(10px + env(safe-area-inset-left)); --bar-right: calc(10px + env(safe-area-inset-right)); --bar-height: 54px; --bar-padding: 10px; --brand-icon-width: 36px; --brand-icon-height: 36px; --brand-icon-radius: 8px; }
   .topbar { width: calc(100% - var(--bar-left) - var(--bar-right)); justify-content: space-between; gap: 8px; padding: 0 var(--bar-padding); border-radius: 12px; }
   .topbar.collapsed { width: 62px; max-width: 62px; }
   .brand { gap: 8px; }
@@ -283,7 +288,6 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
   .brand h1 { font-size: 16px; }
   .brand-full { display: none; }
   .brand-compact { display: inline; }
-  .brand-icon { width: var(--brand-icon-width); height: var(--brand-icon-height); border-radius: 8px; }
   .header-meta { gap: 6px; }
   .official-tag, .map-style-label, .live-loading-dot { display: none; }
   .language-toggle { padding: 2px; }
@@ -294,7 +298,6 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
   .workspace { display: block; overflow: clip; }
   .map-workspace { position: absolute; inset: 0; }
   .map-tools { right: calc(12px + env(safe-area-inset-right)); gap: 8px; }
-  .map-hint, .sidebar-collapsed .map-hint { display: none; }
   .map-error { top: calc(var(--bar-offset) + 12px); right: 76px; font-size: 12px; }
   .map-empty { top: 45%; padding: 20px; }
   .leaflet-control-attribution { max-width: calc(100% - 24px); margin-bottom: calc(100px + env(safe-area-inset-bottom)) !important; font-size: 9px !important; }
@@ -314,16 +317,8 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
   .detail dt { margin: 16px 0 4px; font-size: 12px; }
   .detail dd { font-size: 14px; }
   .snapshot-frame { max-width: 440px; }
-  .traffic-status { left: calc(var(--bar-left) + var(--bar-padding)); width: 44px; padding: 0; background: transparent; box-shadow: none; }
-  .traffic-status.has-warning { background: transparent; }
   .traffic-status.is-expanded { width: min(330px,calc(100% - var(--bar-left) - var(--bar-padding) - 76px - env(safe-area-inset-right))); }
-  .traffic-info-toggle { display: block; width: 44px; height: 44px; padding: 4px; margin-left: -4px; border: 0; border-radius: 8px; background: transparent; }
-  .traffic-info-symbol { display: grid; place-items: center; position: relative; width: var(--brand-icon-width); height: var(--brand-icon-height); border-radius: 8px; background: #fff; color: #395867; box-shadow: var(--elevation-panel); }
-  .traffic-info-toggle:hover .traffic-info-symbol, .traffic-info-toggle[aria-expanded=true] .traffic-info-symbol { background: #e6f3f1; color: #14625e; }
-  .traffic-info-badge { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; background: #956911; }
-  .traffic-status-details { display: none; margin-top: 8px; padding: 6px 10px 10px; border-radius: 12px; background: #fff; box-shadow: var(--elevation-panel); max-height: calc(100dvh - var(--bar-offset) - 152px - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #b4c9cc transparent; }
-  .traffic-status.is-expanded .traffic-status-details { display: block; }
-  .traffic-status.has-warning .traffic-status-details { background: #fff9ed; }
+  .traffic-status-details { padding: 6px 10px 10px; max-height: calc(100dvh - var(--bar-offset) - 152px - env(safe-area-inset-bottom)); }
   .status-refresh { width: 44px; height: 44px; }
   .flow-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; margin-top: 0; }
   .legend-explanation summary { min-height: 32px; padding-top: 8px; }
