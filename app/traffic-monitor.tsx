@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import Image from 'next/image';
 import { ArrowUpRight, Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, PanelLeftClose, PanelLeftOpen, RefreshCw, ShieldCheck, SlidersHorizontal, SquareParking, TrafficCone, TriangleAlert, Video, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -16,7 +16,6 @@ type LayerState = { data?: CameraData; loading: boolean; error: boolean };
 type Snapshot = { imageUrl: string; updatedAt: string | null; fetchedAt: string };
 type PanelTab = 'layers' | 'search' | 'details';
 const panelTabs: PanelTab[] = ['layers', 'search', 'details'];
-const pinnedLayers: LayerKind[] = ['flow', 'incident', 'snapshot', 'parking'];
 
 const icons = { redlight: TrafficCone, speed: Gauge, snapshot: Video, flow: Navigation, incident: TriangleAlert, parking: SquareParking, rainfall: CloudRain };
 const languageStorageKey = 'hk-traffic-language-v1';
@@ -610,21 +609,24 @@ export default function TrafficMonitor() {
           })}
         </nav>
         <nav className="mobile-dock" aria-label={copy.mapLayers} aria-hidden={mobilePanelOpen || undefined} inert={mobilePanelOpen || undefined}>
-          {pinnedLayers.map(kind => {
-            const Icon = icons[kind];
-            const text = layerText(kind, language);
-            const state = states[kind];
-            const enabledLabel = language === 'en' ? enabled[kind] ? 'On' : 'Off' : enabled[kind] ? '已開啟' : '已關閉';
-            return <button key={kind}
-                  type="button"
-                  className={`mobile-layer-button ${kind} ${enabled[kind] ? 'active' : ''} ${state.error ? 'error' : ''}`}
-                  aria-label={`${copy.layerSwitch(text.name)}: ${enabledLabel}`}
-                  aria-pressed={enabled[kind]}
-                  onClick={() => toggle(kind)}
-                >
-                  <Icon size={20}/><span>{text.short}</span>
-                </button>;
-          })}
+          <div className="mobile-layer-scroll">
+            {kinds.map(kind => {
+              const Icon = icons[kind];
+              const text = layerText(kind, language);
+              const state = states[kind];
+              const enabledLabel = language === 'en' ? enabled[kind] ? 'On' : 'Off' : enabled[kind] ? '已開啟' : '已關閉';
+              return <button key={kind}
+                    type="button"
+                    className={`mobile-layer-button ${kind} ${enabled[kind] ? 'active' : ''} ${state.error ? 'error' : ''}`}
+                    style={{ '--layer-color': layers[kind].color } as CSSProperties}
+                    aria-label={`${copy.layerSwitch(text.name)}: ${enabledLabel}`}
+                    aria-pressed={enabled[kind]}
+                    onClick={() => toggle(kind)}
+                  >
+                    <span className="mobile-layer-icon"><Icon size={20}/></span><span>{text.short}</span>
+                  </button>;
+            })}
+          </div>
           <button ref={mobilePanelButton} type="button" className="mobile-panel-button" aria-label={copy.openControls} aria-expanded={mobilePanelOpen} onClick={() => { if (!selected) switchPanelTab('layers'); setMobilePanelOpen(true); }}><SlidersHorizontal size={20}/><span>{selected ? copy.cameraDetails : copy.moreLayers}</span></button>
         </nav>
       </TooltipProvider>
