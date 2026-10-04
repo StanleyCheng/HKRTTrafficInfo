@@ -1,5 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "node node_modules/next/dist/bin/next build"
+  "buildCommand": "node scripts/prepare-maplibre-assets.mjs && node node_modules/next/dist/bin/next build"
 }
