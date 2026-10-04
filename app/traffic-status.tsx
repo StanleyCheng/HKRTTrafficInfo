@@ -2,13 +2,15 @@
 
 import { useRef, useState } from 'react';
 import { Clock3, Info, RefreshCw, TriangleAlert } from 'lucide-react';
-import { messages } from '@/lib/i18n';
-import { hkTime, isLiveTrafficDataFresh } from '@/lib/traffic';
-import type { Language, SpeedLevel } from '@/lib/traffic';
+import { messages, integrationMessages } from '@/lib/i18n';
+import { hkTime, isLiveTrafficDataFresh, layerText } from '@/lib/traffic';
+import type { CameraData, IntegrationKind, Language, LayerKind, SpeedLevel } from '@/lib/traffic';
+import { pollingMs } from '@/lib/integration-client';
 
 const levels: SpeedLevel[] = ['free', 'moderate', 'slow', 'unknown'];
 
-export default function TrafficStatus({ language, flowEnabled, updated, fetched, now, loading, error, mapped, expected, onRefresh }: {
+export default function TrafficStatus({ feeds, language, flowEnabled, updated, fetched, now, loading, error, mapped, expected, onRefresh }: {
+  feeds?: { kind: LayerKind; data?: CameraData; loading: boolean; error: boolean }[];
   language: Language;
   flowEnabled: boolean;
   updated?: string;
@@ -21,6 +23,7 @@ export default function TrafficStatus({ language, flowEnabled, updated, fetched,
   onRefresh: () => void;
 }) {
   const copy = messages[language];
+  const extra = integrationMessages[language];
   const [expanded, setExpanded] = useState(false);
   const toggleButton = useRef<HTMLButtonElement>(null);
   const stale = flowEnabled && Boolean(updated) && !isLiveTrafficDataFresh(updated, now);
@@ -50,6 +53,12 @@ export default function TrafficStatus({ language, flowEnabled, updated, fetched,
       {expected !== undefined && <span className="status-coverage">{copy.mappedSegments(mapped.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK'), expected.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK'))}</span>}
       <details className="legend-explanation"><summary>{copy.speedLegendHelp}</summary><p>{copy.speedLayerNote}</p></details>
     </>}
+    {!!feeds?.length && <ul className="feed-status-list">{feeds.map(feed => {
+      const time = feed.data?.observedAt || (feed.kind === 'flow' ? feed.data?.segmentsUpdated : null) || feed.data?.fetchedAt;
+      const age = time && Number.isFinite(Date.parse(time)) ? Math.max(0, now - Date.parse(time)) : null;
+      const overdue = age !== null && age > Math.max(120000, (pollingMs[feed.kind as IntegrationKind] ?? 300000) * 2);
+      return <li key={feed.kind}><strong>{layerText(feed.kind, language).name}</strong><span className={feed.error || overdue || feed.data?.stale ? 'warning-text' : ''}>{feed.loading ? copy.updating : feed.error || overdue || feed.data?.stale ? extra.stale : age === null ? extra.notLoaded : extra.age(Math.floor(age / 60000))}</span>{(feed.error || overdue) && age !== null && <small>{extra.age(Math.floor(age / 60000))}</small>}</li>;
+    })}</ul>}
     </div>
   </div>;
 }

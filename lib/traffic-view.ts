@@ -35,7 +35,7 @@ export type TrafficSearchItem = { camera: Camera; segment?: FlowSegment };
 export function searchTrafficItems(items: TrafficSearchItem[], query: string, language: Language): TrafficSearchItem[] {
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   return items.filter(({ camera, segment }) => {
-    const text = [camera.name, camera.nameEn, camera.district, camera.districtEn, camera.sourceId, segment?.routeNum]
+    const text = [camera.name, camera.nameEn, camera.district, camera.districtEn, camera.sourceId, camera.routes?.join(" "), segment?.routeNum]
       .filter(value => value !== undefined).join(' ').toLocaleLowerCase();
     return terms.every(term => text.includes(term));
   }).sort((a, b) => {

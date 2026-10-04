@@ -29,6 +29,10 @@ jobs:
         run: npm ci
       - name: Verify source
         run: npm run verify
+      - name: Cloudflare Worker build
+        run: npm run build
+      - name: Verify API preservation during static export
+        run: node scripts/build-static.mjs --check-routes
       - name: Static export build
         run: npm run build:static
       - name: Setup Pages

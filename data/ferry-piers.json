@@ -1,0 +1,21 @@
+{
+  "piers": [
+    {"id": "star-central", "nameTc": "中環天星碼頭", "nameEn": "Central Star Ferry", "lng": 114.16119, "lat": 22.28704},
+    {"id": "star-tst", "nameTc": "尖沙咀天星碼頭", "nameEn": "Tsim Sha Tsui Star Ferry", "lng": 114.16799, "lat": 22.29354},
+    {"id": "star-wanchai", "nameTc": "灣仔碼頭", "nameEn": "Wan Chai Ferry Pier", "lng": 114.1758, "lat": 22.28209},
+    {"id": "sun-central", "nameTc": "中環五號碼頭", "nameEn": "Central Pier 5", "lng": 114.15938, "lat": 22.28768},
+    {"id": "sun-cheung-chau", "nameTc": "長洲碼頭", "nameEn": "Cheung Chau Ferry Pier", "lng": 114.02834, "lat": 22.20858},
+    {"id": "sun-mui-wo", "nameTc": "梅窩碼頭", "nameEn": "Mui Wo Ferry Pier", "lng": 114.00116, "lat": 22.26507},
+    {"id": "sun-chi-ma-wan", "nameTc": "芝麻灣碼頭", "nameEn": "Chi Ma Wan Pier", "lng": 113.99994, "lat": 22.23958},
+    {"id": "sun-north-point", "nameTc": "北角碼頭", "nameEn": "North Point Ferry Pier", "lng": 114.20091, "lat": 22.29417},
+    {"id": "fortune-kwun-tong", "nameTc": "觀塘渡輪碼頭", "nameEn": "Kwun Tong Ferry Pier", "lng": 114.22159, "lat": 22.30633},
+    {"id": "sun-hung-hom", "nameTc": "紅磡碼頭", "nameEn": "Hung Hom Ferry Pier", "lng": 114.19025, "lat": 22.30112},
+    {"id": "sun-kowloon-city", "nameTc": "九龍城碼頭", "nameEn": "Kowloon City Ferry Pier", "lng": 114.19431, "lat": 22.31784},
+    {"id": "hkkf-central", "nameTc": "中環四號碼頭", "nameEn": "Central Pier 4", "lng": 114.15845, "lat": 22.28792},
+    {"id": "hkkf-central-6", "nameTc": "中環六號碼頭", "nameEn": "Central Pier 6", "lng": 114.1603, "lat": 22.28739},
+    {"id": "hkkf-sok-kwu-wan", "nameTc": "索罟灣碼頭", "nameEn": "Sok Kwu Wan Ferry Pier", "lng": 114.1313, "lat": 22.20626},
+    {"id": "hkkf-yung-shue-wan", "nameTc": "榕樹灣碼頭", "nameEn": "Yung Shue Wan Ferry Pier", "lng": 114.10877, "lat": 22.22631},
+    {"id": "hkkf-peng-chau", "nameTc": "坪洲碼頭", "nameEn": "Peng Chau Ferry Pier", "lng": 114.03711, "lat": 22.28458},
+    {"id": "hkkf-hei-ling-chau", "nameTc": "喜靈洲", "nameEn": "Hei Ling Chau", "lng": 114.02769, "lat": 22.25796}
+  ]
+}

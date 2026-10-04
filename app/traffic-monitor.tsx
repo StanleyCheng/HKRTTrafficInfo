@@ -4,20 +4,22 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import Image from 'next/image';
 import { ArrowUpRight, Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, PanelLeftClose, PanelLeftOpen, RefreshCw, ShieldCheck, SlidersHorizontal, SquareParking, TrafficCone, TriangleAlert, Video, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { formatRecordDate, messages } from '@/lib/i18n';
+import { formatRecordDate, messages, integrationMessages } from '@/lib/i18n';
 import { getCameraData } from '@/lib/traffic-client';
-import { Camera, CameraData, FlowSegment, Language, LayerKind, featureService, hkTime, isLiveTrafficDataFresh, kinds, layerText, layers, snapshotInventory, snapshotInventoryEn, speedLevelColors } from '@/lib/traffic';
+import { Camera, CameraData, FlowSegment, Language, LayerKind, IntegrationKind, OriginalLayerKind, featureService, hkTime, isLiveTrafficDataFresh, isFeedDataStale, isCameraDataStale, kinds, originalKinds, integrationKinds, layerGroups, layerAvailable, hostedUrl, layerText, layers, snapshotInventory, snapshotInventoryEn, speedLevelColors } from '@/lib/traffic';
 import { cameraFromFlowSegment, displayFlowSegments, type TrafficSearchItem } from '@/lib/traffic-view';
 import TrafficMap, { type Basemap } from './traffic-map';
 import TrafficSearch from './traffic-search';
 import TrafficStatus from './traffic-status';
+import IntelPanel from './intel-panel';
+import { getIntegrationData, initialViewport, pollingMs, viewportNote, withBoundarySpeeds, movingCameras, type MapViewport } from '@/lib/integration-client';
 
 type LayerState = { data?: CameraData; loading: boolean; error: boolean };
 type Snapshot = { imageUrl: string; updatedAt: string | null; fetchedAt: string };
 type PanelTab = 'layers' | 'search' | 'details';
 const panelTabs: PanelTab[] = ['layers', 'search', 'details'];
 
-const icons = { redlight: TrafficCone, speed: Gauge, snapshot: Video, flow: Navigation, incident: TriangleAlert, parking: SquareParking, rainfall: CloudRain };
+const icons = { redlight: TrafficCone, speed: Gauge, snapshot: Video, flow: Navigation, incident: TriangleAlert, parking: SquareParking, rainfall: CloudRain, crossing: Clock3, works: TrafficCone, toll: MapPin, boundary: ShieldCheck, 'weather-warning': CloudRain, mtr: Navigation, lrt: Navigation, kmb: MapPin, citybus: MapPin, gmb: MapPin, nlb: MapPin, ferry: Navigation };
 const languageStorageKey = 'hk-traffic-language-v1';
 const basemapStorageKey = 'hk-traffic-basemap-v1';
 const compactLayoutQuery = '(max-width: 700px), (max-height: 520px) and (orientation: landscape)';
@@ -170,7 +172,7 @@ function createStoredFlag(storageKey: string) {
 const topbarFlag = createStoredFlag('hk-traffic-topbar-v1');
 const sidebarFlag = createStoredFlag('hk-traffic-sidebar-v1');
 
-function SnapshotImage({ camera, language }: { camera: Camera; language: Language }) {
+function SnapshotImage({ camera, language, onActivity }: { camera: Camera; language: Language; onActivity: () => () => void }) {
   const copy = messages[language];
   const [shot, setShot] = useState<Snapshot | null>(null);
   const [error, setError] = useState(false);
@@ -180,9 +182,11 @@ function SnapshotImage({ camera, language }: { camera: Camera; language: Languag
   useEffect(() => {
     const abort = new AbortController();
     let busy = false;
+    let finishActivity = () => {};
     async function refresh() {
       if (busy) return;
       busy = true;
+      finishActivity = onActivity();
       setLoading(true);
       setError(false);
       try {
@@ -194,6 +198,14 @@ function SnapshotImage({ camera, language }: { camera: Camera; language: Languag
         if (!response.ok || !response.headers.get('Content-Type')?.toLowerCase().startsWith('image/')) throw new Error('Snapshot request failed');
         const blob = await response.blob();
         const imageUrl = URL.createObjectURL(blob);
+        try {
+          const image = new window.Image();
+          image.src = imageUrl;
+          await image.decode();
+        } catch (error) {
+          URL.revokeObjectURL(imageUrl);
+          throw error;
+        }
         if (abort.signal.aborted) {
           URL.revokeObjectURL(imageUrl);
           return;
@@ -207,6 +219,7 @@ function SnapshotImage({ camera, language }: { camera: Camera; language: Languag
       } catch {
         if (!abort.signal.aborted) setError(true);
       } finally {
+        finishActivity();
         busy = false;
         if (!abort.signal.aborted) setLoading(false);
       }
@@ -221,10 +234,11 @@ function SnapshotImage({ camera, language }: { camera: Camera; language: Languag
     document.addEventListener('visibilitychange', visible);
     return () => {
       abort.abort();
+      finishActivity();
       clearInterval(interval);
       document.removeEventListener('visibilitychange', visible);
     };
-  }, [camera.imageUrl, tick]);
+  }, [camera.imageUrl, tick, onActivity]);
 
   useEffect(() => {
     const imageUrl = shot?.imageUrl;
@@ -255,17 +269,23 @@ export default function TrafficMonitor() {
   const language = useSyncExternalStore(subscribeLanguage, getLanguageSnapshot, getServerLanguageSnapshot);
   const basemap = useSyncExternalStore(subscribeBasemap, getBasemapSnapshot, getServerBasemapSnapshot);
   const copy = messages[language];
+  const extra = integrationMessages[language];
   const numberLocale = language === 'en' ? 'en-HK' : 'zh-HK';
-  const [enabled, setEnabled] = useState<Record<LayerKind, boolean>>({ flow: true, incident: true, redlight: false, speed: false, snapshot: false, parking: false, rainfall: false });
-  const [states, setStates] = useState<Record<LayerKind, LayerState>>({
-    flow: { loading: true, error: false },
-    incident: { loading: true, error: false },
-    redlight: { loading: true, error: false },
-    speed: { loading: true, error: false },
-    snapshot: { loading: true, error: false },
-    parking: { loading: true, error: false },
-    rainfall: { loading: true, error: false },
-  });
+  const [enabled, setEnabled] = useState<Record<LayerKind, boolean>>(() => Object.fromEntries(kinds.map(kind => [kind, kind === 'flow' || kind === 'incident'])) as Record<LayerKind, boolean>);
+  const [states, setStates] = useState<Record<LayerKind, LayerState>>(() => Object.fromEntries(kinds.map(kind => [kind, { loading: originalKinds.includes(kind as OriginalLayerKind), error: false }])) as Record<LayerKind, LayerState>);
+  const [pendingActivity, setPendingActivity] = useState(0);
+  const beginActivity = useCallback(() => {
+    setPendingActivity(count => count + 1);
+    let complete = false;
+    return () => {
+      if (complete) return;
+      complete = true;
+      setPendingActivity(count => count - 1);
+    };
+  }, []);
+  const [viewport, setViewport] = useState<MapViewport>(initialViewport);
+  const [dockGroup, setDockGroup] = useState<(typeof layerGroups)[number]['id']>('roads');
+  const dockKinds = layerGroups.find(group => group.id === dockGroup)!.kinds;
   const [selectedSnapshot, setSelectedSnapshot] = useState<Camera | null>(null);
   const [showDetectors, setShowDetectors] = useState(false);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
@@ -280,12 +300,16 @@ export default function TrafficMonitor() {
   const panelReopenButton = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const inflight = useRef(new Set<LayerKind>());
+  const refreshIntegration = useRef<(kind: IntegrationKind) => Promise<void>>(async () => {});
+  const integrationContext = useRef({ enabled, viewport, language });
+  const integrationPending = useRef(new Map<IntegrationKind, { key: string }>());
+  const integrationLastFetch = useRef(new Map<IntegrationKind, { key: string; at: number }>());
   const panelScroll = useRef<HTMLDivElement>(null);
 
   const closeMobilePanel = useCallback(() => {
     setMobilePanelOpen(false);
     setTimeout(() => mobilePanelButton.current?.focus(), 0);
-  }, []);
+  }, [setMobilePanelOpen]);
 
   function toggleTopbar() {
     topbarFlag.set(!topbarCollapsed);
@@ -354,29 +378,33 @@ export default function TrafficMonitor() {
   }, [closeMobilePanel, mobilePanelOpen]);
 
   const fetchLayer = useCallback(async (kind: LayerKind) => {
+    if (!layerAvailable(kind)) return;
+    if (integrationKinds.includes(kind as IntegrationKind)) return refreshIntegration.current(kind as IntegrationKind);
     if (inflight.current.has(kind)) return;
     inflight.current.add(kind);
+    const finishActivity = beginActivity();
     setStates(state => ({ ...state, [kind]: { ...state[kind], loading: true, error: false } }));
     try {
-      const data = await getCameraData(kind);
-      setStates(state => ({ ...state, [kind]: { data, loading: false, error: false } }));
+      const data = await getCameraData(kind as OriginalLayerKind);
+      setStates(state => ({ ...state, [kind]: { data, loading: false, error: Boolean(data.feedError) } }));
     } catch {
       setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false, error: true } }));
     } finally {
+      finishActivity();
       inflight.current.delete(kind);
     }
-  }, []);
+  }, [beginActivity]);
 
   useEffect(() => {
-    kinds.forEach(kind => fetchLayer(kind));
+    originalKinds.forEach(kind => fetchLayer(kind));
     const flowInterval = setInterval(() => {
       if (document.visibilityState === 'visible') fetchLayer('flow');
     }, 120000);
     const otherInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') kinds.filter(kind => kind !== 'flow').forEach(kind => fetchLayer(kind));
+      if (document.visibilityState === 'visible') originalKinds.filter(kind => kind !== 'flow').forEach(kind => fetchLayer(kind));
     }, 300000);
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') kinds.forEach(kind => fetchLayer(kind));
+      if (document.visibilityState === 'visible') originalKinds.forEach(kind => fetchLayer(kind));
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
@@ -386,30 +414,82 @@ export default function TrafficMonitor() {
     };
   }, [fetchLayer]);
 
+  useEffect(() => {
+    integrationContext.current = { enabled, viewport, language };
+    const refresh = async (kind: IntegrationKind, force = false) => {
+      if (!enabled[kind] || !layerAvailable(kind) || document.visibilityState !== 'visible') return;
+      const spatial = ['kmb', 'citybus', 'gmb', 'nlb'].includes(kind);
+      const key = `${language}:${spatial ? `${viewport.lng}:${viewport.lat}:${viewport.zoom}` : ''}`;
+      if (integrationPending.current.get(kind)?.key === key) return;
+      const last = integrationLastFetch.current.get(kind);
+      if (!force && last?.key === key && Date.now() - last.at < pollingMs[kind]) return;
+      const request = { key };
+      integrationPending.current.set(kind, request);
+      const finishActivity = beginActivity();
+      const isCurrent = () => {
+        const current = integrationContext.current;
+        const currentKey = `${current.language}:${spatial ? `${current.viewport.lng}:${current.viewport.lat}:${current.viewport.zoom}` : ''}`;
+        return current.enabled[kind] && currentKey === key && integrationPending.current.get(kind) === request;
+      };
+      integrationLastFetch.current.set(kind, { key, at: Date.now() });
+      setStates(state => ({ ...state, [kind]: { ...state[kind], loading: true } }));
+      try {
+        const data = await getIntegrationData(kind, viewport, language);
+        if (!isCurrent()) return;
+        integrationLastFetch.current.set(kind, { key, at: Date.now() });
+        setStates(state => ({ ...state, [kind]: { data, loading: false, error: Boolean(data.stale || data.feedError) } }));
+      } catch {
+        if (isCurrent()) setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false, error: true } }));
+      } finally { finishActivity(); if (integrationPending.current.get(kind) === request) integrationPending.current.delete(kind); }
+    };
+    refreshIntegration.current = kind => refresh(kind, true);
+    const refreshAll = () => integrationKinds.forEach(kind => void refresh(kind));
+    refreshAll();
+    const timer = setInterval(refreshAll, 15000);
+    document.addEventListener('visibilitychange', refreshAll);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refreshAll); };
+  }, [enabled, language, viewport, beginActivity]);
+
   const segments = useMemo(() => displayFlowSegments(states.flow.data?.segments, states.flow.data?.segmentsUpdated, now), [states.flow.data, now]);
+  const boundaryData = useMemo(() => withBoundarySpeeds(states.boundary.data, segments), [states.boundary.data, segments]);
+  const displayStates = useMemo(() => ({ ...states, boundary: { ...states.boundary, data: boundaryData } }), [states, boundaryData]);
+  const intelInput = useMemo(() => ({ states: Object.fromEntries(kinds.filter(kind => enabled[kind] && layerAvailable(kind)).map(kind => [kind, displayStates[kind]])), segments: enabled.flow ? segments : [], now }), [displayStates, enabled, segments, now]);
+  const mtrData = enabled.mtr ? states.mtr.data : undefined;
+  const lrtData = enabled.lrt ? states.lrt.data : undefined;
+  const ferryData = enabled.ferry ? states.ferry.data : undefined;
+  const transitFeeds = useMemo(() => ({ mtr: mtrData, lrt: lrtData, ferry: ferryData }), [mtrData, lrtData, ferryData]);
+  const paths = useMemo(() => [mtrData, lrtData, ferryData].flatMap(data => data?.paths ?? []), [mtrData, lrtData, ferryData]);
   const flowFresh = isLiveTrafficDataFresh(states.flow.data?.segmentsUpdated, now);
   const cameras = useMemo(() => kinds.flatMap(kind => {
     if (!enabled[kind]) return [];
     if (kind === 'flow') return showDetectors ? (states.flow.data?.cameras ?? []).map(camera => flowFresh ? camera : { ...camera, speedKmh: null, level: 'unknown' as const, color: speedLevelColors.unknown }) : [];
-    return states[kind].data?.cameras ?? [];
-  }), [states, enabled, showDetectors, flowFresh]);
+    if (viewportNote(kind, viewport)) return [];
+    const data = displayStates[kind].data;
+    return (data?.cameras ?? []).map(camera => isFeedDataStale(kind, data, now) || isCameraDataStale(camera, now) ? { ...camera, color: speedLevelColors.unknown } : camera);
+  }), [states, displayStates, enabled, showDetectors, flowFresh, viewport, now]);
   const selected = useMemo(() => {
+    if (selectedSnapshot?.positionType === 'vehicle') {
+      const kind = selectedSnapshot.kind as 'mtr' | 'lrt' | 'ferry';
+      const data = states[kind].data;
+      return data ? movingCameras(kind, data, now).find(camera => camera.id === selectedSnapshot.id) ?? null : null;
+    }
     if (!selectedSnapshot?.id.startsWith('flow-segment-')) {
-      const latestCamera = selectedSnapshot && states[selectedSnapshot.kind].data?.cameras.find(camera => camera.id === selectedSnapshot.id);
+      const latestCamera = selectedSnapshot && displayStates[selectedSnapshot.kind].data?.cameras.find(camera => camera.id === selectedSnapshot.id);
       const camera = latestCamera ?? selectedSnapshot;
       return camera?.kind === 'flow' && !flowFresh ? { ...camera, speedKmh: null, level: 'unknown' as const, color: speedLevelColors.unknown } : camera;
     }
     const segment = segments.find(candidate => candidate.id === selectedSnapshot.id);
     return segment ? cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated) : null;
-  }, [selectedSnapshot, states, segments, flowFresh]);
+  }, [selectedSnapshot, states, displayStates, segments, flowFresh, now]);
   const searchItems = useMemo<TrafficSearchItem[]>(() => [
     ...segments.map(segment => ({ camera: cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated), segment })),
-    ...kinds.filter(kind => kind !== 'flow').flatMap(kind => (states[kind].data?.cameras ?? []).map(camera => ({ camera }))),
-  ], [segments, states]);
+    ...kinds.filter(kind => kind !== 'flow' && layerAvailable(kind) && !viewportNote(kind, viewport)).flatMap(kind => (displayStates[kind].data?.cameras ?? []).map(camera => ({ camera }))),
+  ], [segments, states, displayStates, viewport]);
   const total = kinds.reduce((count, kind) => count + (states[kind].data?.count ?? 0), 0);
-  const loading = kinds.some(kind => states[kind].loading);
-  const errors = kinds.some(kind => states[kind].error);
-  const complete = kinds.every(kind => states[kind].data?.complete) && !errors;
+  const loading = kinds.some(kind => (originalKinds.includes(kind as OriginalLayerKind) || enabled[kind]) && states[kind].loading);
+  const appBusy = pendingActivity > 0;
+  const errors = kinds.some(kind => enabled[kind] && states[kind].error);
+  const complete = kinds.filter(kind => enabled[kind]).every(kind => states[kind].data?.complete) && !errors;
   const times = kinds.flatMap(kind => states[kind].data ? [states[kind].data!.fetchedAt] : []).sort();
   const latest = times[0];
   const activeKinds = kinds.filter(kind => enabled[kind]);
@@ -418,6 +498,8 @@ export default function TrafficMonitor() {
   const activeFetched = activeKinds.flatMap(kind => states[kind].data ? [states[kind].data!.fetchedAt] : []).sort()[0];
 
   function toggle(kind: LayerKind) {
+    if (!layerAvailable(kind)) return;
+    if (enabled[kind]) setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false } }));
     setEnabled(current => ({ ...current, [kind]: !current[kind] }));
     if (selected?.kind === kind && enabled[kind]) setSelectedSnapshot(null);
   }
@@ -432,7 +514,7 @@ export default function TrafficMonitor() {
       panelScroll.current?.scrollTo({ top: 0 });
       if (keyboardSelection) details.current?.focus({ preventScroll: true });
     });
-  }, []);
+  }, [setMobilePanelOpen]);
 
   const onSelectSegment = useCallback((segment: FlowSegment) => {
     choose(cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated));
@@ -461,8 +543,8 @@ export default function TrafficMonitor() {
         <div className="brand-copy"><h1><span className="brand-full">{copy.brandTitle}</span><span className="brand-compact">{copy.brandCompactTitle}</span></h1></div>
       </div>
       <div className="header-meta">
-        {states.flow.loading && !states.flow.data && <span className="live-loading-dot" role="status" title={copy.loadingLiveSpeeds} aria-label={copy.loadingLiveSpeeds}/>}
         <span className="official-tag"><ShieldCheck size={15}/>{copy.officialData}</span>
+        <span className="activity-indicator-slot">{appBusy && <span className="live-loading-dot" role="status" title={copy.loadingActivity} aria-label={copy.loadingActivity}/>}</span>
         <div className="language-toggle" role="group" aria-label={copy.languageControl}>
           <button type="button" aria-pressed={language === 'en'} aria-label={copy.english} title={copy.english} onClick={() => setStoredLanguage('en')}>EN</button>
           <button type="button" aria-pressed={language === 'zh'} aria-label={copy.chinese} title={copy.chinese} onClick={() => setStoredLanguage('zh')}>繁</button>
@@ -493,11 +575,14 @@ export default function TrafficMonitor() {
             const text = layerText(kind, language);
             const state = states[kind];
             const Icon = icons[kind];
-            return <div key={kind} className={`layer-card ${kind} ${enabled[kind] ? 'active' : ''}`}>
-              <button className="layer-toggle" role="switch" aria-checked={enabled[kind]} aria-label={copy.layerSwitch(text.name)} onClick={() => toggle(kind)}>
+            return <div key={kind} className={`layer-card ${kind} ${enabled[kind] ? 'active' : ''}`} style={{ '--layer-color': layers[kind].color } as CSSProperties}>
+              <button className="layer-toggle" role="switch" disabled={!layerAvailable(kind)} aria-checked={enabled[kind]} aria-label={copy.layerSwitch(text.name)} onClick={() => toggle(kind)}>
                 <span className="layer-symbol"><Icon size={21}/></span><span className="layer-copy"><strong>{text.name}</strong><span>{text.caption}</span></span>
                 <span className="layer-count">{state.loading && !state.data ? <LoaderCircle size={16} className="spin"/> : !enabled[kind] ? '—' : state.data ? state.data.count.toLocaleString(numberLocale) : '!'}</span><span className="switch"/>
               </button>
+              {!layerAvailable(kind) && <p className="layer-capability">{extra.hostedOnly} <a href={hostedUrl} target="_blank" rel="noreferrer">{extra.hostedLink} ↗</a></p>}
+              {enabled[kind] && viewportNote(kind, viewport) && <p className="layer-capability">{extra[viewportNote(kind, viewport)!]}</p>}
+              {enabled[kind] && kind === 'weather-warning' && state.data && <p className="layer-capability">{state.data.count ? `${state.data.count} · ${text.name}` : extra.noWarnings}</p>}
               {kind === 'flow' && enabled.flow && state.data && state.data.count > 0 && (
                 <button className={`detector-toggle ${showDetectors ? 'active' : ''}`} role="switch" aria-checked={showDetectors} aria-label={copy.showDetectors} onClick={() => setShowDetectors(v => !v)}>
                   <span>{copy.showDetectors} <span className="detector-count">{state.data.count.toLocaleString(numberLocale)}</span></span>
@@ -507,8 +592,8 @@ export default function TrafficMonitor() {
               {kind === 'flow' && state.data?.segmentsComplete === false && state.data.segmentsExpectedCount !== undefined && (
                 <div className="flow-coverage">{copy.flowCoverage((state.data.segments?.length ?? 0).toLocaleString(numberLocale), state.data.segmentsExpectedCount.toLocaleString(numberLocale))}</div>
               )}
-              {state.error && <div className="layer-error" role="alert">{state.data ? copy.layerUpdateFailed : copy.dataLoadFailed} <button className="text-button" onClick={() => fetchLayer(kind)}>{copy.retry}</button></div>}
-              {state.data?.count === 0 && kind !== 'incident' && <div className="layer-error">{copy.noOfficialLocations}</div>}
+              {enabled[kind] && state.error && <div className="layer-error" role="alert">{state.data ? copy.layerUpdateFailed : copy.dataLoadFailed} <button className="text-button" onClick={() => fetchLayer(kind)}>{copy.retry}</button></div>}
+              {state.data?.count === 0 && kind !== 'incident' && kind !== 'weather-warning' && !viewportNote(kind, viewport) && <div className="layer-error">{copy.noOfficialLocations}</div>}
               {kind === 'incident' && state.data && (
                 state.data.notices?.length ? <details className="incident-notices">
                   <summary>{copy.incidentListTitle(state.data.notices.length.toLocaleString(numberLocale))}</summary>
@@ -537,7 +622,7 @@ export default function TrafficMonitor() {
             {selected ? <>
               <div className="detail-kind"><span className="color-dot" style={{ background: selected.color ?? layers[selected.kind].color }}/>{layerText(selected.kind, language).name}<span>／ {selected.sourceId}</span></div>
               <h4>{selectedName}</h4>
-              {selected.kind === 'snapshot' && <SnapshotImage camera={selected} language={language} key={selected.id}/>}
+              {selected.kind === 'snapshot' && <SnapshotImage camera={selected} language={language} onActivity={beginActivity} key={selected.id}/>}
               {selected.kind === 'flow' && <div className="live-figure">
                 <strong style={{ color: speedLevelColors[selected.level ?? 'unknown'] }}>{selected.speedKmh === null || selected.speedKmh === undefined ? '—' : selected.speedKmh}<small>km/h</small></strong>
                 <span className="level-badge" style={{ background: speedLevelColors[selected.level ?? 'unknown'] }}>{copy.speedLevels[selected.level ?? 'unknown']}</span>
@@ -553,7 +638,16 @@ export default function TrafficMonitor() {
                 <span className="live-label">{copy.millimetres(String(selected.rainfallMm))} · {copy.rainfallAmount}</span>
               </div>}
               {selected.kind === 'incident' && <p className="incident-text">{(language === 'en' ? selected.textEn || selected.text : selected.text || selected.textEn)?.trim()}</p>}
+              {selected.estimated && <p className="detail-note">{extra.estimated}</p>}
+              {selected.positionType === 'vehicle' && selected.kind === 'ferry' && !selected.estimated && <p className="detail-note">{extra.gps}</p>}
+              {(states[selected.kind].error || isFeedDataStale(selected.kind, states[selected.kind].data, now) || isCameraDataStale(selected, now)) && <p className="warning-text">{extra.stale}</p>}
+              {selected.arrivals && <section className="arrival-board"><h5>{extra.arrivals}</h5>{selected.arrivals.length ? <ul>{selected.arrivals.map((call, index) => {
+                const eta = call.eta ? Date.parse(call.eta) : NaN;
+                const minutes = Number.isFinite(eta) ? Math.max(0, Math.ceil((eta - now) / 60000)) : call.minutes;
+                return <li key={`${call.route}-${index}`}><strong className="arrival-route">{call.route}</strong><span className="arrival-destination">{language === 'en' ? call.destinationEn || call.destination : call.destination}{call.platform && <small>{extra.platform} {call.platform}</small>}<small>{call.timeType ? call.timeType === 'D' ? extra.departure : extra.arrival : call.scheduled ? extra.scheduled : extra.live}{(language === 'en' ? call.remarkEn : call.remark) ? ` · ${language === 'en' ? call.remarkEn : call.remark}` : ''}</small></span><strong className="arrival-minutes">{minutes ?? '—'}<small>{extra.minutes}</small></strong></li>;
+              })}</ul> : <p>{extra.noArrivals}</p>}</section>}
               <dl>
+                {selected.rows?.map((row, index) => <div className="detail-row" key={`${row.labelEn}-${index}`}><dt>{language === 'en' ? row.labelEn : row.label}</dt><dd>{language === 'en' ? row.valueEn || row.value : row.value}</dd></div>)}
                 {selectedDistrict && <><dt>{copy.district}</dt><dd>{selectedRegion ? `${selectedRegion} · ` : ''}{selectedDistrict}</dd></>}
                 {selected.kind === 'flow' && selected.remarks && <><dt>{selected.id.startsWith('flow-segment-') ? copy.routeNumberLabel : copy.directionLabel}</dt><dd>{selected.remarks}</dd></>}
                 {selected.kind === 'flow' && selected.speedLimitKmh !== undefined && <><dt>{copy.speedLimitLabel}</dt><dd>{selected.speedLimitKmh} km/h</dd></>}
@@ -577,23 +671,27 @@ export default function TrafficMonitor() {
       </aside>
       <button ref={panelReopenButton} type="button" className="panel-reopen" aria-label={copy.expandSidebar} title={copy.expandSidebar} onClick={() => { toggleSidebar(false); requestAnimationFrame(() => document.getElementById(`panel-tab-${panelTab}`)?.focus()); }}><PanelLeftOpen size={18}/></button>
       <div className={`map-workspace ${mobilePanelOpen ? 'panel-active' : ''}`} inert={mobilePanelOpen || undefined} aria-hidden={mobilePanelOpen || undefined}>
-      <TrafficMap cameras={cameras} segments={enabled.flow ? segments : undefined} selected={selected} selectedSegmentId={selected?.id && selected.id.startsWith('flow-segment-') ? selected.id : null} onSelect={choose} onSelectSegment={onSelectSegment} focusTarget={focusTarget} loading={loading} allDisabled={kinds.every(kind => !enabled[kind])} hasErrors={errors} language={language} basemap={basemap} inactive={mobilePanelOpen}/>
-      <TrafficStatus language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={() => kinds.forEach(kind => fetchLayer(kind))}/>
+      <TrafficMap onActivity={beginActivity} paths={paths} transitFeeds={transitFeeds} onViewport={setViewport} cameras={cameras} segments={enabled.flow ? segments : undefined} selected={selected} selectedSegmentId={selected?.id && selected.id.startsWith('flow-segment-') ? selected.id : null} onSelect={choose} onSelectSegment={onSelectSegment} focusTarget={focusTarget} loading={loading} allDisabled={kinds.every(kind => !enabled[kind])} hasErrors={errors} language={language} basemap={basemap} inactive={mobilePanelOpen}/>
+      <IntelPanel input={intelInput} language={language} onSelect={selectSearchItem}/>
+      <TrafficStatus feeds={kinds.filter(kind => enabled[kind]).map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={() => kinds.forEach(kind => fetchLayer(kind))}/>
       <TooltipProvider delayDuration={180} skipDelayDuration={100}>
+        <div className="layer-group-picker" role="group" aria-label={copy.mapLayers}>{layerGroups.map(group => <button type="button" key={group.id} aria-pressed={dockGroup === group.id} onClick={() => setDockGroup(group.id)}>{extra.groups[group.id]}</button>)}</div>
         <nav className="desktop-layer-dock" aria-label={copy.mapLayers}>
-          {kinds.map(kind => {
+          {dockKinds.map(kind => {
             const Icon = icons[kind];
             const text = layerText(kind, language);
             const state = states[kind];
-            const enabledLabel = language === 'en' ? enabled[kind] ? 'On' : 'Off' : enabled[kind] ? '已開啟' : '已關閉';
+            const enabledLabel = enabled[kind] ? extra.enabled : extra.disabled;
             const countLabel = state.data ? `${state.data.count.toLocaleString(numberLocale)} ${copy.publishedLocations}` : copy.noData;
             return <Tooltip key={kind}>
               <TooltipTrigger asChild>
                 <button
                   type="button"
+                  style={{ '--layer-color': layers[kind].color } as CSSProperties}
                   className={`desktop-layer-button ${kind} ${enabled[kind] ? 'active' : ''} ${state.error ? 'error' : ''}`}
                   aria-label={`${copy.layerSwitch(text.name)}: ${enabledLabel}`}
                   aria-pressed={enabled[kind]}
+                  disabled={!layerAvailable(kind)}
                   onClick={() => toggle(kind)}
                 >
                   <Icon size={22}/>
@@ -610,17 +708,18 @@ export default function TrafficMonitor() {
         </nav>
         <nav className="mobile-dock" aria-label={copy.mapLayers} aria-hidden={mobilePanelOpen || undefined} inert={mobilePanelOpen || undefined}>
           <div className="mobile-layer-scroll">
-            {kinds.map(kind => {
+            {dockKinds.map(kind => {
               const Icon = icons[kind];
               const text = layerText(kind, language);
               const state = states[kind];
-              const enabledLabel = language === 'en' ? enabled[kind] ? 'On' : 'Off' : enabled[kind] ? '已開啟' : '已關閉';
+              const enabledLabel = enabled[kind] ? extra.enabled : extra.disabled;
               return <button key={kind}
                     type="button"
                     className={`mobile-layer-button ${kind} ${enabled[kind] ? 'active' : ''} ${state.error ? 'error' : ''}`}
                     style={{ '--layer-color': layers[kind].color } as CSSProperties}
                     aria-label={`${copy.layerSwitch(text.name)}: ${enabledLabel}`}
                     aria-pressed={enabled[kind]}
+                  disabled={!layerAvailable(kind)}
                     onClick={() => toggle(kind)}
                   >
                     <span className="mobile-layer-icon"><Icon size={20}/></span><span>{text.short}</span>
@@ -643,7 +742,7 @@ export default function TrafficMonitor() {
           const data = states[kind].data;
           return <details className="source-entry" key={kind}>
             <summary><span className="color-dot" style={{ background: layers[kind].color }}/>{text.name}</summary>
-            <p>{copy.sourceDescriptions[kind]}</p>
+            <p>{copy.sourceDescriptions[kind as OriginalLayerKind] || extra.sourceText}</p>{integrationKinds.includes(kind as IntegrationKind) && <p>{extra.refreshCadence(pollingMs[kind as IntegrationKind] / 1000)}</p>}{data?.observedAt && <p>{copy.liveDataTime}: {hkTime(data.observedAt, true, language)}{isFeedDataStale(kind, data, now) ? ` · ${extra.stale}` : ""}</p>}{!layerAvailable(kind) && <p>{extra.hostedOnly} <a href={hostedUrl}>{extra.hostedLink}</a></p>}
             <a href={layers[kind].source} target="_blank" rel="noreferrer">{copy.dataGovLink} ↗</a>
             {(kind === 'redlight' || kind === 'speed' || kind === 'snapshot') && <a href={kind === 'snapshot' ? language === 'en' ? snapshotInventoryEn : snapshotInventory : featureService(kind) + '?f=pjson'} target="_blank" rel="noreferrer">{kind === 'snapshot' ? copy.locationXml : copy.officialApi} ↗</a>}
             {data && <div className="source-check">{kind === 'incident' ? `${copy.incidentMapped(data.count.toLocaleString(numberLocale), data.expectedCount.toLocaleString(numberLocale))} · ${copy.inventoryFetched(hkTime(data.fetchedAt, true, language))}${states[kind].error ? ` · ${copy.layerUpdateFailed}` : ''}` : copy.sourceChecked(data.count.toLocaleString(numberLocale), data.expectedCount.toLocaleString(numberLocale), hkTime(data.fetchedAt, true, language), states[kind].error)}</div>}

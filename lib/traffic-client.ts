@@ -1,9 +1,9 @@
 // Browser-side data layer for the static (GitHub Pages) build.
-// Mirrors lib/traffic-server.ts but fetches the official open-data endpoints
-// directly from the browser; all upstream hosts send CORS allow headers.
+// Fetches official open-data endpoints directly; all upstream hosts allow CORS.
+import { loadSlpDetectors } from './slp.ts';
 import { XMLParser } from 'fast-xml-parser';
-import { Camera, CameraData, FlowSegment, IncidentNotice, LayerKind, featureService, isLiveTrafficDataFresh, officialHongKongTimestamp, snapshotInventory, snapshotInventoryEn, speedLevel, speedLevelColors } from './traffic';
-import { inHongKong, isUnnamedRoad, parseCsv, parseSegmentRouteNumbers, pickLatestPeriod, popupFields, roundCoordinate } from './traffic-parsing';
+import { type Camera, type CameraData, type FlowSegment, type IncidentNotice, type OriginalLayerKind as LayerKind, featureService, isLiveTrafficDataFresh, officialHongKongTimestamp, snapshotInventory, snapshotInventoryEn, speedLevel, speedLevelColors } from './traffic.ts';
+import { inHongKong, isUnnamedRoad, parseCsv, parseSegmentRouteNumbers, pickLatestPeriod, popupFields, roundCoordinate } from './traffic-parsing.ts';
 
 const parser = new XMLParser({ ignoreAttributes: true, parseTagValue: false, processEntities: true });
 const cached = new Map<LayerKind, { expires: number; data: CameraData }>();
@@ -457,7 +457,7 @@ export async function getCameraData(kind: LayerKind): Promise<CameraData> {
   const existing = pending.get(kind);
   if (existing) return existing;
   const load = kind === 'snapshot' ? loadSnapshots()
-    : kind === 'flow' ? loadFlow()
+    : kind === 'flow' ? loadFlowWithSlp()
     : kind === 'incident' ? loadIncidents()
     : kind === 'parking' ? loadParking()
     : kind === 'rainfall' ? loadRainfall()
@@ -467,4 +467,13 @@ export async function getCameraData(kind: LayerKind): Promise<CameraData> {
   }).finally(() => pending.delete(kind));
   pending.set(kind, task);
   return task;
+}
+
+
+async function loadFlowWithSlp(): Promise<CameraData> {
+  const [flow, slp] = await Promise.allSettled([loadFlow(), loadSlpDetectors()]);
+  if (flow.status === 'rejected') throw flow.reason;
+  if (slp.status === 'rejected') return { ...flow.value, feedError: 'Smart lamppost feed unavailable' };
+  const cameras = [...flow.value.cameras, ...slp.value];
+  return { ...flow.value, cameras, count: cameras.length, expectedCount: flow.value.expectedCount + slp.value.length };
 }

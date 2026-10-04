@@ -1,4 +1,4 @@
-import type { Language, LayerKind } from './traffic';
+import type { Language, OriginalLayerKind } from './traffic';
 
 type AppMessages = {
   languageControl: string;
@@ -97,6 +97,7 @@ type AppMessages = {
   emptyDetailTitle: string;
   emptyDetailBody: string;
   loadingOfficialData: string;
+  loadingActivity: string;
   loadingLiveSpeeds: string;
   partialUpdateFailure: string;
   inventoryFetched: (time: string) => string;
@@ -107,7 +108,7 @@ type AppMessages = {
   panelTitle: string;
   sourceDialogTitle: string;
   closeSources: string;
-  sourceDescriptions: Record<LayerKind, string>;
+  sourceDescriptions: Record<OriginalLayerKind, string>;
   dataGovLink: string;
   locationXml: string;
   officialApi: string;
@@ -194,7 +195,7 @@ export const messages: Record<Language, AppMessages> = {
     incidentEmpty: '現時沒有特別交通消息。',
     emptyDetailTitle: '每段路況，一目了然',
     emptyDetailBody: '點選地圖上的相機標記或車速路段，查看位置詳情、實時車速或最新交通快拍。',
-    loadingOfficialData: '正在讀取官方資料…', loadingLiveSpeeds: '正在載入實時車速路段', partialUpdateFailure: '部分資料更新失敗',
+    loadingOfficialData: '正在讀取官方資料…', loadingActivity: '正在載入及處理資料、地圖或影像…', loadingLiveSpeeds: '正在載入實時車速路段', partialUpdateFailure: '部分資料更新失敗',
     inventoryFetched: time => `資料讀取 ${time}`, noData: '未有可用資料', refreshAll: '重新讀取所有官方資料',
     openControls: '開啟圖層及詳情', closeControls: '關閉圖層及詳情', panelTitle: '圖層及詳情',
     sourceDialogTitle: '資料來源與更新', closeSources: '關閉資料來源',
@@ -209,7 +210,7 @@ export const messages: Record<Language, AppMessages> = {
     },
     dataGovLink: '資料一線通', locationXml: '完整位置 XML', officialApi: 'CSDI 官方 API',
     sourceChecked: (count, expected, time, stale) => `已核對 ${count} / ${expected} 筆 · ${time} 讀取${stale ? '（更新失敗，保留上次名冊）' : ''}`,
-    sourceFootnote: '所有位置及交通影像均取自香港政府，沒有模擬交通資料。名冊每五分鐘重新讀取。快拍為定時更新的靜態影像，並非直播；官方可能回傳「No Service」影像。本網站不代表香港特別行政區政府。',
+    sourceFootnote: '位置、路況及到站資料取自政府及營辦商；列車及部分渡輪位置按官方時間推算並標示。原有位置名冊每五分鐘重新讀取。快拍為定時更新的靜態影像，並非直播；官方可能回傳「No Service」影像。本網站不代表香港特別行政區政府。',
     basemap: '底圖：', osmContributors: 'OpenStreetMap 貢獻者', openFreeMapPositron: 'OpenFreeMap Positron', nonGovernmentBasemap: '（非政府底圖）。', governmentTerms: '政府開放數據使用條款',
     snapshotAlt: name => `${name}的官方交通快拍`,
     snapshotTimeout: '快拍載入逾時，請重試。', snapshotDisplayFailed: '影像無法顯示，請重試。',
@@ -274,7 +275,7 @@ export const messages: Record<Language, AppMessages> = {
     incidentEmpty: 'There are no special traffic news notices right now.',
     emptyDetailTitle: 'See every road at a glance',
     emptyDetailBody: 'Select a camera marker or a coloured road segment on the map to view location details, live speeds or the latest traffic snapshot.',
-    loadingOfficialData: 'Loading official data…', loadingLiveSpeeds: 'Loading live road speeds', partialUpdateFailure: 'Some data failed to update',
+    loadingOfficialData: 'Loading official data…', loadingActivity: 'Loading and processing data, map or images…', loadingLiveSpeeds: 'Loading live road speeds', partialUpdateFailure: 'Some data failed to update',
     inventoryFetched: time => `Data fetched ${time}`, noData: 'No data available', refreshAll: 'Reload all official data',
     openControls: 'Open layers and details', closeControls: 'Close layers and details', panelTitle: 'Layers and details',
     sourceDialogTitle: 'Sources and updates', closeSources: 'Close sources',
@@ -289,7 +290,7 @@ export const messages: Record<Language, AppMessages> = {
     },
     dataGovLink: 'DATA.GOV.HK', locationXml: 'Complete location XML', officialApi: 'Official CSDI API',
     sourceChecked: (count, expected, time, stale) => `Verified ${count} / ${expected} records · fetched ${time}${stale ? ' (update failed; last list retained)' : ''}`,
-    sourceFootnote: 'All locations and traffic images come from the Hong Kong Government; no traffic data is simulated. Location lists refresh every five minutes. Snapshots are periodically updated still images, not live video, and the official source may return a “No Service” image. This website does not represent the Government of the Hong Kong SAR.',
+    sourceFootnote: 'Locations, traffic and arrivals come from government and operator feeds. Train and some ferry positions are estimated from official times and labelled. Original location lists refresh every five minutes. Snapshots are periodically updated still images, not live video, and the official source may return a “No Service” image. This website does not represent the Government of the Hong Kong SAR.',
     basemap: 'Basemap: ', osmContributors: 'OpenStreetMap contributors', openFreeMapPositron: 'OpenFreeMap Positron', nonGovernmentBasemap: ' (non-government basemap). ', governmentTerms: 'Government open-data terms',
     snapshotAlt: name => `Official traffic snapshot for ${name}`,
     snapshotTimeout: 'The snapshot timed out. Please retry.', snapshotDisplayFailed: 'The image could not be displayed. Please retry.',
@@ -313,3 +314,57 @@ export function formatRecordDate(value: string, language: Language) {
   if (!match) return value;
   return language === 'zh' ? `${match[1]}年${match[2]}月${match[3]}日` : `${match[1]}-${match[2]}-${match[3]}`;
 }
+
+export const integrationLayerNames = {
+  crossing: { name: '過海行車時間', nameEn: 'Harbour journey times', short: '過海', shortEn: 'Crossings', caption: '官方行車時間顯示屏', captionEn: 'Official journey time boards' },
+  works: { name: '道路工程', nameEn: 'Road works', short: '工程', shortEn: 'Works', caption: '進行中及籌備中的道路工程', captionEn: 'Active and planned road works' },
+  toll: { name: '收費位置', nameEn: 'Toll points', short: '收費', shortEn: 'Tolls', caption: '隧道及道路收費位置', captionEn: 'Tunnel and road toll locations' },
+  boundary: { name: '陸路管制站', nameEn: 'Boundary control points', short: '口岸', shortEn: 'Boundary', caption: '旅客輪候及附近道路車速', captionEn: 'Passenger queues and approach speeds' },
+  'weather-warning': { name: '天氣警告', nameEn: 'Weather warnings', short: '警告', shortEn: 'Warnings', caption: '天文台全港生效警告', captionEn: 'Territory-wide HKO warnings' },
+  mtr: { name: '港鐵', nameEn: 'MTR', short: '港鐵', shortEn: 'MTR', caption: '車站到站時間及推算列車位置', captionEn: 'Station boards and estimated trains' },
+  lrt: { name: '輕鐵', nameEn: 'Light Rail', short: '輕鐵', shortEn: 'LRT', caption: '輕鐵到站時間及推算列車位置', captionEn: 'Light Rail arrivals and estimated trains' },
+  kmb: { name: '九巴 / 龍運', nameEn: 'KMB / LWB', short: '九巴', shortEn: 'KMB', caption: '放大地圖查看附近巴士站', captionEn: 'Zoom in for nearby bus stops' },
+  citybus: { name: '城巴', nameEn: 'Citybus', short: '城巴', shortEn: 'Citybus', caption: '放大地圖查看附近巴士站', captionEn: 'Zoom in for nearby bus stops' },
+  gmb: { name: '專線小巴', nameEn: 'Green minibuses', short: '小巴', shortEn: 'GMB', caption: '放大至街道查看小巴站', captionEn: 'Zoom to street level for minibus stops' },
+  nlb: { name: '新大嶼山巴士', nameEn: 'New Lantao Bus', short: '嶼巴', shortEn: 'NLB', caption: '移至大嶼山查看附近巴士站', captionEn: 'Move to Lantau for nearby bus stops' },
+  ferry: { name: '渡輪', nameEn: 'Ferries', short: '渡輪', shortEn: 'Ferries', caption: '四間營辦商船期及船隻位置', captionEn: 'Four operators, sailings and vessel positions' },
+};
+export const boundaryNames: Record<string, string> = { HYW: '香園圍', HZM: '港珠澳大橋', LMC: '落馬洲', LSC: '落馬洲支線', LWS: '羅湖', MKT: '文錦渡', SBC: '深圳灣', STK: '沙頭角' };
+export const tollNames: Record<string, string> = { WHC: '西區海底隧道', CHT: '紅磡海底隧道', EHC: '東區海底隧道', TLT: '大欖隧道' };
+
+export const integrationMessages = {
+  en: {
+    refreshCadence: (seconds: number) => `Refresh interval: ${seconds} seconds while visible.`, delayed: 'Delayed', arrival: 'Arrival', departure: 'Departure', busyPoints: (n: number) => `${n} busy control points`, activeWarnings: (n: number) => `${n} active warnings`,
+    groups: { roads: 'Roads', conditions: 'Boundary & weather', rail: 'Rail', bus: 'Buses', ferry: 'Ferries' },
+    tabs: { ranked: 'Priority', roads: 'Roads', boundary: 'Boundary', weather: 'Weather', systems: 'Systems', notes: 'Notes' },
+    intel: 'Traffic intelligence', expand: 'Open traffic intelligence', close: 'Close traffic intelligence', empty: 'No active items in this view.',
+    hostedOnly: 'This layer needs the full hosted version.', hostedLink: 'Open full version',
+    arrivals: 'Next arrivals', destination: 'Destination', platform: 'Platform', minutes: 'min', scheduled: 'Scheduled', live: 'Live', noArrivals: 'No upcoming arrivals reported.',
+    estimated: 'Position estimated from published arrival times; not live GPS.', gps: 'Operator GPS position', stale: 'Retained data · refresh failed or overdue',
+    age: (n: number) => n === 0 ? 'Updated just now' : `Updated ${n} min ago`, noTimestamp: 'Source time unavailable', notLoaded: 'Not loaded', disabled: 'Off', enabled: 'On',
+    viewportBus: 'Zoom to level 13 or closer to load nearby stops.', viewportGmb: 'Zoom to level 17 or closer to load minibus stops.', viewportNlb: 'Move the map to Lantau Island to load stops.',
+    route: 'Route', status: 'Status', place: 'Location', road: 'Road', direction: 'Direction', lane: 'Lane', start: 'Start', end: 'End',
+    residentArrival: 'Resident arrivals', residentDeparture: 'Resident departures', visitorArrival: 'Visitor arrivals', visitorDeparture: 'Visitor departures',
+    queue: ['Normal', 'Busy', 'Very busy', 'Closed', 'Unavailable'], approachSpeed: 'Approach road', crossingNames: { CH: 'Cross-Harbour', EH: 'Eastern Harbour', WH: 'Western Harbour' },
+    noteText: 'Enable a layer to load its feed. Rail and ferry positions may be estimated from arrival times. Always follow operator announcements and official road signs.',
+    sourceText: 'Official operator or government feed. Refresh rates and viewport limits vary by source. Retained data is marked when a refresh fails.',
+    noWarnings: 'No active weather warnings', train: 'Train', vessel: 'Vessel', fault: 'Feed unavailable', clear: 'Normal', prep: 'Preparation', underway: 'In progress',
+  },
+  zh: {
+    refreshCadence: (seconds: number) => `頁面顯示時每 ${seconds} 秒更新。`, delayed: '延誤', arrival: '到站', departure: '開出', busyPoints: (n: number) => `${n} 個繁忙管制站`, activeWarnings: (n: number) => `${n} 個生效警告`,
+    groups: { roads: '道路', conditions: '口岸及天氣', rail: '鐵路', bus: '巴士', ferry: '渡輪' },
+    tabs: { ranked: '重點', roads: '道路', boundary: '口岸', weather: '天氣', systems: '系統', notes: '說明' },
+    intel: '交通情報', expand: '展開交通情報', close: '關閉交通情報', empty: '此分類暫無消息。',
+    hostedOnly: '此圖層需使用完整託管版本。', hostedLink: '開啟完整版本',
+    arrivals: '即將到站', destination: '目的地', platform: '月台', minutes: '分鐘', scheduled: '時間表', live: '實時', noArrivals: '暫無即將到站資料。',
+    estimated: '位置按公布的到站時間推算，並非實時 GPS。', gps: '營辦商 GPS 位置', stale: '保留上次資料 · 更新失敗或逾時',
+    age: (n: number) => n === 0 ? '剛剛更新' : `${n} 分鐘前更新`, noTimestamp: '來源未提供更新時間', notLoaded: '尚未載入', disabled: '已關閉', enabled: '已開啟',
+    viewportBus: '放大至第 13 級或以上以載入附近車站。', viewportGmb: '放大至第 17 級或以上以載入小巴站。', viewportNlb: '把地圖移至大嶼山以載入車站。',
+    route: '路線', status: '狀態', place: '位置', road: '道路', direction: '方向', lane: '行車線', start: '開始', end: '結束',
+    residentArrival: '居民入境', residentDeparture: '居民出境', visitorArrival: '訪客入境', visitorDeparture: '訪客出境',
+    queue: ['正常', '繁忙', '非常繁忙', '關閉', '暫無資料'], approachSpeed: '附近道路', crossingNames: { CH: '紅磡海底隧道', EH: '東區海底隧道', WH: '西區海底隧道' },
+    noteText: '開啟圖層以載入資料。列車及渡輪位置可能按到站時間推算。請以營辦商公告及官方道路標誌為準。',
+    sourceText: '政府或營辦商官方資料。更新頻率及地圖範圍限制按來源而異。更新失敗時會標示保留資料。',
+    noWarnings: '現時沒有生效天氣警告', train: '列車', vessel: '船隻', fault: '資料未能更新', clear: '正常', prep: '籌備中', underway: '進行中',
+  },
+};

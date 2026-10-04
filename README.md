@@ -1,49 +1,73 @@
 # HKRTTrafficInfo — 香港實時交通資訊
 
-HK RT Traffic Info. Responsive bilingual (zh-HK/en-HK) map with officially published red-light junctions, speed-enforcement housings, traffic snapshot locations, live road-speed segments, traffic incidents, parking vacancy and district rainfall. No application authentication, mock locations, static fallback datasets, or API keys.
+Bilingual Traditional Chinese / English traffic map built with Leaflet, React and Next.js. The original seven layers are joined by harbour journey boards, road works, toll points, boundary queues, weather warnings, rail arrivals, bus arrivals and ferries. The ranked intelligence panel combines incidents, slow roads, warnings and feed faults.
 
-## Live site
+## Run and validate
 
-- [GitHub Pages](https://stanleycheng.github.io/HKRTTrafficInfo/) — static export under the repository sub-path.
-- [Vercel](https://hkrttrafficinfo.vercel.app/) — standard Next.js build, auto-deployed from `main`.
+Node 22.13 or later:
 
-## Run
+```sh
+npm ci
+npm run dev             # Next.js on Windows, Vinext elsewhere; port 5173
+npm run verify          # lint, TypeScript and Node tests
+npm run build           # Vinext / Cloudflare Worker build
+npm start               # local Worker preview
+npm run build:static    # GitHub Pages export in out/
+```
 
-Node 22.13 or later. Install with `npm ci`, then `npm run dev`. On Windows, the development script uses Next.js directly to avoid Vinext worker read failures on OneDrive-backed workspaces; production builds still use Vinext. Build with `npm run build`. Preview the built Cloudflare Worker with `npm start`. Run lint, type checks and tests with `npm run verify`.
+Use `npx next build` for standard hosted Next.js; Vercel uses this build. Pages CI validates source, builds the Worker and builds the static export. The static script backs up API routes under `node_modules/.cache`, restores them even after build failure, and verifies restored file hashes. `node scripts/build-static.mjs --check-routes` checks that move/restore operation without compiling.
 
-Stack: React, TypeScript, Vinext/Vite, Cloudflare Worker API routes, Leaflet 1.9, Leaflet.markercluster, fast-xml-parser. OpenStreetMap supplies the basemap (non-government); all camera information comes from government sources.
+```sh
+npm run verify:live -- http://localhost:5173
+node --experimental-strip-types scripts/verify-live.mjs http://localhost:5173 --only=health,boundary,warnings
+node scripts/probe-cors.mjs
+```
 
-## Interface
+The live verifier imports the actual browser adapter for the original seven layers and calls new hosted API routes for integrations. It compares official inventories, speeds and road colours, fetches a JPEG, and checks road, boundary, weather and transit responses against upstream sources. Every failed source is reported independently; failure sets a nonzero exit code. It no longer targets the removed camera/snapshot proxy routes. Live network availability and changing publication times can affect acceptance checks; unit tests are deterministic.
 
-The desktop workbench has Layers, Search and Details tabs and can be collapsed. Selecting a map marker or road segment reopens Details. Search provides a keyboard-accessible alternative to the map, matches Chinese and English road names, route/segment identifiers and location districts, and displays 20 results per page. Road segments do not carry district metadata; district search applies to locations that publish it.
+## Hosted and static versions
 
-On mobile, all seven colour-coded layer shortcuts sit in a swipeable strip beside a permanently visible More/Details button. The sheet preserves the selected item when dismissed. Its tabs support arrow keys, and Escape closes the sheet and restores focus.
+- [Full hosted version](https://hkrttrafficinfo.vercel.app/): new feeds use same-origin routes with shared caching.
+- [GitHub Pages](https://stanleycheng.github.io/HKRTTrafficInfo/): browser-direct feeds under `/HKRTTrafficInfo`.
 
-On desktop and mobile, traffic information starts minimized to a logo-sized Info button aligned below the HK logo, including when the top bar or workbench is collapsed. Click or tap it to expand or collapse the speed legend, official update age, mapped-segment coverage and partial-update status; Escape closes the block and restores focus. Stale data and failed updates add an amber badge without automatically expanding it. The bottom map-instruction hint is removed on all screen sizes. Fetch time is kept distinct from the official speed publication time. Retained road speeds older than ten minutes become unavailable/grey between refreshes. Map errors offer a retry action; the Sources dialog groups source details into expandable sections.
+The original seven layers fetch official data directly in both modes. New integrations use same-origin routes when hosted and direct adapters when static and CORS permits. `NEXT_PUBLIC_STATIC_EXPORT` is derived from `STATIC_EXPORT=1`. Server-only toggles explain their limitation in both languages and link to the hosted version; override that link with `NEXT_PUBLIC_HOSTED_URL`.
 
-## Official sources
+| Layer | Official source | New hosted route | Static support |
+| --- | --- | --- | --- |
+| Red-light junctions | TD / CSDI feature inventory | Existing browser adapter | Yes |
+| Speed-enforcement housings | TD / CSDI feature inventory | Existing browser adapter | Yes |
+| Snapshots | TD XML inventory and tdcctv JPEGs | Existing browser adapter | Yes |
+| Road speeds / smart lampposts | TD speed XML, road network, SLP CSV/XML | Browser adapter | Yes |
+| Incidents | TD special traffic news, ALS geocoding | Existing browser adapter | Yes |
+| Parking vacancy | TD parking data | Existing browser adapter | Yes |
+| Rainfall | HKO rhrread | Existing browser adapter | Yes |
+| Harbour journey boards | HKeMobility WFS / getTextInfo | `/api/approaches` | Hosted only |
+| Road works | HKeMobility road works WFS, EN and TC | `/api/works` | Hosted only |
+| Toll points | HKeMobility toll WFS | `/api/tolls` | Hosted only |
+| Boundary queues | ImmD resident / visitor queue files | `/api/control-points` | Hosted only |
+| Weather warnings | HKO warnsum, TC and EN | `/api/warnings?lang=tc` | Yes |
+| MTR | MTR Next Train and bundled geometry | `/api/mtr` | Hosted only |
+| Light Rail | MTR Light Rail and bundled geometry | `/api/lrt` | Hosted only |
+| KMB / LWB | KMB stop ETA and catalogue | `/api/kmb`, `/api/kmb/places` | Yes, zoom ≥ 13 |
+| Citybus | Citybus stop/route ETA | `/api/citybus`, `/api/citybus/places` | Yes, zoom ≥ 13 |
+| Green minibuses | GMB stop ETA | `/api/gmb`, `/api/gmb/places` | Yes, zoom ≥ 17 |
+| New Lantao Bus | NLB stop/route ETA | `/api/nlb`, `/api/nlb/places` | Yes, Lantau only |
+| Ferries | Sun Ferry, HKKF, Star Ferry, Fortune Ferry | `/api/ferry` | Hosted only |
 
-- [Red-light junctions dataset](https://data.gov.hk/tc-data/dataset/hk-td-tis_25-junctions-with-rlc): [CSDI FeatureServer](https://portal.csdi.gov.hk/server/rest/services/common/td_rcd_1671693287017_1644/FeatureServer/0?f=pjson).
-- [Speed-enforcement housings dataset](https://data.gov.hk/tc-data/dataset/hk-td-tis_26-locations-of-sec): [CSDI FeatureServer](https://portal.csdi.gov.hk/server/rest/services/common/td_rcd_1671693428549_89372/FeatureServer/0?f=pjson).
-- [Traffic snapshots dataset](https://data.gov.hk/tc-data/dataset/hk-td-tis_2-traffic-snapshot-images): [complete Traditional Chinese XML inventory](https://static.data.gov.hk/td/traffic-snapshot-images/code/Traffic_Camera_Locations_Tc.xml). Images use the exact URLs supplied by that inventory at `https://tdcctv.data.one.gov.hk/`.
-- [Traffic data of strategic / major roads](https://data.gov.hk/en-data/dataset/hk-td-sm_4-traffic-data-strategic-major-roads): processed segment speeds are joined to the official road network and speed-limit layers. Invalid, malformed or stale readings are shown as unavailable rather than free-flowing.
+Bus routes require `lng`, `lat`, and `zoom`. Server routes and direct adapters enforce gates, with NLB restricted to longitude 113.8–114.05 and latitude 22.18–22.34. Bus/ferry polling is 60 seconds while enabled; rail polls every 15 seconds. MTR backs off for 45 seconds after HTTP 429, shares observations across clients and refreshes a limited station slice. Vehicle positions interpolated from arrival boards are estimates; Sun Ferry GPS fixes are distinguished.
 
-The enforcement API first queries all object IDs and the independent official total, then fetches every ID in batches of 150, requesting WGS84 coordinates. Counts, identifiers, uniqueness and coordinates are verified before exposing a successful layer. It does not use a bounding box, nearest-camera limit, or just the first page. The complete XML supplies all snapshot locations. Invalid or incomplete sources produce an explicit error rather than silently dropping records.
+[CORS probe results](docs/cors-probe.md) record real GET status and headers. KMB, Citybus, GMB, NLB, HKO warnings and SLP return allow-origin `*`. Both ImmD queue files return HTTP 200 without allow-origin, so boundary queues require hosting. HKeMobility requires server requests; rail sharing and mixed ferry sources also require hosting.
 
-Local same-origin routes remove browser CORS limitations. Source requests have timeouts and one retry. Successful inventories are cached in memory for five minutes; manual reloads respect that server-side cache to prevent an unauthenticated client from hammering official APIs. Failed refreshes retain any previously displayed real data, explicitly labelled as an unsuccessful update. Sources fail independently. No fabricated fallback is used.
+## Caching and freshness
 
-The selected snapshot is fetched immediately and every two minutes while the page is visible. `Last-Modified` is labelled as the official image file update time, distinct from capture time printed within the image and from the local retrieval time. Missing timestamps are explicitly shown. Images more than ten minutes old are flagged. An official HTTP-200 “No Service” JPEG is preserved with an explanatory note; availability cannot reliably be inferred from JPEG HTTP status alone.
+`lib/upstream.ts` provides memory caching, concurrent request coalescing, optional Cloudflare Cache API storage and a fallback without Cache API. Shared entries retain their original fetch timestamp and explicit expiry; standard browser caches cannot silently extend their TTL. The Vinext original-fetch symbol bypass prevents re-entering framework caching while writing to Cache API.
 
-## Validation
+Parsed route caches retain successful responses on refresh failure, mark them stale and preserve their observation/retrieval timestamps. Sources fail independently. Warnings fetch only warnsum; the rainfall layer owns rhrread. Road speeds older than ten minutes become unavailable. Polling follows page visibility, and transit layers request data only while enabled.
 
-Run `npm run verify:live` against a development server on port 5173. This independently compares source inventories, validates every displayed road segment against the processed-speed feed and HKeMobility colour classification, fetches a real JPEG and timestamp, and checks invalid route rejection.
+## Interface and source limits
 
-Verified 2026-09-20: **230 red-light locations, 164 speed-enforcement housings and 1,013 snapshots with zero missing or duplicate IDs.** The live feed contained 4,524 road segments; 4,505 matched the current official road geometry, and all 4,411 comparable valid readings matched HKeMobility's colour classification. Counts are dynamic, not hardcoded into the application.
+Layer groups cover roads, conditions, rail, buses and ferries. Bilingual search includes stops, stations, piers and boundary points. Details show queues, works and arrivals. The intelligence panel provides ranked, roads, boundary, weather, systems and notes tabs, with map selection for located items. Keyboard tabs, Escape dismissal, reduced motion and mobile layouts are supported.
 
-Browser checks covered individual layer counts, all-off state, restoring every layer, cluster expansion, marker details, snapshot loading, attribution dialog, desktop/mobile layout, and an aborted source request followed by recovery. Network-failure simulation is test-only; no mock data is delivered by the website.
+Enforcement records identify published junctions/housings, not operational cameras or current enforcement activity. Snapshots are still JPEGs; HTTP 200 can contain an official no-service image. Last-Modified is file-update time, distinct from embedded capture time. Arrival data can include scheduled calls; interpolated vehicles are estimates. Bundled transport catalogues contain published stop/route geometry rather than fabricated live arrivals.
 
-## Source limitations
-
-Enforcement sources identify published junctions/housings, not the number of operational cameras, enforcement activity, or live camera feeds. The speed-housing inventory excludes government tunnels and control areas. Snapshots are periodically updated still images, not live video; each upstream camera may temporarily stop serving. The website exposes those limitations in Traditional Chinese.
-
-The local preview is available in the Codex browser panel. Sites hosting configuration is in `.openai/hosting.json`.
+No API keys or application authentication are required. OpenStreetMap and alternative basemaps are non-government sources. DEM terrain, MapLibre migration, Simplified Chinese/OpenCC and production Worker deployment are outside this integration.
