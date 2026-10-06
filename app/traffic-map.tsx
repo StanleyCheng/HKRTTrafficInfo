@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Maximize, Plus, Minus, LoaderCircle, RefreshCw } from 'lucide-react';
+import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import { messages } from '@/lib/i18n';
 import { Camera, CameraData, FlowSegment, Language, MapPath, layerText, layers, speedLevelColors } from '@/lib/traffic';
@@ -59,6 +59,11 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
   const [mapError, setMapError] = useState(false);
   const [basemapRetry, setBasemapRetry] = useState(0);
   const [mapZoom, setMapZoom] = useState(11);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<'denied' | 'unavailable' | 'timeout' | 'unsupported' | null>(null);
+  const [locationFound, setLocationFound] = useState(false);
+  const locationPending = useRef(false);
+  const locationLayer = useRef<Leaflet.LayerGroup | null>(null);
   const viewportCallback = useRef(onViewport);
   useEffect(() => { viewportCallback.current = onViewport; }, [onViewport]);
   useEffect(() => { selectRef.current = onSelect; }, [onSelect]);
@@ -76,6 +81,9 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
       library.current = L;
       const m = L.map(element.current, { zoomControl: false, minZoom: 10, maxZoom: 19, attributionControl: true }).setView([22.355, 114.13], 11);
       map.current = m;
+      const locationPane = m.createPane('userLocation');
+      locationPane.style.zIndex = '625';
+      locationPane.style.pointerEvents = 'none';
       m.on('moveend', () => { const center = m.getCenter(); setMapZoom(m.getZoom()); viewportCallback.current?.({ lng: Number(center.lng.toFixed(5)), lat: Number(center.lat.toFixed(5)), zoom: m.getZoom() }); });
       L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(m);
       cluster.current = L.markerClusterGroup({ maxClusterRadius: 42, showCoverageOnHover: false, spiderfyOnMaxZoom: true, spiderfyDistanceMultiplier: 1.8, animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -93,7 +101,7 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
       observer.observe(element.current);
       setReady(true);
     })().catch(() => { if (!disposed) setMapError(true); }).finally(finishActivity);
-    return () => { disposed = true; finishActivity(); observer?.disconnect(); map.current?.remove(); map.current = null; basemapLayer.current = null; };
+    return () => { disposed = true; finishActivity(); observer?.disconnect(); map.current?.remove(); map.current = null; basemapLayer.current = null; locationLayer.current = null; locationPending.current = false; };
   }, [onActivity]);
   useEffect(() => {
     const L = library.current, m = map.current;
@@ -258,9 +266,47 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
   function fit() {
     map.current?.setView([22.355, 114.13], 11, { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
   }
+  function locate() {
+    const m = map.current, L = library.current;
+    if (!m || !L || locationPending.current) return;
+    setLocationError(null);
+    setLocationFound(false);
+    locationLayer.current?.clearLayers();
+    if (!navigator.geolocation) {
+      setLocationError('unsupported');
+      return;
+    }
+    locationPending.current = true;
+    setLocating(true);
+    const fail = (code: number) => {
+      if (map.current !== m) return;
+      locationPending.current = false;
+      setLocating(false);
+      setLocationError(code === 1 ? 'denied' : code === 3 ? 'timeout' : 'unavailable');
+    };
+    try {
+      navigator.geolocation.getCurrentPosition(position => {
+        if (map.current !== m) return;
+        locationPending.current = false;
+        setLocating(false);
+        const point: Leaflet.LatLngExpression = [position.coords.latitude, position.coords.longitude];
+        locationLayer.current ??= L.layerGroup().addTo(m);
+        locationLayer.current.clearLayers();
+        L.circle(point, { radius: position.coords.accuracy, color: '#137f87', weight: 1, fillOpacity: 0.08, interactive: false, className: 'user-location-accuracy' }).addTo(locationLayer.current);
+        L.circleMarker(point, { radius: 7, color: '#fff', weight: 3, fillColor: '#137f87', fillOpacity: 1, interactive: false, pane: 'userLocation', className: 'user-location-dot' }).addTo(locationLayer.current);
+        m.setView(point, Math.max(m.getZoom(), 16), { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
+        setLocationFound(true);
+      }, error => fail(error.code), { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+    } catch {
+      fail(2);
+    }
+  }
+  const locationErrorMessage = locationError === 'denied' ? copy.locationDenied : locationError === 'timeout' ? copy.locationTimeout : locationError === 'unsupported' ? copy.locationUnsupported : copy.locationUnavailable;
   return <section className="map-area" aria-label={copy.mapLabel} aria-hidden={inactive || undefined} inert={inactive || undefined}>
     <div ref={element} className="map-canvas" data-basemap={basemap} role="group" aria-label={copy.mapKeyboardHelp} />
-    <div className="map-tools"><div className="zoom-buttons"><button aria-label={copy.zoomIn} title={copy.zoomIn} onClick={() => map.current?.zoomIn()}><Plus size={19}/></button><button aria-label={copy.zoomOut} title={copy.zoomOut} onClick={() => map.current?.zoomOut()}><Minus size={19}/></button></div><button aria-label={copy.showAll} title={copy.returnToHongKong} onClick={fit}><Maximize size={20}/></button></div>
+    <div className="map-tools"><div className="zoom-buttons"><button aria-label={copy.zoomIn} title={copy.zoomIn} onClick={() => map.current?.zoomIn()}><Plus size={19}/></button><button aria-label={copy.zoomOut} title={copy.zoomOut} onClick={() => map.current?.zoomOut()}><Minus size={19}/></button></div><button aria-label={copy.showAll} title={copy.returnToHongKong} onClick={fit}><Maximize size={20}/></button><button type="button" className="gps-button" aria-label={locating ? copy.locating : copy.locateMe} title={locating ? copy.locating : copy.locateMe} aria-busy={locating} disabled={!ready || locating} onClick={locate}>{locating ? <LoaderCircle className="spin" size={20}/> : <LocateFixed size={20}/>}</button></div>
+    <span className="sr-only" role="status">{locating ? copy.locating : locationFound ? copy.locationFound : ''}</span>
+    {locationError && <div className={`map-error location-error${mapError ? ' with-map-error' : ''}`} role="alert">{locationErrorMessage}<button type="button" className="map-retry" onClick={() => setLocationError(null)}>{copy.dismissLocationError}</button></div>}
     {mapError && <div className="map-error" role="alert">{copy.mapLoadFailed}<button type="button" className="map-retry" onClick={() => ready ? setBasemapRetry(value => value + 1) : window.location.reload()}><RefreshCw size={14}/>{copy.retry}</button></div>}
     {!ready && !mapError && <div className="map-loading"><LoaderCircle className="spin" size={20}/> {copy.mapLoading}</div>}
     {ready && !loading && cameras.length === 0 && !segments?.length && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}

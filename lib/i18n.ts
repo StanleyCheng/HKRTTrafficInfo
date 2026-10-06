@@ -136,6 +136,14 @@ type AppMessages = {
   zoomOut: string;
   showAll: string;
   returnToHongKong: string;
+  locateMe: string;
+  locating: string;
+  locationFound: string;
+  locationDenied: string;
+  locationUnavailable: string;
+  locationTimeout: string;
+  locationUnsupported: string;
+  dismissLocationError: string;
   mapLoadFailed: string;
   mapLoading: string;
   allLayersOff: string;
@@ -221,6 +229,11 @@ export const messages: Record<Language, AppMessages> = {
     mapLabel: '香港交通互動地圖', mapKeyboardHelp: '使用方向鍵移動地圖，點選數字群組放大；使用面板搜尋以鍵盤查找道路及位置',
     zoomIn: '放大地圖', zoomOut: '縮小地圖',
     showAll: '顯示全港交通', returnToHongKong: '返回全港',
+    locateMe: '顯示我的位置', locating: '正在取得位置…', locationFound: '已找到你的位置，地圖已移至你的位置。',
+    locationDenied: '未獲准使用你的位置。請在瀏覽器設定中允許位置存取，再按定位按鈕。',
+    locationUnavailable: '暫時無法取得你的位置。請確認裝置已開啟定位服務，再按定位按鈕重試。',
+    locationTimeout: '取得位置逾時。請移至訊號較佳的位置，再按定位按鈕重試。',
+    locationUnsupported: '此瀏覽器無法使用定位。請以支援定位的瀏覽器開啟此網站。', dismissLocationError: '關閉定位提示',
     mapLoadFailed: '互動地圖或底圖暫時未能完整載入。相機位置資料不受影響，請檢查網絡或重新載入。',
     mapLoading: '正在載入地圖', allLayersOff: '所有圖層已關閉', cameraLoadFailed: '暫時未能載入相機位置',
     noCameraLocations: '暫無相機位置資料', turnOnLayer: '開啟相機圖層，即可在地圖查看位置。',
@@ -301,6 +314,11 @@ export const messages: Record<Language, AppMessages> = {
     mapLabel: 'Interactive map of Hong Kong traffic', mapKeyboardHelp: 'Use arrow keys to move the map and select a numbered cluster to zoom in; use panel search to find roads and locations by keyboard',
     zoomIn: 'Zoom in', zoomOut: 'Zoom out',
     showAll: 'Show all Hong Kong traffic', returnToHongKong: 'Return to all Hong Kong',
+    locateMe: 'Show my location', locating: 'Finding your location…', locationFound: 'Location found. The map is centred on your location.',
+    locationDenied: 'Location access was denied. Allow location access in your browser settings, then press the location button again.',
+    locationUnavailable: 'Your location is unavailable. Check that your device’s location services are on, then press the location button to retry.',
+    locationTimeout: 'Finding your location timed out. Move somewhere with a better signal, then press the location button to retry.',
+    locationUnsupported: 'Location is unavailable in this browser. Open this site in a browser that supports location access.', dismissLocationError: 'Dismiss location message',
     mapLoadFailed: 'The interactive map or basemap could not fully load. Camera location data is unaffected; check your connection or reload.',
     mapLoading: 'Loading map', allLayersOff: 'All layers are off', cameraLoadFailed: 'Camera locations could not be loaded',
     noCameraLocations: 'No camera location data is available', turnOnLayer: 'Turn on a camera layer to see its locations on the map.',
