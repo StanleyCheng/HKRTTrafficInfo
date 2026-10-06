@@ -248,7 +248,8 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .legend-explanation p { color: #405965; line-height: 1.7; margin: 8px 0 0; max-height: 25dvh; overflow-y: auto; }
 .desktop-layer-dock { position: absolute; z-index: 600; left: 50%; bottom: 56px; transform: translateX(-50%); display: none; align-items: center; gap: 6px; max-width: calc(100% - 32px); padding: 8px; overflow-x: auto; background: #fff; border-radius: 16px; box-shadow: var(--elevation-panel); }
 .sidebar-collapsed .desktop-layer-dock { display: flex; }
-.desktop-layer-button { flex: 0 0 auto; width: 48px; height: 48px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #526975; transition: background .15s ease-out; }
+.desktop-layer-button { flex: 0 0 auto; width: 48px; height: 48px; display: grid; place-items: center; align-content: center; gap: 2px; padding: 4px 0; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #526975; transition: background .15s ease-out; }
+.desktop-layer-button > span { font-size: 9px; font-weight: 500; line-height: 1.4; color: #405965; white-space: nowrap; }
 .desktop-layer-button:hover { background: #edf4f5; }
 .desktop-layer-button.active { background: #e6f3f1; color: #14625e; border-color: #b2d6d0; }
 .desktop-layer-button.error, .mobile-layer-button.error { border-color: #963941; }

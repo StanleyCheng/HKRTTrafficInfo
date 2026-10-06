@@ -693,7 +693,7 @@ export default function TrafficMonitor() {
                   disabled={!layerAvailable(kind)}
                   onClick={() => toggle(kind)}
                 >
-                  <Icon size={22}/>
+                  <Icon size={22}/><span>{text.short}</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={12} collisionPadding={16} className="layer-dock-tooltip">
