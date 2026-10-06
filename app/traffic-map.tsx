@@ -340,8 +340,8 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
       batches.forEach(({ speed, reversed, weight, paths }, key) => {
         const existing = dots.get(key);
         if (existing) { existing.setLatLngs(paths); return; }
-        const line = L.polyline(paths, { color: '#fff', weight, opacity: 0.9, dashArray: '0 36', lineCap: 'round', lineJoin: 'round', smoothFactor: 1, interactive: false, renderer, className: `segment-speed-dots${speed > 0 ? ' is-moving' : ''}${reversed ? ' is-reversed' : ''}` }).addTo(group);
-        if (speed > 0) (line.getElement() as SVGElement | undefined)?.style.setProperty('--speed-dot-duration', `${72 / (speed * 0.7)}s`);
+        const line = L.polyline(paths, { color: '#fff', weight, opacity: 0.9, dashArray: '0 72', lineCap: 'round', lineJoin: 'round', smoothFactor: 1, interactive: false, renderer, className: `segment-speed-dots${speed > 0 ? ' is-moving' : ''}${reversed ? ' is-reversed' : ''}` }).addTo(group);
+        if (speed > 0) (line.getElement() as SVGElement | undefined)?.style.setProperty('--speed-dot-duration', `${144 / (speed * 0.49)}s`);
         dots.set(key, line);
       });
     };

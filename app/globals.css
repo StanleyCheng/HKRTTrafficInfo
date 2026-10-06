@@ -215,7 +215,7 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .segment-speed-dots.is-moving { animation: segment-speed-flow var(--speed-dot-duration) linear infinite; }
 .segment-speed-dots.is-reversed { animation-direction: reverse; }
 .map-motion-paused .segment-speed-dots { animation-play-state: paused; }
-@keyframes segment-speed-flow { to { stroke-dashoffset: -36; } }
+@keyframes segment-speed-flow { to { stroke-dashoffset: -72; } }
 .spin { animation: rotate 1.1s linear infinite; }
 @keyframes rotate { to { transform: rotate(360deg); } }
 @keyframes live-dot-blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }

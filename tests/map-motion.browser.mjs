@@ -132,7 +132,7 @@ try {
     await page.screenshot({ path: path.join(evidence, 'desktop-motion.png') });
     await context.close();
   });
-  await test('Road dots: half as many marks, diameter matches road width, movement remains 0.7x, zero stays still and unknown has no dots', async () => {
+  await test('Road dots: half as many marks, diameter matches road width, movement is another 0.7x, zero stays still and unknown has no dots', async () => {
     const { page, context } = await create();
     const dots = await dotStyles(page);
     assert.equal(dots.length, 3, 'Known speeds share three animation paths; zero remains visible and unknown has no dots');
@@ -140,12 +140,12 @@ try {
       assert.equal(dot.width, 4.8, 'Dot diameter equals the default colored road width');
       assert.equal(dot.color, 'rgb(255, 255, 255)');
       assert.equal(dot.cap, 'round');
-      assert.match(dot.dash, /^0(?:px)?[, ]+36(?:px)?$/, '36px spacing halves the prior 18px dot density');
+      assert.match(dot.dash, /^0(?:px)?[, ]+72(?:px)?$/, '72px spacing halves the current 36px dot density');
     }
     assert.ok(Math.abs(dots[0].duration / dots[1].duration - 4) < .1, '80 km/h dots must move four times as fast as 20 km/h dots');
-    assert.ok(Math.abs(dots[0].duration - 72 / (20 * .7)) < .00001, '20 km/h dots use a doubled 5.142857s cycle');
-    assert.ok(Math.abs(dots[1].duration - 72 / (80 * .7)) < .00001, '80 km/h dots use a doubled 1.285714s cycle');
-    for (const [index, speed] of [[0, 20], [1, 80]]) assert.ok(Math.abs((36 / dots[index].duration) / (18 / (36 / speed)) - .7) < .00001, 'Doubling spacing preserves the current 0.7x dot velocity');
+    assert.ok(Math.abs(dots[0].duration - 144 / (20 * .49)) < .0001, '20 km/h dots use a 14.693878s cycle');
+    assert.ok(Math.abs(dots[1].duration - 144 / (80 * .49)) < .0001, '80 km/h dots use a 3.673469s cycle');
+    for (const [index, speed] of [[0, 20], [1, 80]]) assert.ok(Math.abs((72 / dots[index].duration) / (18 / (36 / speed)) - .49) < .00001, 'Another 0.7x slowdown gives 0.49x original dot velocity');
     assert.equal(dots[0].subpaths, 2, 'Equal speed roads share one SVG path with two disconnected subpaths');
     assert.equal(dots[0].direction, 'normal', 'Direction code 3 follows the geometry');
     assert.equal(dots[1].direction, 'reverse', 'Direction code 2 runs against the geometry');
