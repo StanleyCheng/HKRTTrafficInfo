@@ -271,8 +271,8 @@ export default function TrafficMonitor() {
   const copy = messages[language];
   const extra = integrationMessages[language];
   const numberLocale = language === 'en' ? 'en-HK' : 'zh-HK';
-  const [enabled, setEnabled] = useState<Record<LayerKind, boolean>>(() => Object.fromEntries(kinds.map(kind => [kind, kind === 'flow' || kind === 'incident'])) as Record<LayerKind, boolean>);
-  const [states, setStates] = useState<Record<LayerKind, LayerState>>(() => Object.fromEntries(kinds.map(kind => [kind, { loading: originalKinds.includes(kind as OriginalLayerKind), error: false }])) as Record<LayerKind, LayerState>);
+  const [enabled, setEnabled] = useState<Record<LayerKind, boolean>>(() => Object.fromEntries(kinds.map(kind => [kind, kind === 'flow' || kind === 'incident' || (kind === 'mtr' && layerAvailable(kind))])) as Record<LayerKind, boolean>);
+  const [states, setStates] = useState<Record<LayerKind, LayerState>>(() => Object.fromEntries(kinds.map(kind => [kind, { loading: originalKinds.includes(kind as OriginalLayerKind) || (kind === 'mtr' && layerAvailable(kind)), error: false }])) as Record<LayerKind, LayerState>);
   const [pendingActivity, setPendingActivity] = useState(0);
   const beginActivity = useCallback(() => {
     setPendingActivity(count => count + 1);
@@ -436,7 +436,6 @@ export default function TrafficMonitor() {
       try {
         const data = await getIntegrationData(kind, viewport, language);
         if (!isCurrent()) return;
-        integrationLastFetch.current.set(kind, { key, at: Date.now() });
         setStates(state => ({ ...state, [kind]: { data, loading: false, error: Boolean(data.stale || data.feedError) } }));
       } catch {
         if (isCurrent()) setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false, error: true } }));

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import { messages } from '@/lib/i18n';
@@ -65,6 +65,41 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
   const locationPending = useRef(false);
   const locationLayer = useRef<Leaflet.LayerGroup | null>(null);
   const viewportCallback = useRef(onViewport);
+  const locate = useCallback(() => {
+    const m = map.current, L = library.current;
+    if (!m || !L || locationPending.current) return;
+    setLocationError(null);
+    setLocationFound(false);
+    locationLayer.current?.clearLayers();
+    if (!navigator.geolocation) {
+      setLocationError('unsupported');
+      return;
+    }
+    locationPending.current = true;
+    setLocating(true);
+    const fail = (code: number) => {
+      if (map.current !== m) return;
+      locationPending.current = false;
+      setLocating(false);
+      setLocationError(code === 1 ? 'denied' : code === 3 ? 'timeout' : 'unavailable');
+    };
+    try {
+      navigator.geolocation.getCurrentPosition(position => {
+        if (map.current !== m) return;
+        locationPending.current = false;
+        setLocating(false);
+        const point: Leaflet.LatLngExpression = [position.coords.latitude, position.coords.longitude];
+        locationLayer.current ??= L.layerGroup().addTo(m);
+        locationLayer.current.clearLayers();
+        L.circle(point, { radius: position.coords.accuracy, color: '#137f87', weight: 1, fillOpacity: 0.08, interactive: false, className: 'user-location-accuracy' }).addTo(locationLayer.current);
+        L.circleMarker(point, { radius: 7, color: '#fff', weight: 3, fillColor: '#137f87', fillOpacity: 1, interactive: false, pane: 'userLocation', className: 'user-location-dot' }).addTo(locationLayer.current);
+        m.setView(point, Math.max(m.getZoom(), 16), { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
+        setLocationFound(true);
+      }, error => fail(error.code), { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+    } catch {
+      fail(2);
+    }
+  }, []);
   useEffect(() => { viewportCallback.current = onViewport; }, [onViewport]);
   useEffect(() => { selectRef.current = onSelect; }, [onSelect]);
   useEffect(() => { copyRef.current = copy; }, [copy]);
@@ -100,9 +135,10 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
       observer = new ResizeObserver(() => m.invalidateSize());
       observer.observe(element.current);
       setReady(true);
+      locate();
     })().catch(() => { if (!disposed) setMapError(true); }).finally(finishActivity);
     return () => { disposed = true; finishActivity(); observer?.disconnect(); map.current?.remove(); map.current = null; basemapLayer.current = null; locationLayer.current = null; locationPending.current = false; };
-  }, [onActivity]);
+  }, [onActivity, locate]);
   useEffect(() => {
     const L = library.current, m = map.current;
     if (!ready || !L || !m) return;
@@ -265,41 +301,6 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
   }, [focusTarget, ready]);
   function fit() {
     map.current?.setView([22.355, 114.13], 11, { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
-  }
-  function locate() {
-    const m = map.current, L = library.current;
-    if (!m || !L || locationPending.current) return;
-    setLocationError(null);
-    setLocationFound(false);
-    locationLayer.current?.clearLayers();
-    if (!navigator.geolocation) {
-      setLocationError('unsupported');
-      return;
-    }
-    locationPending.current = true;
-    setLocating(true);
-    const fail = (code: number) => {
-      if (map.current !== m) return;
-      locationPending.current = false;
-      setLocating(false);
-      setLocationError(code === 1 ? 'denied' : code === 3 ? 'timeout' : 'unavailable');
-    };
-    try {
-      navigator.geolocation.getCurrentPosition(position => {
-        if (map.current !== m) return;
-        locationPending.current = false;
-        setLocating(false);
-        const point: Leaflet.LatLngExpression = [position.coords.latitude, position.coords.longitude];
-        locationLayer.current ??= L.layerGroup().addTo(m);
-        locationLayer.current.clearLayers();
-        L.circle(point, { radius: position.coords.accuracy, color: '#137f87', weight: 1, fillOpacity: 0.08, interactive: false, className: 'user-location-accuracy' }).addTo(locationLayer.current);
-        L.circleMarker(point, { radius: 7, color: '#fff', weight: 3, fillColor: '#137f87', fillOpacity: 1, interactive: false, pane: 'userLocation', className: 'user-location-dot' }).addTo(locationLayer.current);
-        m.setView(point, Math.max(m.getZoom(), 16), { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
-        setLocationFound(true);
-      }, error => fail(error.code), { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
-    } catch {
-      fail(2);
-    }
   }
   const locationErrorMessage = locationError === 'denied' ? copy.locationDenied : locationError === 'timeout' ? copy.locationTimeout : locationError === 'unsupported' ? copy.locationUnsupported : copy.locationUnavailable;
   return <section className="map-area" aria-label={copy.mapLabel} aria-hidden={inactive || undefined} inert={inactive || undefined}>

@@ -50,9 +50,9 @@ const results = [];
   await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:60000});
   await page.locator('.leaflet-container').waitFor({timeout:60000});
   await page.waitForFunction(()=>window.__map?._loaded,{timeout:30000});
-  const gps=page.getByRole('button',{name:copy[language].name,exact:true});
+  const gps=page.locator('.gps-button');
   await gps.waitFor({timeout:10000});
-  await page.waitForFunction(name=>!document.querySelector(`button[aria-label="${name}"]`)?.disabled,copy[language].name);
+  if(!unsupported&&!native&&!throws)await page.waitForFunction(()=>window.__gpsRequests.length===1);
   return {page,gps,context,language};
  }
  async function success(page,index=0,{latitude=22.2819,longitude=114.1585,accuracy=25}={}){
@@ -71,17 +71,16 @@ const results = [];
  await fs.mkdir(evidence,{recursive:true});
  try {
   for(const language of ['en','tc']){
-   await test(language+': placement, no automatic request, pending lock, success, accuracy and retry',async()=>{
+   await test(language+': placement, automatic startup request, pending lock, success, accuracy and retry',async()=>{
     const {page,gps}=await create({language});
-    assert.equal(await page.evaluate(()=>window.__gpsRequests.length),0,'Mount must not request location');
-    assert.equal(await gps.getAttribute('title'),copy[language].name);
+    assert.equal(await page.evaluate(()=>window.__gpsRequests.length),1,'Mount must request location exactly once');
+    assert.equal(await gps.getAttribute('title'),copy[language].pending);
     assert.equal(await gps.evaluate(el=>el.previousElementSibling?.getAttribute('aria-label')),await page.locator('.map-tools > button').first().getAttribute('aria-label'));
     const box=await gps.boundingBox();
     const centre=await page.locator('.map-tools > button').first().boundingBox();
     assert.equal(box.x,centre.x,'GPS must align with centre button');
     assert.ok(box.y>=centre.y+centre.height,'GPS must be below centre button');
     assert.ok(box.width>=44&&box.height>=44,'GPS minimum44px target');
-    await gps.focus();await page.keyboard.press('Enter');
     const pending=page.getByRole('button',{name:copy[language].pending,exact:true});
     assert.equal(await pending.isDisabled(),true);
     assert.equal(await pending.getAttribute('title'),copy[language].pending);
@@ -92,12 +91,13 @@ const results = [];
     await success(page);
     await page.waitForFunction(()=>Math.abs(window.__map.getCenter().lat-22.2819)<0.00001&&Math.abs(window.__map.getCenter().lng-114.1585)<0.00001);
     assert.equal(await gps.isDisabled(),false);
+    assert.equal(await gps.getAttribute('title'),copy[language].name);
     assert.equal(await page.locator('.user-location-dot').count(),1,'One location dot must display');
     assert.equal(await page.locator('.user-location-accuracy').count(),1,'One accuracy circle must display');
     const radius=await page.evaluate(()=>{let radius;window.__map.eachLayer(layer=>{if(layer.options?.className==='user-location-accuracy')radius=layer.getRadius()});return radius});
     assert.equal(radius,25,'Accuracy radius must use geolocation metres');
     assert.equal(await page.evaluate(()=>window.__map.getZoom()),16,'City zoom must become street zoom');
-    await page.evaluate(()=>window.__map.setZoom(18,{animate:false}));
+    await page.evaluate(()=>{window.__map.setZoom(18,{animate:false})});
     await gps.click();await success(page,1,{latitude:22.2824,longitude:114.1592,accuracy:12});
     assert.equal(await page.evaluate(()=>window.__map.getZoom()),18,'Location must preserve closer zoom');
     assert.equal(await page.locator('.user-location-dot').count(),1,'Refreshing must replace old dot');
@@ -108,7 +108,10 @@ const results = [];
    for(const [code,label] of [[1,'permission denied'],[2,'position unavailable'],[3,'timeout']]){
     await test(language+': '+label+' recovery and successful retry',async()=>{
      const {page,gps}=await create({language});
-     await gps.click();await failure(page,code);
+     await failure(page,code);
+     assert.equal(await page.evaluate(()=>window.__map.getZoom()),11,'Automatic GPS failure must preserve the Hong Kong overview');
+     const fallback=await page.evaluate(()=>({lat:window.__map.getCenter().lat,lng:window.__map.getCenter().lng}));
+     assert.ok(Math.abs(fallback.lat-22.355)<0.001&&Math.abs(fallback.lng-114.13)<0.001,`Automatic GPS failure must retain the Hong Kong center: ${JSON.stringify(fallback)}`);
      const alert=await page.locator('.location-error[role="alert"]').innerText();
      assert.ok(alert.trim().length>15,'Failure must explain recovery');
      assert.ok(language==='tc'?/[\u3400-\u9fff]/.test(alert):/location|permission|allow|try|timed/i.test(alert),'Failure must be localized');
@@ -122,7 +125,7 @@ const results = [];
    }
    await test(language+': unsupported browser offers recovery',async()=>{
     const {page,gps}=await create({language,unsupported:true});
-    await gps.click();await page.locator('.location-error[role="alert"]').waitFor();
+    await page.locator('.location-error[role="alert"]').waitFor();
     const alert=await page.locator('.location-error[role="alert"]').innerText();
     assert.ok(alert.trim().length>15);
     assert.ok(language==='tc'?/[\u3400-\u9fff]/.test(alert):/browser|support/i.test(alert));
@@ -133,7 +136,7 @@ const results = [];
   }
   await test('Synchronous geolocation exception explains unavailable state and allows retry',async()=>{
    const {page,gps}=await create({throws:true});
-   await gps.click();await page.locator('.location-error[role="alert"]').waitFor();
+   await page.locator('.location-error[role="alert"]').waitFor();
    assert.match(await page.locator('.location-error[role="alert"]').innerText(),/location is unavailable.*location services/i);
    assert.equal(await gps.isDisabled(),false);
    await gps.click();await success(page,1);
@@ -143,11 +146,12 @@ const results = [];
    await page.context().close();
   });
   await test('Pending request and failure follow a language change immediately',async()=>{
-   const {page,gps}=await create();
-   await gps.click();await page.getByRole('button',{name:'Chinese',exact:true}).click();
+   const {page}=await create();
+   await page.getByRole('button',{name:'Chinese',exact:true}).click();
    const pending=page.getByRole('button',{name:copy.tc.pending,exact:true});
    await pending.waitFor();assert.equal(await pending.isDisabled(),true);
    assert.equal(await page.locator('.map-area [role="status"]').innerText(),copy.tc.pending);
+   assert.equal(await page.evaluate(()=>window.__gpsRequests.length),1,'Language rerender must not create another automatic request');
    await failure(page,1);
    assert.match(await page.locator('.location-error[role="alert"]').innerText(),/未獲准使用你的位置/);
    await page.getByRole('button',{name:'關閉定位提示',exact:true}).click();
@@ -156,7 +160,7 @@ const results = [];
   });
   await test('Failed retry removes an earlier location fix instead of displaying stale GPS',async()=>{
    const {page,gps}=await create();
-   await gps.click();await success(page);
+   await success(page);
    assert.equal(await page.locator('.user-location-dot').count(),1);
    await gps.click();await failure(page,2,1);
    assert.equal(await page.locator('.user-location-dot').count(),0,'Failed retry must remove stale location dot');
@@ -164,11 +168,11 @@ const results = [];
    await page.context().close();
   });
   await test('Location dot stays above a colocated traffic marker',async()=>{
-   const {page,gps}=await create();
-   await gps.click();await success(page);
-   await page.evaluate(()=>window.__collisionMarker=window.L.marker([22.2819,114.1585],{
+   const {page}=await create();
+   await success(page);
+   await page.evaluate(()=>{window.__collisionMarker=window.L.marker([22.2819,114.1585],{
     icon:window.L.divIcon({className:'camera-marker gps-test-collision',html:'<div class="marker-inner" style="--marker-color:#ec6a36"><svg viewBox="0 0 24 24"><path d="M3 21 12 3l9 18z"/></svg></div>',iconSize:[30,30],iconAnchor:[15,15]}),
-   }).addTo(window.__map));
+   }).addTo(window.__map)});
    const dotPane=await page.locator('.user-location-dot').evaluate(el=>Number(getComputedStyle(el.closest('.leaflet-pane')).zIndex));
    const trafficPane=await page.locator('.gps-test-collision').evaluate(el=>Number(getComputedStyle(el.closest('.leaflet-pane')).zIndex));
    await page.screenshot({path:path.join(evidence,'gps-marker-collision.png'),fullPage:true});
@@ -176,9 +180,9 @@ const results = [];
    await page.context().close();
   });
   await test('Narrow mobile simultaneous basemap and location alerts stack without overlap',async()=>{
-   const {page,gps}=await create({viewport:{width:320,height:568},tileFailure:true});
+   const {page}=await create({viewport:{width:320,height:568},tileFailure:true});
    await page.locator('.map-error[role="alert"]').waitFor();
-   await gps.click();await failure(page,2);
+   await failure(page,2);
    const alerts=page.locator('.map-area [role="alert"]');
    assert.equal(await alerts.count(),2);
    const boxes=await alerts.evaluateAll(elements=>elements.map(el=>{const {x,y,width,height}=el.getBoundingClientRect();return {x,y,width,height}}));
@@ -190,16 +194,15 @@ const results = [];
    await page.context().close();
   });
   await test('Reduced motion disables location map animation',async()=>{
-   const {page,gps}=await create({reducedMotion:'reduce'});
-   await gps.click();await success(page);
+   const {page}=await create({reducedMotion:'reduce'});
+   await success(page);
    const locationView=await page.evaluate(()=>window.__setViews.find(v=>v.coords[0]===22.2819&&v.coords[1]===114.1585));
    assert.equal(locationView.options.animate,false);
    assert.equal(await page.evaluate(()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches),true);
    await page.context().close();
   });
   await test('Native Chromium geolocation grant centers map and creates location dot',async()=>{
-   const {page,gps}=await create({native:true});
-   await gps.click();
+   const {page}=await create({native:true});
    await page.locator('.user-location-dot').waitFor();
    const center=await page.evaluate(()=>({lat:window.__map.getCenter().lat,lng:window.__map.getCenter().lng,zoom:window.__map.getZoom()}));
    assert.ok(Math.abs(center.lat-22.2819)<0.00001&&Math.abs(center.lng-114.1585)<0.00001);
@@ -209,6 +212,7 @@ const results = [];
   for(const [label,viewport,language] of [['desktop',{width:1440,height:1000},'en'],['mobile',{width:390,height:844},'tc'],['narrow-mobile',{width:320,height:568},'en'],['mobile-landscape',{width:844,height:390},'en']]){
    await test(label+': visible GPS target, centre alignment and no horizontal overflow',async()=>{
     const {page,gps}=await create({viewport,language});
+    await success(page);
     const gpsbox=await gps.boundingBox();
     const centrebox=await page.locator('.map-tools > button').first().boundingBox();
     assert.equal(gpsbox.x,centrebox.x);

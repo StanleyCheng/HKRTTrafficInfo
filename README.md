@@ -12,10 +12,10 @@ npm run dev             # Next.js on Windows, Vinext elsewhere; port 5173
 npm run verify          # lint, TypeScript and Node tests
 npm run build           # Vinext / Cloudflare Worker build
 npm start               # local Worker preview
-npm run build:static    # GitHub Pages export in out/
+npm run build:static    # optional static export in out/ (limited feeds)
 ```
 
-Use `npx next build` for standard hosted Next.js; Vercel uses this build. Pages CI validates source, builds the Worker and builds the static export. The static script backs up API routes under `node_modules/.cache`, restores them even after build failure, and verifies restored file hashes. `node scripts/build-static.mjs --check-routes` checks that move/restore operation without compiling.
+Use `npx next build` for standard hosted Next.js; Vercel uses this build. GitHub CI validates source and builds the Worker without publishing a Pages site. The optional static script backs up API routes under `node_modules/.cache`, restores them even after build failure, and verifies restored file hashes. `node scripts/build-static.mjs --check-routes` checks that move/restore operation without compiling.
 
 ```sh
 npm run verify:live -- http://localhost:5173
@@ -28,7 +28,9 @@ The live verifier imports the actual browser adapter for the original seven laye
 ## Hosted and static versions
 
 - [Full hosted version](https://hkrttrafficinfo.vercel.app/): new feeds use same-origin routes with shared caching.
-- [GitHub Pages](https://stanleycheng.github.io/HKRTTrafficInfo/): browser-direct feeds under `/HKRTTrafficInfo`.
+- [Cloudflare Worker](https://hk-rt-traffic-info.stanley-it.workers.dev/): the full dynamic app with Workers-compatible server routes.
+
+GitHub Pages deployment is retired because the full app depends on dynamic API routes. The optional static export remains available for limited browser-direct feeds.
 
 The original seven layers fetch official data directly in both modes. New integrations use same-origin routes when hosted and direct adapters when static and CORS permits. `NEXT_PUBLIC_STATIC_EXPORT` is derived from `STATIC_EXPORT=1`. Server-only toggles explain their limitation in both languages and link to the hosted version; override that link with `NEXT_PUBLIC_HOSTED_URL`.
 
@@ -68,6 +70,8 @@ Parsed route caches retain successful responses on refresh failure, mark them st
 
 Layer groups cover roads, conditions, rail, buses and ferries. Bilingual search includes stops, stations, piers and boundary points. Details show queues, works and arrivals. The intelligence panel provides ranked, roads, boundary, weather, systems and notes tabs, with map selection for located items. Keyboard tabs, Escape dismissal, reduced motion and mobile layouts are supported.
 
+On first load, the map requests browser location and zooms to the user's position when permission is granted. If location is denied, unavailable or times out, the Hong Kong overview remains and the GPS button below the centre control allows retry. MTR starts enabled alongside road speeds and incidents, showing arrival boards and moving estimated train positions. Users can switch it off for the session.
+
 Enforcement records identify published junctions/housings, not operational cameras or current enforcement activity. Snapshots are still JPEGs; HTTP 200 can contain an official no-service image. Last-Modified is file-update time, distinct from embedded capture time. Arrival data can include scheduled calls; interpolated vehicles are estimates. Bundled transport catalogues contain published stop/route geometry rather than fabricated live arrivals.
 
-No API keys or application authentication are required. OpenStreetMap and alternative basemaps are non-government sources. DEM terrain, MapLibre migration, Simplified Chinese/OpenCC and production Worker deployment are outside this integration.
+No API keys or application authentication are required. OpenStreetMap and alternative basemaps are non-government sources. DEM terrain and Simplified Chinese/OpenCC are outside this integration.
