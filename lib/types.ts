@@ -1,3 +1,5 @@
+import type { BusRouteSelection } from "./bus-route.ts"
+
 export type SpeedBand = "free" | "slow" | "congested" | "unknown"
 
 export type Corridor = {
@@ -187,6 +189,7 @@ export type MtrResponse = {
 }
 
 export type KmbCall = {
+  tracking?: BusRouteSelection
   route: string
   destTc: string
   destEn: string
@@ -253,6 +256,7 @@ export type LrtResponse = {
 }
 
 export type CitybusCall = {
+  tracking?: BusRouteSelection
   route: string
   destTc: string
   destEn: string

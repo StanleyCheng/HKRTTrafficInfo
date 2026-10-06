@@ -20,6 +20,8 @@ type EtaEntry = {
 }
 
 type EtaRoute = {
+  route_seq?: number
+  stop_seq?: number
   route_id?: number
   enabled?: boolean
   eta?: EtaEntry[] | null
@@ -75,7 +77,7 @@ export async function loadGmbNear(lng: number, lat: number, now = Date.now(), zo
       lng: record.lng,
       lat: record.lat,
       routes: record.routes,
-      calls: callsAt(rows, record.ids ?? {}, now),
+      calls: callsAt(rows, record.ids ?? {}, now, stop.id),
     })
   }
   const error = missed > 0 ? "Some Green minibus arrivals could not refresh" : undefined
@@ -90,7 +92,7 @@ export async function loadGmbNear(lng: number, lat: number, now = Date.now(), zo
   }
 }
 
-function callsAt(rows: EtaRoute[], ids: Record<string, string>, now: number): GmbCall[] {
+function callsAt(rows: EtaRoute[], ids: Record<string, string>, now: number, stopId: string): GmbCall[] {
   const soonest = new Map<string, GmbCall>()
   for (const row of rows) {
     if (row.enabled === false || row.route_id == null) continue
@@ -107,17 +109,19 @@ function callsAt(rows: EtaRoute[], ids: Record<string, string>, now: number): Gm
         : null
     if (!hasEta && minutes == null && !text(entry.remarks_tc) && !text(entry.remarks_en)) continue
     const call: GmbCall = {
+      ...(row.route_seq ? { tracking: { operator: "gmb" as const, route, stopId, routeId: String(row.route_id), routeSeq: row.route_seq, stopSeq: row.stop_seq } } : {}),
       route,
       destTc: "",
       destEn: "",
       eta: hasEta ? new Date(etaMs).toISOString() : "",
       minutes,
-      scheduled: false,
+      scheduled: /scheduled/i.test(text(entry.remarks_en)) || text(entry.remarks_tc) === "未開出",
       remarkTc: text(entry.remarks_tc),
       remarkEn: text(entry.remarks_en),
     }
-    const current = soonest.get(route)
-    if (!current || (call.minutes ?? 999) < (current.minutes ?? 999)) soonest.set(route, call)
+    const key = `${row.route_id}/${row.route_seq}/${row.stop_seq}`
+    const current = soonest.get(key)
+    if (!current || (call.minutes ?? 999) < (current.minutes ?? 999)) soonest.set(key, call)
   }
   return [...soonest.values()].sort((a, b) => (a.minutes ?? 999) - (b.minutes ?? 999) || a.route.localeCompare(b.route, undefined, { numeric: true })).slice(0, 12)
 }

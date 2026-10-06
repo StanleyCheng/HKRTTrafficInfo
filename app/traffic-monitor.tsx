@@ -13,6 +13,9 @@ import TrafficSearch from './traffic-search';
 import TrafficStatus from './traffic-status';
 import IntelPanel from './intel-panel';
 import { getIntegrationData, initialViewport, pollingMs, viewportNote, withBoundarySpeeds, movingCameras, type MapViewport } from '@/lib/integration-client';
+import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
+import { getBusRoute } from '@/lib/bus-route-client';
+import { busDistanceAtTime } from '@/lib/bus-route-motion';
 
 type LayerState = { data?: CameraData; loading: boolean; error: boolean };
 type Snapshot = { imageUrl: string; updatedAt: string | null; fetchedAt: string };
@@ -287,6 +290,9 @@ export default function TrafficMonitor() {
   const [dockGroup, setDockGroup] = useState<(typeof layerGroups)[number]['id']>('roads');
   const dockKinds = layerGroups.find(group => group.id === dockGroup)!.kinds;
   const [selectedSnapshot, setSelectedSnapshot] = useState<Camera | null>(null);
+  const [busSelection, setBusSelection] = useState<BusRouteSelection | null>(null);
+  const [busRouteState, setBusRouteState] = useState<{ selection: BusRouteSelection; data?: BusRouteResponse; error?: boolean; loading: boolean } | null>(null);
+  const [busRouteRetry, setBusRouteRetry] = useState(0);
   const [showDetectors, setShowDetectors] = useState(false);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [panelTab, setPanelTab] = useState<PanelTab>('layers');
@@ -480,6 +486,36 @@ export default function TrafficMonitor() {
     const segment = segments.find(candidate => candidate.id === selectedSnapshot.id);
     return segment ? cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated) : null;
   }, [selectedSnapshot, states, displayStates, segments, flowFresh, now]);
+  const activeBusSelection = busSelection && selected?.sourceId === busSelection.stopId && selected.kind === busSelection.operator && enabled[busSelection.operator] ? busSelection : null;
+  const busRoute = activeBusSelection && busRouteState?.selection === activeBusSelection ? busRouteState.data : undefined;
+  useEffect(() => {
+    if (!activeBusSelection) return;
+    const selection = activeBusSelection;
+    let disposed = false;
+    let request: AbortController | undefined;
+    const refresh = async () => {
+      if (disposed || request || document.visibilityState !== 'visible') return;
+      const abort = new AbortController();
+      request = abort;
+      setBusRouteState(previous => ({ selection, data: previous?.selection === selection ? previous.data : undefined, loading: true }));
+      try {
+        const data = await getBusRoute(selection, abort.signal);
+        if (!disposed && !abort.signal.aborted) setBusRouteState({ selection, data, error: !data.ok, loading: false });
+      } catch {
+        if (!disposed && !abort.signal.aborted) setBusRouteState(previous => ({ selection, data: previous?.selection === selection && previous.data ? { ...previous.data, stale: true, vehicle: null } : undefined, error: true, loading: false }));
+      } finally {
+        if (request === abort) request = undefined;
+      }
+    };
+    const visible = () => {
+      if (document.visibilityState !== 'visible') { request?.abort(); request = undefined; }
+      else void refresh();
+    };
+    void refresh();
+    const interval = setInterval(() => void refresh(), 60000);
+    document.addEventListener('visibilitychange', visible);
+    return () => { disposed = true; request?.abort(); clearInterval(interval); document.removeEventListener('visibilitychange', visible); };
+  }, [activeBusSelection, busRouteRetry]);
   const searchItems = useMemo<TrafficSearchItem[]>(() => [
     ...segments.map(segment => ({ camera: cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated), segment })),
     ...kinds.filter(kind => kind !== 'flow' && layerAvailable(kind) && !viewportNote(kind, viewport)).flatMap(kind => (displayStates[kind].data?.cameras ?? []).map(camera => ({ camera }))),
@@ -505,6 +541,7 @@ export default function TrafficMonitor() {
 
   const choose = useCallback((camera: Camera) => {
     setSelectedSnapshot(camera);
+    setBusSelection(camera.arrivals?.find(call => call.tracking)?.tracking ?? null);
     setPanelTab('details');
     sidebarFlag.set(false);
     if (window.matchMedia(compactLayoutQuery).matches) setMobilePanelOpen(true);
@@ -518,6 +555,12 @@ export default function TrafficMonitor() {
   const onSelectSegment = useCallback((segment: FlowSegment) => {
     choose(cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated));
   }, [choose, states.flow.data?.segmentsUpdated]);
+
+  const showBusRoute = useCallback((camera: Camera, tracking: BusRouteSelection) => {
+    setSelectedSnapshot(camera);
+    setBusSelection(tracking);
+    if (mobilePanelOpen) closeMobilePanel();
+  }, [mobilePanelOpen, closeMobilePanel]);
 
   function selectSearchItem(item: TrafficSearchItem) {
     setEnabled(current => ({ ...current, [item.camera.kind]: true }));
@@ -638,12 +681,20 @@ export default function TrafficMonitor() {
               </div>}
               {selected.kind === 'incident' && <p className="incident-text">{(language === 'en' ? selected.textEn || selected.text : selected.text || selected.textEn)?.trim()}</p>}
               {selected.estimated && <p className="detail-note">{extra.estimated}</p>}
+              {activeBusSelection && <section className="bus-route-status" aria-label={`${extra.selectedBusRoute} ${activeBusSelection.route}`}>
+                <div className="bus-route-heading"><strong>{extra.selectedBusRoute} · {activeBusSelection.route}</strong><button type="button" className="text-button" onClick={() => setBusSelection(null)}>{extra.closeBusRoute}</button></div>
+                <div role="status" aria-live="polite">
+                  {busRouteState?.selection !== activeBusSelection || busRouteState.loading ? <p><LoaderCircle size={13} className="spin"/>{extra.loadingBusRoute}</p> : null}
+                  {busRouteState?.selection === activeBusSelection && busRouteState.error && <p className="warning-text">{extra.busRouteError} <button type="button" className="text-button" onClick={() => setBusRouteRetry(value => value + 1)}>{copy.retry}</button></p>}
+                  {busRoute?.route && <><p>{busDistanceAtTime(busRoute, now) === null ? extra.noBusPosition : extra.busRouteTracking}</p><p>{extra.estimated}</p>{busRoute.route.geometry === 'stops' && <p>{extra.busRouteStops}</p>}{busRoute.stale && <p className="warning-text">{extra.stale}</p>}</>}
+                </div>
+              </section>}
               {selected.positionType === 'vehicle' && selected.kind === 'ferry' && !selected.estimated && <p className="detail-note">{extra.gps}</p>}
               {(states[selected.kind].error || isFeedDataStale(selected.kind, states[selected.kind].data, now) || isCameraDataStale(selected, now)) && <p className="warning-text">{extra.stale}</p>}
               {selected.arrivals && <section className="arrival-board"><h5>{extra.arrivals}</h5>{selected.arrivals.length ? <ul>{selected.arrivals.map((call, index) => {
                 const eta = call.eta ? Date.parse(call.eta) : NaN;
                 const minutes = Number.isFinite(eta) ? Math.max(0, Math.ceil((eta - now) / 60000)) : call.minutes;
-                return <li key={`${call.route}-${index}`}><strong className="arrival-route">{call.route}</strong><span className="arrival-destination">{language === 'en' ? call.destinationEn || call.destination : call.destination}{call.platform && <small>{extra.platform} {call.platform}</small>}<small>{call.timeType ? call.timeType === 'D' ? extra.departure : extra.arrival : call.scheduled ? extra.scheduled : extra.live}{(language === 'en' ? call.remarkEn : call.remark) ? ` · ${language === 'en' ? call.remarkEn : call.remark}` : ''}</small></span><strong className="arrival-minutes">{minutes ?? '—'}<small>{extra.minutes}</small></strong></li>;
+                return <li key={`${call.route}-${index}`}><span className="arrival-route-choice"><strong className="arrival-route">{call.route}</strong>{call.tracking && <button type="button" className="bus-route-button" aria-pressed={Boolean(activeBusSelection && JSON.stringify(activeBusSelection) === JSON.stringify(call.tracking))} aria-label={`${extra.showBusRoute} ${call.route} · ${language === 'en' ? call.destinationEn || call.destination : call.destination}`} onClick={() => { setBusSelection(call.tracking!); if (mobilePanelOpen) closeMobilePanel(); }}>{extra.showBusRoute}</button>}</span><span className="arrival-destination">{language === 'en' ? call.destinationEn || call.destination : call.destination}{call.platform && <small>{extra.platform} {call.platform}</small>}<small>{call.timeType ? call.timeType === 'D' ? extra.departure : extra.arrival : call.scheduled ? extra.scheduled : extra.live}{(language === 'en' ? call.remarkEn : call.remark) ? ` · ${language === 'en' ? call.remarkEn : call.remark}` : ''}</small></span><strong className="arrival-minutes">{minutes ?? '—'}<small>{extra.minutes}</small></strong></li>;
               })}</ul> : <p>{extra.noArrivals}</p>}</section>}
               <dl>
                 {selected.rows?.map((row, index) => <div className="detail-row" key={`${row.labelEn}-${index}`}><dt>{language === 'en' ? row.labelEn : row.label}</dt><dd>{language === 'en' ? row.valueEn || row.value : row.value}</dd></div>)}
@@ -670,7 +721,7 @@ export default function TrafficMonitor() {
       </aside>
       <button ref={panelReopenButton} type="button" className="panel-reopen" aria-label={copy.expandSidebar} title={copy.expandSidebar} onClick={() => { toggleSidebar(false); requestAnimationFrame(() => document.getElementById(`panel-tab-${panelTab}`)?.focus()); }}><PanelLeftOpen size={18}/></button>
       <div className={`map-workspace ${mobilePanelOpen ? 'panel-active' : ''}`} inert={mobilePanelOpen || undefined} aria-hidden={mobilePanelOpen || undefined}>
-      <TrafficMap onActivity={beginActivity} paths={paths} transitFeeds={transitFeeds} onViewport={setViewport} cameras={cameras} segments={enabled.flow ? segments : undefined} selected={selected} selectedSegmentId={selected?.id && selected.id.startsWith('flow-segment-') ? selected.id : null} onSelect={choose} onSelectSegment={onSelectSegment} focusTarget={focusTarget} loading={loading} allDisabled={kinds.every(kind => !enabled[kind])} hasErrors={errors} language={language} basemap={basemap} inactive={mobilePanelOpen}/>
+      <TrafficMap onActivity={beginActivity} busRoute={busRoute} paths={paths} transitFeeds={transitFeeds} onViewport={setViewport} cameras={cameras} segments={enabled.flow ? segments : undefined} selected={selected} selectedSegmentId={selected?.id && selected.id.startsWith('flow-segment-') ? selected.id : null} onSelect={choose} onSelectSegment={onSelectSegment} focusTarget={focusTarget} loading={loading} allDisabled={kinds.every(kind => !enabled[kind])} hasErrors={errors} language={language} basemap={basemap} inactive={mobilePanelOpen} now={now} busSelection={activeBusSelection} onShowBusRoute={showBusRoute}/>
       <IntelPanel input={intelInput} language={language} onSelect={selectSearchItem}/>
       <TrafficStatus feeds={kinds.filter(kind => enabled[kind]).map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={() => kinds.forEach(kind => fetchLayer(kind))}/>
       <TooltipProvider delayDuration={180} skipDelayDuration={100}>

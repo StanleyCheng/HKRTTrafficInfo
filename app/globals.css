@@ -206,10 +206,18 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .marker-inner { width: 30px; height: 30px; background: var(--marker-color); border: 2px solid white; box-shadow: 0 2px 6px #15374740; border-radius: 10px; display: grid; place-items: center; color: #172c39; }
 .marker-inner svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .marker-inner.selected { outline: 3px solid #102c39; outline-offset: 2px; }
+.bus-stop-marker .marker-inner { transform: scale(.7); color: #fff; }
+.route-focus .bus-stop-marker { display: none; }
+.camera-marker.bus-route-marker .marker-inner { background: none; border: 0; box-shadow: none; border-radius: 0; }
+.camera-marker.bus-route-marker .marker-inner svg { width: 26px; height: 26px; fill: var(--marker-color); stroke: #000; stroke-width: 1.5; }
 .camera-cluster { background: none; border: 0; }
 .cluster-inner { height: 40px; width: 40px; border-radius: 50%; background: white; border: 3px solid var(--cluster-color); box-shadow: 0 2px 7px #12374730; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: #244855; }
 .cluster-inner.mixed { border-color: #298790; border-style: double; border-width: 5px; }
 .leaflet-tooltip { font-family: inherit; font-size: 13px; border-radius: 8px; padding: 8px 12px; box-shadow: var(--elevation-panel); }
+.leaflet-popup-content-wrapper { font-family: inherit; border-radius: 12px; box-shadow: var(--elevation-panel); }
+.leaflet-popup-content { margin: 12px 14px; font-size: 13px; line-height: 1.5; color: #274957; }
+.leaflet-popup-tip { box-shadow: 0 2px 7px #12374730; }
+.leaflet-popup-close-button { color: #52707e; }
 .segment-polyline { cursor: pointer; }
 .segment-speed-dots { pointer-events: none; }
 .segment-speed-dots.is-moving { animation: segment-speed-flow var(--speed-dot-duration) linear infinite; }
@@ -382,3 +390,19 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 @media(max-width:700px),(max-height:520px) and (orientation:landscape){.layer-group-picker,.sidebar-collapsed .layer-group-picker{display:flex;bottom:calc(40px + env(safe-area-inset-bottom,0px));width:calc(100% - 24px);max-width:420px;justify-content:space-between}.layer-group-picker button{font-size:10px;padding:7px 9px}.intel-shell,.sidebar-collapsed .intel-shell{left:50%;right:auto;transform:translateX(-50%);width:min(420px,calc(100% - 24px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)))}.panel-active .intel-shell,.panel-active .layer-group-picker{visibility:hidden}.detail-row{display:block}.feed-status-list{max-height:200px;overflow:auto}.arrival-board li{min-height:55px}}
 
 .stop-plate b,.stop-plate>span{display:block}.stop-plate b{font-size:9px;color:#69818d;font-weight:500}
+.stop-plate.live{pointer-events:auto;cursor:pointer}
+.stop-plate.label-hidden{display:none}
+.stop-plate.pos-left{left:auto;right:28px}
+.stop-plate.pos-above{left:50%;top:auto;bottom:28px;transform:translateX(-50%)}
+.stop-plate.pos-below{left:50%;top:28px;transform:translateX(-50%)}
+.camera-marker:hover .stop-plate.live,.camera-marker:focus-visible .stop-plate.live{border-color:#9fbcc4;background:#f4faf9}
+.arrival-route-choice{display:flex;flex:none;flex-direction:column;align-items:flex-start;gap:5px;max-width:96px}.bus-route-button{min-height:32px;padding:5px 7px;border:1px solid #cbdadd;border-radius:5px;background:#fff;color:#205b61;font-size:10px;line-height:1.25;text-align:left;cursor:pointer;transition:background-color 140ms ease-out,color 140ms ease-out}.bus-route-button:hover{background:#eef6f5}.bus-route-button[aria-pressed=true]{background:#205b61;color:#fff;border-color:#205b61}.bus-route-button:focus-visible{outline:2px solid #137f87;outline-offset:3px}.bus-route-status{margin:18px 0;padding:12px 0;border-block:1px solid #dce5e9;font-size:12px}.bus-route-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px}.bus-route-heading strong{font-size:12px}.bus-route-status p{display:flex;align-items:center;gap:6px;margin:8px 0 0;color:#4a6471;line-height:1.5}.bus-route-status .warning-text{color:#9b471b}.bus-route-marker .marker-inner{width:26px;height:26px;background:none;border:0;border-radius:0;box-shadow:none;transform:none}.bus-route-marker svg{width:26px;height:26px;fill:var(--marker-color);stroke:#000;stroke-width:1.5;transform-origin:center}.bus-route-stop{pointer-events:none}
+.stop-eta{min-width:210px;max-width:300px}
+.stop-eta-name{display:block;padding-right:18px;margin:0 0 4px;font-size:13px;font-weight:650;color:#173a47}
+.stop-eta ul{list-style:none;margin:0;padding:0;max-height:230px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#b4c9cc transparent}
+.stop-eta li{display:flex;align-items:center;gap:9px;border-bottom:1px solid #e8eef0;padding:8px 0}
+.stop-eta li:last-child{border-bottom:0}
+.stop-eta p{margin:0 0 6px;font-size:12px;color:#6a7b88}
+.stop-eta .arrival-minutes{font-size:16px}
+.stop-eta-details{margin-top:2px}
+@media(max-width:700px),(max-height:520px) and (orientation:landscape){.bus-route-button,.bus-route-heading button{min-height:44px}.arrival-route-choice{max-width:100px}.stop-eta{max-width:calc(100vw - 120px)}.stop-eta ul{max-height:180px}}

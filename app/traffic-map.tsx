@@ -1,12 +1,16 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
-import { messages } from '@/lib/i18n';
+import { integrationMessages, messages } from '@/lib/i18n';
 import { Camera, CameraData, FlowSegment, Language, MapPath, layerText, layers, speedLevelColors } from '@/lib/traffic';
 import type { TrafficSearchItem } from '@/lib/traffic-view';
 import { movingCameras, type MapViewport } from '@/lib/integration-client';
 import { stopPlate } from '@/lib/stop-plate';
+import { STOP_LABEL_WIDTH, declutterLabels, stopLabelHeight, type StopLabelItem, type StopLabelPlacement } from '@/lib/stop-labels';
+import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
+import { busDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '@/lib/bus-route-motion';
 
 const symbols = {
   redlight: '<rect x="8" y="2" width="8" height="20" rx="3"/><path d="M5 5h3m8 0h3M5 12h3m8 0h3M5 19h3m8 0h3"/><circle cx="12" cy="7" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="17" r="1"/>',
@@ -35,9 +39,46 @@ const SELECTED_FLOW_SEGMENT_WEIGHT = 7.2;
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors';
 const OPENFREEMAP_ATTRIBUTION = '<a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> &copy; <a href="https://openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
 
+const busStopKinds: readonly string[] = ['kmb', 'citybus', 'gmb', 'nlb'];
+const isBusStop = (camera: Camera) => busStopKinds.includes(camera.kind);
+
+// Plate anchor candidates in preference order, matching .stop-plate and its
+// .pos-* modifiers in globals.css. Offsets are container pixels from the stop
+// point: the 30px icon box is anchored on its center, and each plate edge sits
+// 13px off the point so it clears the scaled-down icon on every side.
+const platePlacements = (point: { x: number; y: number }, lines: number): StopLabelPlacement[] => {
+  const w = STOP_LABEL_WIDTH, h = stopLabelHeight(lines);
+  return [
+    { key: 'right', x: point.x + 13, y: point.y - 11, w, h },
+    { key: 'left', x: point.x - 13 - w, y: point.y - 11, w, h },
+    { key: 'above', x: point.x - w / 2, y: point.y - 13 - h, w, h },
+    { key: 'below', x: point.x - w / 2, y: point.y + 13, w, h },
+  ];
+};
+
+function StopEtaPopup({ camera, language, now, activeTracking, onShowRoute, onShowDetails }: { camera: Camera; language: Language; now: number; activeTracking: BusRouteSelection | null; onShowRoute: (tracking: BusRouteSelection) => void; onShowDetails: () => void }) {
+  const copy = messages[language];
+  const extra = integrationMessages[language];
+  const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
+  const calls = camera.arrivals ?? [];
+  return <div className="stop-eta">
+    <strong className="stop-eta-name">{name}</strong>
+    {calls.length ? <ul aria-label={extra.stopArrivals}>{calls.map((call, index) => {
+      const eta = call.eta ? Date.parse(call.eta) : NaN;
+      const minutes = Number.isFinite(eta) ? Math.max(0, Math.ceil((eta - now) / 60000)) : call.minutes;
+      return <li key={`${call.route}-${index}`}>
+        <span className="arrival-route-choice"><strong className="arrival-route">{call.route}</strong>{call.tracking && <button type="button" className="bus-route-button" aria-pressed={Boolean(activeTracking && JSON.stringify(activeTracking) === JSON.stringify(call.tracking))} aria-label={`${extra.showBusRoute} ${call.route} · ${language === 'en' ? call.destinationEn || call.destination : call.destination}`} onClick={() => onShowRoute(call.tracking!)}>{extra.showBusRoute}</button>}</span>
+        <span className="arrival-destination">{language === 'en' ? call.destinationEn || call.destination : call.destination}<small>{call.scheduled ? extra.scheduled : extra.live}{(language === 'en' ? call.remarkEn : call.remark) ? ` · ${language === 'en' ? call.remarkEn : call.remark}` : ''}</small></span>
+        <strong className="arrival-minutes">{minutes ?? '—'}<small>{extra.minutes}</small></strong>
+      </li>;
+    })}</ul> : <p>{extra.noArrivals}</p>}
+    <button type="button" className="text-button stop-eta-details" onClick={onShowDetails}>{copy.cameraDetails}</button>
+  </div>;
+}
+
 export type Basemap = 'osm' | 'positron';
-type Props = { onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; language: Language; basemap: Basemap; inactive?: boolean };
-export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, language, basemap, inactive = false }: Props) {
+type Props = { busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; onShowBusRoute?: (camera: Camera, tracking: BusRouteSelection) => void };
+export default function TrafficMap({ busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, language, basemap, inactive = false, now, busSelection, onShowBusRoute }: Props) {
   const copy = messages[language];
   const element = useRef<HTMLDivElement>(null);
   const map = useRef<Leaflet.Map | null>(null);
@@ -45,8 +86,14 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
   const basemapLayer = useRef<Leaflet.Layer | null>(null);
   const cluster = useRef<Leaflet.MarkerClusterGroup | null>(null);
   const stationGroup = useRef<Leaflet.LayerGroup | null>(null);
+  const busGroup = useRef<Leaflet.LayerGroup | null>(null);
   const markers = useRef(new Map<string, Leaflet.Marker>());
-  const markerData = useRef(new Map<string, { camera: Camera; style: string }>());
+  const markerData = useRef(new Map<string, { camera: Camera; style: string; labelLines?: number }>());
+  const [popupStopId, setPopupStopId] = useState<string | null>(null);
+  const [popupElement, setPopupElement] = useState<HTMLDivElement | null>(null);
+  const popupRef = useRef<{ popup: Leaflet.Popup; stopId: string } | null>(null);
+  const [revealedRouteKey, setRevealedRouteKey] = useState<string | null>(null);
+  const routeFocusRef = useRef(false);
   const previousSelection = useRef<string | null>(null);
   const selectRef = useRef(onSelect);
   const copyRef = useRef(copy);
@@ -54,6 +101,8 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
   const segmentRenderer = useRef<Leaflet.Renderer | null>(null);
   const segmentPolylines = useRef(new Map<string, Leaflet.Polyline>());
   const vehicleGroup = useRef<Leaflet.LayerGroup | null>(null);
+  const fittedBusRoute = useRef<string | null>(null);
+  const busVehicle = useRef<{ key: string; marker: Leaflet.Marker; distance: number; feed: BusRouteResponse; correction?: { distance: number; at: number }; svg?: SVGSVGElement | null } | null>(null);
   const vehicles = useRef(new Map<string, { marker: Leaflet.Marker; camera: Camera; feed: CameraData | undefined; language: Language; correction?: { lat: number; lng: number; at: number } }>());
   const previousSegmentSelection = useRef<string | null>(null);
   const onSelectSegmentRef = useRef(onSelectSegment);
@@ -105,6 +154,11 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
   useEffect(() => { viewportCallback.current = onViewport; }, [onViewport]);
   useEffect(() => { selectRef.current = onSelect; }, [onSelect]);
   useEffect(() => { copyRef.current = copy; }, [copy]);
+  // Route-focus: while a route is on the map, bus stops hide until the rider
+  // clicks blank map space. A new route key (or clearing the route) re-arms it.
+  const busRouteKey = busRoute?.route?.key ?? null;
+  const routeFocus = busRouteKey !== null && revealedRouteKey !== busRouteKey;
+  useEffect(() => { routeFocusRef.current = routeFocus; }, [routeFocus]);
   useEffect(() => { onSelectSegmentRef.current = onSelectSegment; }, [onSelectSegment]);
   useEffect(() => {
     let disposed = false;
@@ -135,12 +189,14 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
       segmentRenderer.current = L.canvas({ padding: 0.5 });
       segmentGroup.current = L.layerGroup().addTo(m);
       stationGroup.current = L.layerGroup().addTo(m);
+      busGroup.current = L.layerGroup().addTo(m);
       observer = new ResizeObserver(() => m.invalidateSize());
       observer.observe(element.current);
+      setPopupElement(document.createElement('div'));
       setReady(true);
       locate();
     })().catch(() => { if (!disposed) setMapError(true); }).finally(finishActivity);
-    return () => { disposed = true; finishActivity(); observer?.disconnect(); map.current?.remove(); map.current = null; basemapLayer.current = null; locationLayer.current = null; locationPending.current = false; vehicleGroup.current = null; vehicleEntries.clear(); };
+    return () => { disposed = true; finishActivity(); observer?.disconnect(); map.current?.remove(); map.current = null; basemapLayer.current = null; locationLayer.current = null; locationPending.current = false; vehicleGroup.current = null; busVehicle.current = null; fittedBusRoute.current = null; vehicleEntries.clear(); };
   }, [onActivity, locate]);
   useEffect(() => {
     const L = library.current, m = map.current;
@@ -206,29 +262,77 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
     if (!ready || !L || !m || !group) return;
     const visible = cameras.filter(camera => camera.kind !== 'toll' || (mapZoom >= 14 ? camera.badge !== 'overview' : camera.badge !== 'portal'));
     const ids = new Set(visible.map(camera => camera.id));
-    markers.current.forEach((marker, id) => { if (!ids.has(id)) { group.removeLayer(marker); stationGroup.current?.removeLayer(marker); markers.current.delete(id); markerData.current.delete(id); } });
+    markers.current.forEach((marker, id) => { if (!ids.has(id)) { group.removeLayer(marker); stationGroup.current?.removeLayer(marker); busGroup.current?.removeLayer(marker); markers.current.delete(id); markerData.current.delete(id); if (popupRef.current?.stopId === id) popupRef.current.popup.remove(); } });
     const clustered: Leaflet.Marker[] = [];
     visible.forEach(camera => {
-      const style = `${language}:${mapZoom >= 16.5}`;
+      const style = language;
       const previous = markerData.current.get(camera.id);
       if (previous?.camera === camera && previous.style === style) return;
       const oldMarker = markers.current.get(camera.id);
-      if (oldMarker) { group.removeLayer(oldMarker); stationGroup.current?.removeLayer(oldMarker); }
+      if (oldMarker) { group.removeLayer(oldMarker); stationGroup.current?.removeLayer(oldMarker); busGroup.current?.removeLayer(oldMarker); }
       const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
-      const badge = camera.kind === 'crossing' ? camera.badge : mapZoom >= 16.5 && ['kmb', 'citybus', 'gmb', 'nlb'].includes(camera.kind) ? camera.badge : undefined;
-      const plate = badge && camera.kind !== 'crossing' ? stopPlate(name, camera.routes ?? []) : null;
-      const icon = L.divIcon({ className: `camera-marker ${camera.positionType === 'station' ? 'station-marker' : ''}`, html: `<div class="marker-inner" style="--marker-color:${camera.color ?? layers[camera.kind].color}">${camera.kind === 'crossing' ? `<b>${escapeHtml(badge || '—')}</b>` : `<svg viewBox="0 0 24 24"${camera.rotation ? ` style="transform:rotate(${camera.rotation}deg)"` : ''}>${symbols[camera.kind]}</svg>`}</div>${plate ? `<span class="stop-plate"><b>${escapeHtml(plate.title)}</b>${plate.lines.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</span>` : ''}`, iconSize: [30, 30], iconAnchor: [15, 15] });
+      const badge = camera.kind === 'crossing' ? camera.badge : undefined;
+      const plate = isBusStop(camera) ? stopPlate(name, camera.routes ?? []) : null;
+      const icon = L.divIcon({ className: `camera-marker${camera.positionType === 'station' ? ' station-marker' : ''}${isBusStop(camera) ? ' bus-stop-marker' : ''}`, html: `<div class="marker-inner" style="--marker-color:${camera.color ?? layers[camera.kind].color}">${camera.kind === 'crossing' ? `<b>${escapeHtml(badge || '—')}</b>` : `<svg viewBox="0 0 24 24"${camera.rotation ? ` style="transform:rotate(${camera.rotation}deg)"` : ''}>${symbols[camera.kind]}</svg>`}</div>${plate ? `<span class="stop-plate live"><b>${escapeHtml(plate.title)}</b>${plate.lines.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</span>` : ''}`, iconSize: [30, 30], iconAnchor: [15, 15] });
       const marker = L.marker([camera.lat, camera.lng], { icon, title: `${layerText(camera.kind, language).name}: ${name}`, alt: name, keyboard: true, cameraKind: camera.kind } as Leaflet.MarkerOptions);
       const label = document.createElement('span'); label.textContent = name;
       marker.bindTooltip(label, { direction: 'top', offset: [0, -12] });
-      marker.on('click', () => selectRef.current(camera));
+      marker.on('click', () => { if (isBusStop(camera)) { if (!routeFocusRef.current) setPopupStopId(camera.id); } else selectRef.current(camera); });
       markers.current.set(camera.id, marker);
-      markerData.current.set(camera.id, { camera, style });
+      markerData.current.set(camera.id, { camera, style, labelLines: plate?.lines.length });
       if (camera.positionType === 'station' || camera.positionType === 'pier') stationGroup.current?.addLayer(marker);
+      else if (isBusStop(camera)) busGroup.current?.addLayer(marker);
       else clustered.push(marker);
     });
     group.addLayers(clustered);
   }, [cameras, ready, language, mapZoom]);
+  // Declutter runs after the marker effect above: it only toggles classes on the
+  // existing plate elements, never rebuilds markers.
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m) return;
+    const run = () => {
+      const size = m.getSize();
+      const viewport = { x: -40, y: -40, w: size.x + 80, h: size.y + 80 };
+      const items: StopLabelItem[] = [];
+      const plates: [string, HTMLElement][] = [];
+      markers.current.forEach((marker, id) => {
+        const data = markerData.current.get(id);
+        if (!data || !isBusStop(data.camera)) return;
+        const plate = marker.getElement()?.querySelector<HTMLElement>('.stop-plate');
+        if (!plate) return;
+        plates.push([id, plate]);
+        items.push({ id, priority: data.camera.routes?.length ?? 0, placements: platePlacements(m.latLngToContainerPoint(marker.getLatLng()), data.labelLines ?? 0) });
+      });
+      const shown = declutterLabels(items, viewport);
+      plates.forEach(([id, plate]) => {
+        const placement = shown.get(id);
+        plate.classList.toggle('label-hidden', placement === undefined);
+        plate.classList.toggle('pos-left', placement === 'left');
+        plate.classList.toggle('pos-above', placement === 'above');
+        plate.classList.toggle('pos-below', placement === 'below');
+      });
+    };
+    run();
+    m.on('moveend', run);
+    m.on('zoomend', run);
+    return () => { m.off('moveend', run); m.off('zoomend', run); };
+  }, [cameras, ready, language, mapZoom]);
+  const popupCamera = popupStopId ? cameras.find(camera => camera.id === popupStopId) ?? null : null;
+  useEffect(() => {
+    const L = library.current, m = map.current;
+    if (!ready || !L || !m || !popupElement || !popupStopId) return;
+    const data = markerData.current.get(popupStopId);
+    if (!data) return;
+    const popup = L.popup({ offset: L.point(24, -14), closeButton: true, autoPan: true, maxWidth: 320, className: 'stop-eta-popup' })
+      .setLatLng([data.camera.lat, data.camera.lng])
+      .setContent(popupElement)
+      .openOn(m);
+    popupRef.current = { popup, stopId: popupStopId };
+    const onRemove = () => setPopupStopId(current => current === popupStopId ? null : current);
+    popup.on('remove', onRemove);
+    return () => { popup.off('remove', onRemove); if (popupRef.current?.popup === popup) popupRef.current = null; popup.remove(); };
+  }, [ready, popupStopId, popupElement]);
   useEffect(() => {
     const L = library.current, m = map.current;
     if (!ready || !L || !m) return;
@@ -236,6 +340,115 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
     paths?.forEach(path => L.polyline(path.points, { color: path.color, weight: 3, opacity: .65, interactive: false, renderer: segmentRenderer.current ?? undefined }).addTo(group));
     return () => { group.remove(); };
   }, [paths, ready]);
+  useEffect(() => {
+    const L = library.current, m = map.current;
+    if (!ready || !L || !m) return;
+    const route = busRoute?.route;
+    if (!route) { fittedBusRoute.current = null; return; }
+    const group = L.layerGroup().addTo(m);
+    const points = route.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]);
+    const color = layers[route.operator].color;
+    L.polyline(points, { color: '#fff', weight: 8, opacity: .95, interactive: false }).addTo(group);
+    L.polyline(points, { color, weight: 4, opacity: 1, interactive: false, dashArray: route.geometry === 'stops' ? '7 7' : undefined, className: 'bus-route-polyline' }).addTo(group);
+    route.stops.forEach((stop, index) => {
+      const endpoint = index === 0 || index === route.stops.length - 1;
+      L.circleMarker([stop.lat, stop.lng], { radius: endpoint ? 5 : 3, color, weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false, className: 'bus-route-stop' }).addTo(group);
+    });
+    if (!inactive && fittedBusRoute.current !== route.key && points.length > 1) {
+      fittedBusRoute.current = route.key;
+      m.fitBounds(points, { paddingTopLeft: [45, 55], paddingBottomRight: [45, 125], maxZoom: 16, animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
+    }
+    return () => { group.remove(); };
+  }, [busRoute, ready, inactive]);
+  // Route-focus hides every bus stop (CSS on the container — markers stay
+  // mounted) until the rider clicks blank map space; the route, stop circles
+  // and vehicle are unaffected. Clearing the route re-shows stops for free.
+  useEffect(() => {
+    const m = map.current, container = element.current;
+    if (!ready || !m || !container) return;
+    container.classList.toggle('route-focus', routeFocus);
+    if (!routeFocus || !busRouteKey) return () => container.classList.remove('route-focus');
+    const reveal = (event: Leaflet.LeafletMouseEvent) => {
+      const target = event.originalEvent.target;
+      if (target instanceof Element && target.closest('.leaflet-marker-icon, .leaflet-popup, .leaflet-tooltip, .leaflet-control-container')) return;
+      setRevealedRouteKey(busRouteKey);
+    };
+    m.on('click', reveal);
+    return () => { m.off('click', reveal); container.classList.remove('route-focus'); };
+  }, [ready, routeFocus, busRouteKey]);
+  useEffect(() => {
+    const L = library.current, m = map.current;
+    if (!ready || !L || !m) return;
+    const route = busRoute?.route;
+    const remove = () => { busVehicle.current?.marker.remove(); busVehicle.current = null; };
+    if (!route || !busRoute) { remove(); return; }
+    const distances = routeDistances(route.coordinates);
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let frame: number | undefined;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let zooming = m.getContainer().classList.contains('leaflet-zoom-anim');
+    const name = `${route.route} · ${language === 'en' ? 'Estimated bus position' : '估算巴士位置'}`;
+    if (busVehicle.current) {
+      const label = document.createElement('span'); label.textContent = name;
+      busVehicle.current.marker.setTooltipContent(label);
+      const icon = busVehicle.current.marker.getElement();
+      if (icon) { icon.title = name; icon.setAttribute('aria-label', name); }
+    }
+    const tick = (move = true) => {
+      const now = Date.now();
+      const distance = busDistanceAtTime(busRoute, now);
+      if (distance === null) { remove(); return; }
+      let entry = busVehicle.current;
+      if (entry && entry.key !== route.key) { remove(); entry = null; }
+      if (entry && entry.feed !== busRoute) {
+        entry.correction = reducedMotion.matches ? undefined : { distance: entry.distance - distance, at: now };
+        entry.feed = busRoute;
+      }
+      const remaining = !reducedMotion.matches && entry?.correction ? Math.max(0, 1 - (now - entry.correction.at) / 2000) ** 3 : 0;
+      const displayDistance = distance + (entry?.correction?.distance ?? 0) * remaining;
+      const coordinate = routePointAtDistance(route.coordinates, distances, displayDistance);
+      if (!coordinate) { remove(); return; }
+      const point = L.latLng(coordinate[1], coordinate[0]);
+      if (!entry) {
+        const icon = L.divIcon({ className: 'camera-marker vehicle-marker bus-route-marker', html: `<div class="marker-inner" style="--marker-color:${layers[route.operator].color}"><svg viewBox="0 0 24 24">${symbols[route.operator]}</svg></div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+        const marker = L.marker(point, { icon, title: name, alt: name, keyboard: true, zIndexOffset: 500 }).addTo(m);
+        const label = document.createElement('span'); label.textContent = name;
+        marker.bindTooltip(label);
+        marker.on('click', () => marker.openTooltip());
+        marker.getElement()?.setAttribute('aria-label', name);
+        busVehicle.current = entry = { key: route.key, marker, distance: displayDistance, feed: busRoute, svg: marker.getElement()?.querySelector('svg') ?? null };
+      }
+      // The glyph is drawn facing up (windshield band on top), so the route
+      // bearing maps straight onto a CSS rotate of the inner svg — never the
+      // marker element, whose transform Leaflet's DomUtil.setPosition owns.
+      const heading = routeHeadingAtDistance(route.coordinates, distances, displayDistance);
+      if (heading !== null) {
+        entry.svg ??= entry.marker.getElement()?.querySelector('svg') ?? null;
+        if (entry.svg) entry.svg.style.transform = `rotate(${heading}deg)`;
+      }
+      if (move) {
+        entry.distance = displayDistance;
+        if (!remaining) entry.correction = undefined;
+        entry.marker.setLatLng(point);
+        const icon = entry.marker.getElement();
+        if (icon) L.DomUtil.setPosition(icon, m.project(point).subtract(m.getPixelOrigin()));
+      }
+    };
+    const animate = () => { tick(); frame = requestAnimationFrame(animate); };
+    const visible = () => {
+      if (frame !== undefined) cancelAnimationFrame(frame); frame = undefined;
+      if (timer) clearInterval(timer); timer = undefined;
+      if (inactive || zooming || document.visibilityState !== 'visible') return;
+      tick();
+      if (reducedMotion.matches) timer = setInterval(() => tick(false), 1000);
+      else frame = requestAnimationFrame(animate);
+    };
+    const startZoom = () => { zooming = true; visible(); };
+    const endZoom = () => { zooming = false; visible(); };
+    if (busVehicle.current?.key !== route.key || busDistanceAtTime(busRoute, Date.now()) === null) remove();
+    visible(); document.addEventListener('visibilitychange', visible); reducedMotion.addEventListener('change', visible); m.on('zoomstart', startZoom); m.on('zoomend', endZoom);
+    return () => { if (frame !== undefined) cancelAnimationFrame(frame); if (timer) clearInterval(timer); document.removeEventListener('visibilitychange', visible); reducedMotion.removeEventListener('change', visible); m.off('zoomstart', startZoom); m.off('zoomend', endZoom); };
+  }, [busRoute, ready, language, inactive]);
   useEffect(() => {
     const L = library.current, m = map.current;
     if (!ready || !L || !m) return;
@@ -383,5 +596,6 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
     {mapError && <div className="map-error" role="alert">{copy.mapLoadFailed}<button type="button" className="map-retry" onClick={() => ready ? setBasemapRetry(value => value + 1) : window.location.reload()}><RefreshCw size={14}/>{copy.retry}</button></div>}
     {!ready && !mapError && <div className="map-loading"><LoaderCircle className="spin" size={20}/> {copy.mapLoading}</div>}
     {ready && !loading && cameras.length === 0 && !segments?.length && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
+    {popupElement && popupCamera && createPortal(<StopEtaPopup camera={popupCamera} language={language} now={now} activeTracking={busSelection ?? null} onShowRoute={tracking => { onShowBusRoute?.(popupCamera, tracking); setPopupStopId(null); }} onShowDetails={() => { selectRef.current(popupCamera); setPopupStopId(null); }}/>, popupElement)}
   </section>;
 }

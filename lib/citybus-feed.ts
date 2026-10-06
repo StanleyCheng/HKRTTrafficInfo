@@ -13,6 +13,8 @@ const FETCH_LIMIT = 4
 const ETA_ROOT = "https://rt.data.gov.hk/v2/transport/citybus/eta/CTB"
 
 type EtaRow = {
+  dir?: "I" | "O"
+  seq?: number
   route?: string
   dest_tc?: string
   dest_en?: string
@@ -79,7 +81,7 @@ export async function loadCitybusNear(lng: number, lat: number, now = Date.now()
       lng: record.lng,
       lat: record.lat,
       routes: record.routes,
-      calls: callsAt(rows, now),
+      calls: callsAt(rows, now, stop.id),
     })
   }
   const error = missed > 0 ? "Some Citybus arrivals could not refresh" : undefined
@@ -94,7 +96,7 @@ export async function loadCitybusNear(lng: number, lat: number, now = Date.now()
   }
 }
 
-function callsAt(rows: EtaRow[], now: number): CitybusCall[] {
+function callsAt(rows: EtaRow[], now: number, stopId: string): CitybusCall[] {
   const calls: CitybusCall[] = []
   for (const row of rows) {
     if (row.eta_seq !== 1) continue
@@ -105,6 +107,7 @@ function callsAt(rows: EtaRow[], now: number): CitybusCall[] {
     const remarkTc = isScheduled(row) ? "" : text(row.rmk_tc)
     const remarkEn = isScheduled(row) ? "" : text(row.rmk_en)
     calls.push({
+      ...(row.dir ? { tracking: { operator: "citybus" as const, route, stopId, bound: row.dir, stopSeq: row.seq } } : {}),
       route,
       destTc: text(row.dest_tc),
       destEn: text(row.dest_en),

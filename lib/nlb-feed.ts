@@ -13,7 +13,7 @@ const PAIR_BUDGET = 24
 const FETCH_LIMIT = 4
 const ETA_ROOT = "https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=estimatedArrivals"
 
-type Arrival = { estimatedArrivalTime?: string }
+type Arrival = { estimatedArrivalTime?: string; departed?: string | number; noGPS?: string | number }
 
 const remembered = new Map<string, HeldRows<Arrival>>()
 
@@ -66,7 +66,7 @@ export async function loadNlbNear(lng: number, lat: number, now = Date.now(), zo
     for (const service of record.services) {
       const rows = heldRows(remembered.get(`${stop.id}/${service.id}`), now) ?? []
       const call = callAt(service.code, rows, now)
-      if (call) calls.push(call)
+      if (call) calls.push({ ...call, tracking: { operator: "nlb", route: service.code, stopId: stop.id, routeId: service.id } })
     }
     calls.sort((a, b) => (a.minutes ?? 999) - (b.minutes ?? 999) || a.route.localeCompare(b.route, undefined, { numeric: true }))
     stops.push({
@@ -98,7 +98,7 @@ function callAt(route: string, rows: Arrival[], now: number): NlbCall | null {
     if (!Number.isFinite(etaMs)) continue
     const minutes = Math.max(0, Math.round((etaMs - now) / 60_000))
     if (best && (best.minutes ?? 999) <= minutes) continue
-    best = { route, destTc: "", destEn: "", eta: new Date(etaMs).toISOString(), minutes, scheduled: false, remarkTc: "", remarkEn: "" }
+    best = { route, destTc: "", destEn: "", eta: new Date(etaMs).toISOString(), minutes, scheduled: String(row.departed) === "0" || String(row.noGPS) === "1", remarkTc: "", remarkEn: "" }
   }
   return best
 }

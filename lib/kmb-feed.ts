@@ -14,6 +14,9 @@ const FETCH_LIMIT = 6
 const ETA_ROOT = "https://data.etabus.gov.hk/v1/transport/kmb/stop-eta"
 
 type EtaRow = {
+  dir?: "I" | "O"
+  service_type?: string | number
+  seq?: number
   co?: string
   route?: string
   dest_tc?: string
@@ -80,7 +83,7 @@ export async function loadKmbNear(lng: number, lat: number, now = Date.now(), zo
       lng: record.lng,
       lat: record.lat,
       routes: kmbRoutesAt(stop.id),
-      calls: callsAt(rows, now),
+      calls: callsAt(rows, now, stop.id),
     })
   }
   const error = missed > 0 ? "Some KMB arrivals could not refresh" : undefined
@@ -95,7 +98,7 @@ export async function loadKmbNear(lng: number, lat: number, now = Date.now(), zo
   }
 }
 
-function callsAt(rows: EtaRow[], now: number): KmbCall[] {
+function callsAt(rows: EtaRow[], now: number, stopId: string): KmbCall[] {
   const calls: KmbCall[] = []
   for (const row of rows) {
     if (row.eta_seq !== 1) continue
@@ -107,6 +110,7 @@ function callsAt(rows: EtaRow[], now: number): KmbCall[] {
     const remarkTc = isScheduled(row) ? "" : text(row.rmk_tc)
     const remarkEn = isScheduled(row) ? "" : text(row.rmk_en)
     calls.push({
+      ...(row.dir && row.service_type != null ? { tracking: { operator: "kmb" as const, company: busCompany(route, text(row.co)), route, stopId, bound: row.dir, serviceType: String(row.service_type), stopSeq: row.seq } } : {}),
       route,
       destTc: text(row.dest_tc),
       destEn: text(row.dest_en),
