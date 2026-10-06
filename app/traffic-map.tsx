@@ -33,6 +33,10 @@ const symbols = {
   nlb: '<rect x="4" y="4" width="16" height="15" rx="3"/><path d="M4 11h16M7 19v3m10-3v3M7 15h1m8 0h1"/>',
   ferry: '<path d="M3 14h18l-4 6H7l-4-6zM7 14V8h10v6M12 3v5M2 22l4-1 4 1 4-1 4 1 4-1"/>',
 };
+const trainSymbols = {
+  mtr: '<path class="train-body" fill="#dce3e7" d="M8 2h8c3 0 5 3 5 6v10c0 2-2 4-4 4H7c-2 0-4-2-4-4V8c0-3 2-6 5-6z"/><path class="train-livery" fill="#c83243" d="M5 7c0-2 1-3 3-3h8c2 0 3 1 3 3v7l-4 3H9l-4-3z"/><path class="train-cab" fill="#243b47" d="M8 6h8c1 0 2 1 2 2v5l-3 2H9l-3-2V8c0-1 1-2 2-2z"/><path d="m8 9 2-1m4 0 2 1"/><path fill="#fff3b0" d="M6 17h3v1H6zm9 0h3v1h-3z"/><path d="M10 20h4M7 22l-1 1m11-1 1 1"/>',
+  lrt: '<path d="m9 4 3-3 3 3M8 4h8"/><path class="train-body" fill="#dce3e7" d="M8 5h8c3 0 4 2 4 5v10c0 1-1 2-2 2H6c-1 0-2-1-2-2V10c0-3 1-5 4-5z"/><rect class="train-cab" fill="#243b47" x="6" y="7" width="12" height="8" rx="3"/><path d="M12 8v6m-4-4 2-1"/><path class="train-livery" fill="#c83243" d="M4 16h16v3H4z"/><path fill="#fff3b0" d="M6 17h2v1H6zm10 0h2v1h-2z"/><path d="M10 21h4M7 22l-1 1m11-1 1 1"/>',
+};
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 const FLOW_SEGMENT_WEIGHT = 4.8;
 const SELECTED_FLOW_SEGMENT_WEIGHT = 7.2;
@@ -273,7 +277,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
       const badge = camera.kind === 'crossing' ? camera.badge : undefined;
       const plate = isBusStop(camera) ? stopPlate(name, camera.routes ?? []) : null;
-      const icon = L.divIcon({ className: `camera-marker${camera.positionType === 'station' ? ' station-marker' : ''}${isBusStop(camera) ? ' bus-stop-marker' : ''}`, html: `<div class="marker-inner" style="--marker-color:${camera.color ?? layers[camera.kind].color}">${camera.kind === 'crossing' ? `<b>${escapeHtml(badge || '—')}</b>` : `<svg viewBox="0 0 24 24"${camera.rotation ? ` style="transform:rotate(${camera.rotation}deg)"` : ''}>${symbols[camera.kind]}</svg>`}</div>${plate ? `<span class="stop-plate live"><b>${escapeHtml(plate.title)}</b>${plate.lines.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</span>` : ''}`, iconSize: [30, 30], iconAnchor: [15, 15] });
+      const icon = L.divIcon({ className: `camera-marker${camera.positionType === 'station' ? ' station-marker' : ''}${camera.kind === 'mtr' || camera.kind === 'lrt' ? ' rail-marker' : ''}${isBusStop(camera) ? ' bus-stop-marker' : ''}`, html: `<div class="marker-inner" style="--marker-color:${camera.color ?? layers[camera.kind].color}">${camera.kind === 'crossing' ? `<b>${escapeHtml(badge || '—')}</b>` : `<svg viewBox="0 0 24 24"${camera.rotation ? ` style="transform:rotate(${camera.rotation}deg)"` : ''}>${symbols[camera.kind]}</svg>`}</div>${plate ? `<span class="stop-plate live"><b>${escapeHtml(plate.title)}</b>${plate.lines.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</span>` : ''}`, iconSize: [30, 30], iconAnchor: [15, 15] });
       const marker = L.marker([camera.lat, camera.lng], { icon, title: `${layerText(camera.kind, language).name}: ${name}`, alt: name, keyboard: true, cameraKind: camera.kind } as Leaflet.MarkerOptions);
       const label = document.createElement('span'); label.textContent = name;
       marker.bindTooltip(label, { direction: 'top', offset: [0, -12] });
@@ -489,7 +493,8 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
           }
           return;
         }
-        const icon = L.divIcon({ className: 'camera-marker vehicle-marker', html: `<div class="marker-inner" style="--marker-color:${camera.color ?? layers[camera.kind].color}"><svg viewBox="0 0 24 24">${symbols[camera.kind]}</svg></div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+        const rail = camera.kind === 'mtr' || camera.kind === 'lrt';
+        const icon = L.divIcon({ className: `camera-marker vehicle-marker${rail ? ' rail-marker' : ''}`, html: `<div class="marker-inner" style="--marker-color:${camera.color ?? layers[camera.kind].color}"><svg viewBox="0 0 24 24" aria-hidden="true">${camera.kind === 'mtr' || camera.kind === 'lrt' ? trainSymbols[camera.kind] : symbols[camera.kind]}</svg></div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
         const marker = L.marker([camera.lat, camera.lng], { icon, title: name, alt: name, keyboard: true }).addTo(group);
         const label = document.createElement('span'); label.textContent = name; marker.bindTooltip(label);
         marker.getElement()?.setAttribute('aria-label', name);

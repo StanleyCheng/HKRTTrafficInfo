@@ -18,8 +18,8 @@ const roads = [
 ];
 const contexts = [];
 
-async function create({ mobile = false, reducedMotion = 'no-preference', gps = false } = {}) {
-  const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, reducedMotion });
+async function create({ mobile = false, reducedMotion = 'no-preference', gps = false, deviceScaleFactor = 1 } = {}) {
+  const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, reducedMotion, deviceScaleFactor });
   contexts.push(context);
   const observedAt = new Date().toISOString();
   const hk = new Date(Date.now() + 8 * 3600000).toISOString();
@@ -106,15 +106,15 @@ async function test(name, run) {
 
 try {
   await fs.mkdir(evidence, { recursive: true });
-  await test('Desktop: further 0.8 scale, continuous fractional movement and stable marker identity on feed/language changes', async () => {
+  await test('Desktop: readable rail artwork, scaled ferry, continuous fractional movement and stable marker identity on feed/language changes', async () => {
     const { page, context, mtrCalls } = await create();
     const sizes = await page.locator('.vehicle-marker').evaluateAll(elements => elements.map(element => {
       const body = element.querySelector('.marker-inner').getBoundingClientRect(), svg = element.querySelector('svg').getBoundingClientRect(), target = element.getBoundingClientRect();
-      return { body: body.width, svg: svg.width, target: target.width, tabindex: element.tabIndex };
+      return { body: body.width, svg: svg.width, target: target.width, tabindex: element.tabIndex, rail: element.classList.contains('rail-marker') };
     }));
     for (const size of sizes) {
-      assert.ok(Math.abs(size.body - 16.64) < .1, `Visible glyph must be 20.8 × 0.8 = 16.64px: ${JSON.stringify(size)}`);
-      assert.ok(Math.abs(size.svg - 10.88) < .1, 'SVG must be 13.6 × 0.8 = 10.88px');
+      assert.ok(Math.abs(size.body - (size.rail ? 26 : 16.64)) < .1, `Rail artwork uses 26px; other visible glyphs retain 16.64px: ${JSON.stringify(size)}`);
+      assert.ok(Math.abs(size.svg - (size.rail ? 22 : 10.88)) < .1, 'Rail SVG uses 22px; other SVGs retain 10.88px');
       assert.ok(Math.abs(size.target - 26) < .01 && size.tabindex === 0, 'Small glyph retains its 26px pointer bounds and keyboard focus');
     }
     const samples = await frameSamples(page);
@@ -130,6 +130,61 @@ try {
     assert.ok(identity.every(element => element.connected), `Feed and language changes must preserve marker DOM identity: ${JSON.stringify(identity)}`);
     assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await page.screenshot({ path: path.join(evidence, 'desktop-motion.png') });
+    await context.close();
+  });
+  await test('Train artwork: yellow rail outlines, distinct MTR/LRT colors and keyboard targets preserve ferry styling', async () => {
+    const { page, context } = await create({ reducedMotion: 'reduce', deviceScaleFactor: 3 });
+    const rail = await page.locator('.rail-marker').evaluateAll(elements => elements.map(element => {
+      const body = element.querySelector('.marker-inner'), svg = body.querySelector('svg');
+      return { station: element.classList.contains('station-marker'), border: getComputedStyle(body).borderColor, width: svg.getBoundingClientRect().width, strokes: [...svg.children].map(shape => getComputedStyle(shape).stroke) };
+    }));
+    assert.ok(rail.some(marker => marker.station), 'Fixture must render rail stations as well as moving trains');
+    for (const marker of rail) {
+      assert.equal(marker.border, 'rgb(255, 243, 176)', 'Rail marker border stays light yellow');
+      assert.ok(marker.strokes.every(stroke => stroke === 'rgb(255, 243, 176)'), 'Every station/train outline stays light yellow');
+      if (marker.station) assert.equal(marker.width, 14, 'Station glyph retains its 14px size');
+    }
+    const trains = page.locator('.rail-marker.vehicle-marker');
+    assert.equal(await trains.count(), 2, 'MTR and LRT vehicles both receive rail artwork');
+    const artwork = await trains.evaluateAll(elements => elements.map(element => ({
+      html: element.querySelector('svg').innerHTML,
+      body: getComputedStyle(element.querySelector('.train-body')).fill,
+      cab: getComputedStyle(element.querySelector('.train-cab')).fill,
+      livery: getComputedStyle(element.querySelector('.train-livery')).fill,
+      role: element.getAttribute('role'), tabindex: element.tabIndex,
+      label: element.getAttribute('aria-label'), title: element.title,
+      width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height,
+    })));
+    assert.notEqual(artwork[0].html, artwork[1].html, 'MTR and LRT must use distinct train artwork');
+    for (const train of artwork) {
+      assert.equal(train.body, 'rgb(220, 227, 231)', 'Silver train body keeps its real fill');
+      assert.equal(train.cab, 'rgb(36, 59, 71)', 'Dark cab keeps its real fill');
+      assert.equal(train.livery, 'rgb(200, 50, 67)', 'Red livery keeps its real fill');
+      assert.equal(train.role, 'button'); assert.equal(train.tabindex, 0);
+      assert.equal(train.label, train.title); assert.ok(train.label);
+      assert.equal(train.width, 26); assert.equal(train.height, 26);
+    }
+    const ferry = await page.locator('.vehicle-marker:not(.rail-marker)').evaluate(element => ({
+      stroke: getComputedStyle(element.querySelector('svg')).stroke,
+      fill: getComputedStyle(element.querySelector('svg')).fill,
+      border: getComputedStyle(element.querySelector('.marker-inner')).borderColor,
+    }));
+    assert.deepEqual(ferry, { stroke: 'rgb(23, 44, 57)', fill: 'none', border: 'rgb(255, 255, 255)' }, 'Train styling must leave ferry rendering unchanged');
+    for (let index = 0; index < 2; index++) {
+      await page.evaluate(index => { const target = [...document.querySelectorAll('.rail-marker.vehicle-marker')][index]; window.__map.eachLayer(layer => { if (layer.getElement?.() === target) window.__map.setView(layer.getLatLng(), 16, { animate: false }); }); }, index);
+      await trains.nth(index).focus();
+      assert.equal(await trains.nth(index).evaluate(element => document.activeElement === element), true, 'Train target retains keyboard focus');
+      await trains.nth(index).click();
+      await page.locator('.arrival-board').waitFor();
+      const details = await page.locator('.arrival-board').innerText();
+      assert.match(details, index === 0 ? /TWL/ : /614P/, 'Train target selects the corresponding details');
+      await trains.nth(index).evaluate(element => element.blur());
+      await page.mouse.move(0, 0);
+      await page.locator('.leaflet-tooltip').waitFor({ state: 'hidden' });
+      const target = await trains.nth(index).boundingBox();
+      await page.screenshot({ path: path.join(evidence, index === 0 ? 'mtr-artwork.png' : 'lrt-artwork.png'), clip: { x: target.x - 80, y: target.y - 55, width: 186, height: 136 } });
+    }
+    assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await context.close();
   });
   await test('Road dots: half as many marks, diameter matches road width, movement is another 0.7x, zero stays still and unknown has no dots', async () => {
