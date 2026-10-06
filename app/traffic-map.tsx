@@ -53,6 +53,8 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
   const segmentGroup = useRef<Leaflet.LayerGroup | null>(null);
   const segmentRenderer = useRef<Leaflet.Renderer | null>(null);
   const segmentPolylines = useRef(new Map<string, Leaflet.Polyline>());
+  const vehicleGroup = useRef<Leaflet.LayerGroup | null>(null);
+  const vehicles = useRef(new Map<string, { marker: Leaflet.Marker; camera: Camera; feed: CameraData | undefined; language: Language; correction?: { lat: number; lng: number; at: number } }>());
   const previousSegmentSelection = useRef<string | null>(null);
   const onSelectSegmentRef = useRef(onSelectSegment);
   const [ready, setReady] = useState(false);
@@ -107,6 +109,7 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
   useEffect(() => {
     let disposed = false;
     let observer: ResizeObserver | undefined;
+    const vehicleEntries = vehicles.current;
     const finishActivity = onActivity();
     (async () => {
       const L = (await import('leaflet')).default;
@@ -137,7 +140,7 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
       setReady(true);
       locate();
     })().catch(() => { if (!disposed) setMapError(true); }).finally(finishActivity);
-    return () => { disposed = true; finishActivity(); observer?.disconnect(); map.current?.remove(); map.current = null; basemapLayer.current = null; locationLayer.current = null; locationPending.current = false; };
+    return () => { disposed = true; finishActivity(); observer?.disconnect(); map.current?.remove(); map.current = null; basemapLayer.current = null; locationLayer.current = null; locationPending.current = false; vehicleGroup.current = null; vehicleEntries.clear(); };
   }, [onActivity, locate]);
   useEffect(() => {
     const L = library.current, m = map.current;
@@ -235,29 +238,68 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
   }, [paths, ready]);
   useEffect(() => {
     const L = library.current, m = map.current;
-    if (!ready || !L || !m || !transitFeeds) return;
-    const group = L.layerGroup().addTo(m);
-    const vehicles = new Map<string, { marker: Leaflet.Marker; camera: Camera }>();
+    if (!ready || !L || !m) return;
+    const group = vehicleGroup.current ??= L.layerGroup().addTo(m);
+    const entries = vehicles.current;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let frame: number | undefined;
     let timer: ReturnType<typeof setInterval> | undefined;
-    const tick = () => {
-      const next = (['mtr', 'lrt', 'ferry'] as const).flatMap(kind => transitFeeds[kind] ? movingCameras(kind, transitFeeds[kind]!, Date.now()) : []);
+    let zooming = m.getContainer().classList.contains('leaflet-zoom-anim');
+    const tick = (move = true) => {
+      const now = Date.now();
+      const next = (['mtr', 'lrt', 'ferry'] as const).flatMap(kind => transitFeeds?.[kind] ? movingCameras(kind, transitFeeds[kind]!, now) : []).filter(camera => Number.isFinite(camera.lat) && Number.isFinite(camera.lng));
       const ids = new Set(next.map(camera => camera.id));
-      vehicles.forEach((entry, id) => { if (!ids.has(id)) { group.removeLayer(entry.marker); vehicles.delete(id); } });
+      entries.forEach((entry, id) => { if (!ids.has(id)) { group.removeLayer(entry.marker); entries.delete(id); } });
       next.forEach(camera => {
-        const existing = vehicles.get(camera.id);
-        if (existing) { existing.camera = camera; existing.marker.setLatLng([camera.lat, camera.lng]); return; }
         const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
+        const feed = transitFeeds?.[camera.kind as 'mtr' | 'lrt' | 'ferry'];
+        const existing = entries.get(camera.id);
+        if (existing) {
+          if (existing.feed !== feed && !reducedMotion.matches) {
+            const position = existing.marker.getLatLng();
+            existing.correction = { lat: position.lat - camera.lat, lng: position.lng - camera.lng, at: now };
+          }
+          if (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn) {
+            const label = document.createElement('span'); label.textContent = name;
+            existing.marker.setTooltipContent(label);
+            const icon = existing.marker.getElement(); if (icon) { icon.title = name; icon.setAttribute('aria-label', name); }
+          }
+          if (existing.camera.color !== camera.color) existing.marker.getElement()?.querySelector<HTMLElement>('.marker-inner')?.style.setProperty('--marker-color', camera.color ?? layers[camera.kind].color);
+          existing.camera = camera; existing.feed = feed; existing.language = language;
+          if (move) {
+            const remaining = !reducedMotion.matches && existing.correction ? Math.max(0, 1 - (now - existing.correction.at) / 1000) ** 3 : 0;
+            const point = L.latLng(camera.lat + (existing.correction?.lat ?? 0) * remaining, camera.lng + (existing.correction?.lng ?? 0) * remaining);
+            if (!remaining) existing.correction = undefined;
+            existing.marker.setLatLng(point);
+            // Leaflet rounds marker pixels; retain its geographic state with subpixel display motion.
+            const icon = existing.marker.getElement(); if (icon) L.DomUtil.setPosition(icon, m.project(point).subtract(m.getPixelOrigin()));
+          }
+          return;
+        }
         const icon = L.divIcon({ className: 'camera-marker vehicle-marker', html: `<div class="marker-inner" style="--marker-color:${camera.color ?? layers[camera.kind].color}"><svg viewBox="0 0 24 24">${symbols[camera.kind]}</svg></div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
         const marker = L.marker([camera.lat, camera.lng], { icon, title: name, alt: name, keyboard: true }).addTo(group);
         const label = document.createElement('span'); label.textContent = name; marker.bindTooltip(label);
-        marker.on('click', () => { const latest = vehicles.get(camera.id); if (latest) selectRef.current(latest.camera); });
-        vehicles.set(camera.id, { marker, camera });
+        marker.getElement()?.setAttribute('aria-label', name);
+        marker.on('click', () => { const latest = entries.get(camera.id); if (latest) selectRef.current(latest.camera); });
+        entries.set(camera.id, { marker, camera, feed, language });
       });
     };
-    const visible = () => { if (timer) clearInterval(timer); timer = undefined; if (document.visibilityState === 'visible') { tick(); timer = setInterval(tick, 1000); } };
-    visible(); document.addEventListener('visibilitychange', visible);
-    return () => { if (timer) clearInterval(timer); document.removeEventListener('visibilitychange', visible); group.remove(); };
-  }, [ready, transitFeeds, language]);
+    const animate = () => { tick(); frame = requestAnimationFrame(animate); };
+    const visible = () => {
+      if (frame !== undefined) cancelAnimationFrame(frame); frame = undefined;
+      if (timer) clearInterval(timer); timer = undefined;
+      const paused = inactive || zooming || document.visibilityState !== 'visible';
+      element.current?.classList.toggle('map-motion-paused', paused || reducedMotion.matches);
+      if (paused) return;
+      tick();
+      if (reducedMotion.matches) timer = setInterval(() => tick(false), 1000);
+      else frame = requestAnimationFrame(animate);
+    };
+    const startZoom = () => { zooming = true; visible(); };
+    const endZoom = () => { zooming = false; visible(); };
+    visible(); document.addEventListener('visibilitychange', visible); reducedMotion.addEventListener('change', visible); m.on('zoomstart', startZoom); m.on('zoomend', endZoom);
+    return () => { if (frame !== undefined) cancelAnimationFrame(frame); if (timer) clearInterval(timer); document.removeEventListener('visibilitychange', visible); reducedMotion.removeEventListener('change', visible); m.off('zoomstart', startZoom); m.off('zoomend', endZoom); };
+  }, [ready, transitFeeds, language, inactive]);
   useEffect(() => {
     const L = library.current, group = segmentGroup.current;
     if (!ready || !L || !group) return;
@@ -276,6 +318,36 @@ export default function TrafficMap({ onActivity, cameras, paths, transitFeeds, o
       group.addLayer(polyline);
     });
   }, [segments, ready, language]);
+  useEffect(() => {
+    const L = library.current, m = map.current;
+    if (!ready || !L || !m) return;
+    const renderer = L.svg({ padding: 0.1 });
+    const group = L.layerGroup().addTo(m);
+    const dots = new Map<string, Leaflet.Polyline>();
+    const candidates = (segments ?? []).filter(segment => segment.level !== 'unknown' && segment.speedKmh !== null && Number.isFinite(segment.speedKmh) && segment.speedKmh >= 0 && segment.path.length > 1).map(segment => ({ segment, bounds: L.latLngBounds(segment.path) }));
+    const update = () => {
+      const viewport = m.getBounds();
+      const batches = new Map<string, { speed: number; reversed: boolean; weight: number; paths: [number, number][][] }>();
+      candidates.forEach(({ segment, bounds }) => {
+        if (!viewport.intersects(bounds)) return;
+        const speed = segment.speedKmh!, reversed = segment.direction === 2, weight = segment.id === selectedSegmentId ? SELECTED_FLOW_SEGMENT_WEIGHT : FLOW_SEGMENT_WEIGHT, key = `${speed}:${reversed}:${weight}`;
+        let batch = batches.get(key);
+        if (!batch) { batch = { speed, reversed, weight, paths: [] }; batches.set(key, batch); }
+        batch.paths.push(segment.path);
+      });
+      dots.forEach((line, key) => { if (!batches.has(key)) { group.removeLayer(line); dots.delete(key); } });
+      // Disconnected subpaths share one animation per speed and direction, avoiding thousands of animated SVG elements.
+      batches.forEach(({ speed, reversed, weight, paths }, key) => {
+        const existing = dots.get(key);
+        if (existing) { existing.setLatLngs(paths); return; }
+        const line = L.polyline(paths, { color: '#fff', weight, opacity: 0.9, dashArray: '0 36', lineCap: 'round', lineJoin: 'round', smoothFactor: 1, interactive: false, renderer, className: `segment-speed-dots${speed > 0 ? ' is-moving' : ''}${reversed ? ' is-reversed' : ''}` }).addTo(group);
+        if (speed > 0) (line.getElement() as SVGElement | undefined)?.style.setProperty('--speed-dot-duration', `${72 / (speed * 0.7)}s`);
+        dots.set(key, line);
+      });
+    };
+    update(); m.on('moveend', update);
+    return () => { m.off('moveend', update); group.remove(); renderer.remove(); };
+  }, [segments, ready, selectedSegmentId]);
   useEffect(() => {
     if (previousSelection.current) markers.current.get(previousSelection.current)?.getElement()?.querySelector('.marker-inner')?.classList.remove('selected');
     if (selected) markers.current.get(selected.id)?.getElement()?.querySelector('.marker-inner')?.classList.add('selected');
