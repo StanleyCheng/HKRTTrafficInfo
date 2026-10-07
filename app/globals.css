@@ -412,7 +412,6 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .vehicle-heading,.vehicle-art{display:block;width:32px;height:32px;transform-origin:center}
 .vehicle-art{object-fit:contain;filter:drop-shadow(0 1px 1px #18364366);user-select:none}
 .rail-marker .vehicle-art{filter:drop-shadow(0 0 1px #fff3b0) drop-shadow(0 1px 1px #fff3b0)}
-.rail-marker.vehicle-marker .marker-inner::after{content:"";position:absolute;right:-2px;bottom:0;width:7px;height:7px;border:1px solid #fff3b0;border-radius:50%;background:var(--marker-color);pointer-events:none}
 .vehicle-marker.is-running .vehicle-art{animation:vehicle-roll .32s ease-in-out infinite alternate}
 .ferry-marker.is-running .vehicle-art{animation:vehicle-bob 1.6s ease-in-out infinite alternate}
 .map-motion-paused .vehicle-art{animation-play-state:paused!important}
