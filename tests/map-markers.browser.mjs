@@ -26,7 +26,7 @@ async function create(mobile = false, parking = [{ vacancy: 10, space: 100 }, { 
       if (url.searchParams.has('returnCountOnly')) return route.fulfill({ headers, json: { count } });
       return route.fulfill({ headers, json: { features: Array.from({ length: count }, (_, i) => ({ attributes: { OBJECTID: i + 1, PopupInfo: `<table><tr><th>SITE_DESC_CHI</th><td>${kind} fixture ${i + 1}</td></tr><tr><th>SITE_DESC_ENG</th><td>${kind} fixture ${i + 1}</td></tr></table>` }, geometry: { x: kind === 'redlight' ? 113.951 : 113.943 + i * .006, y: kind === 'redlight' ? 22.282 : 22.285 } })) } });
     }
-    if (url.pathname.includes('Traffic_Camera_Locations_')) return route.fulfill({ headers, body: `<image-list>${[1, 2].map(index => `<image><key>${index}</key><description>snapshot fixture ${index}</description><latitude>22.288</latitude><longitude>${113.943 + index * .006}</longitude><url>${origin}/fixture.jpg</url></image>`).join('')}</image-list>` });
+    if (url.pathname.includes('Traffic_Camera_Locations_')) return route.fulfill({ headers, body: `<image-list>${[1, 2].map(index => `<image><key>${index}</key><description>${url.pathname.includes('_Tc') ? '快拍測試' : 'snapshot fixture'} ${index}</description><latitude>22.288</latitude><longitude>${113.943 + index * .006}</longitude><url>${origin}/fixture.jpg?camera=${index}</url></image>`).join('')}</image-list>` });
     if (url.pathname.endsWith('/carpark-info-vacancy')) return route.fulfill({ headers, json: { results: parking.map((counts, index) => ({ park_Id: String(index + 1), name: `parking fixture ${index + 1}`, latitude: 22.292, longitude: 113.943 + (index + 1) * .006, privateCar: url.searchParams.get('data') === 'info' ? { space: counts.space } : [{ vacancy_type: counts.type ?? 'A', vacancy: counts.vacancy }] })) } });
     if (url.searchParams.get('dataType') === 'rhrread') return route.fulfill({ headers, json: { rainfall: { data: [{ place: 'Islands District', max: 2 }, { place: 'Central & Western District', max: 3 }], endTime: observedAt } } });
     if (url.pathname.endsWith('/specialtrafficnews.xml')) return route.fulfill({ headers, body: `<body><message><msgID>1</msgID><ChinText>測試道路事故</ChinText><EngText>Fixture Road collision</EngText></message><message><msgID>2</msgID><ChinText>第二測試道路事故</ChinText><EngText>Other Road collision</EngText></message></body>` });
@@ -55,7 +55,7 @@ async function create(mobile = false, parking = [{ vacancy: 10, space: 100 }, { 
     return route.fulfill({ json: base });
   });
   await context.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: imagePixel }));
-  await context.route('**/fixture.jpg', route => route.fulfill({ contentType: 'image/png', body: imagePixel }));
+  await context.route('**/fixture.jpg*', route => route.fulfill({ contentType: 'image/png', body: imagePixel }));
   await context.addInitScript(() => {
     localStorage.setItem('hk-traffic-language-v1', 'en'); localStorage.setItem('hk-traffic-basemap-v1', 'osm');
     window.__errors = []; window.addEventListener('error', event => window.__errors.push(event.message));
@@ -74,6 +74,14 @@ async function create(mobile = false, parking = [{ vacancy: 10, space: 100 }, { 
   if (mobile) { await page.locator('.mobile-panel-close').click(); await page.locator('.sidebar').waitFor({ state: 'hidden' }); }
   return { context, page };
 }
+async function hoverMarker(page, marker) {
+  const box = await marker.locator('.marker-inner').boundingBox();
+  assert.ok(box, 'Marker must be visible before hover');
+  await page.mouse.move(50, 20);
+  const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-marker-id]')?.getAttribute('data-marker-id'), { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+  assert.equal(hit, await marker.getAttribute('data-marker-id'), 'Hover must reach the visible marker');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+}
 async function counts(page) {
   return page.evaluate(() => { const counts = {}; window.__map.eachLayer(layer => { if (layer.options?.cameraKind && layer.getElement?.()?.classList.contains('camera-marker')) counts[layer.options.cameraKind] = (counts[layer.options.cameraKind] || 0) + 1; }); return counts; });
 }
@@ -84,6 +92,131 @@ async function test(name, run) {
 }
 try {
   await fs.mkdir(evidence, { recursive: true });
+  await test('Snapshot delayed hover loads photo and official update time only after dwell, and cancels on exit', async () => {
+    const { page, context } = await create();
+    let requests = 0; const imageRequests = [];
+    const modified = new Date(Date.now() - 20 * 60000).toUTCString();
+    await context.route('**/fixture.jpg*', route => { requests++; imageRequests.push(route.request().url()); return route.fulfill({ contentType: 'image/png', headers: { 'Last-Modified': modified }, body: imagePixel }); });
+    await page.evaluate(() => { window.__map.setView([22.288, 113.949], 16, { animate: false }); });
+    const marker = page.locator('[data-marker-id="snapshot-1"]'), card = page.locator('.snapshot-hover');
+    assert.equal(await marker.getAttribute('title'), null, 'Rich hover replaces the browser title');
+    await hoverMarker(page, marker);
+    await page.getByRole('tooltip', { name: 'snapshot fixture 1', exact: true }).waitFor();
+    await page.waitForTimeout(600);
+    assert.equal(requests, 0); assert.equal(await card.count(), 0);
+    await page.mouse.move(50, 20);
+    await page.waitForTimeout(1600);
+    assert.equal(requests, 0); assert.equal(await card.count(), 0, 'Leaving before dwell cancels pending hover');
+    await hoverMarker(page, marker);
+    await page.waitForTimeout(1600);
+    assert.equal(requests, 0); assert.equal(await card.count(), 0, 'The delayed photo does not load early');
+    await card.waitFor();
+    await card.locator('img').waitFor();
+    assert.ok(requests >= 1); assert.ok(imageRequests.every(url => url.endsWith('camera=1')), 'Only the hovered photo is fetched');
+    const loadedRequests = requests;
+    assert.equal(await card.locator('.snapshot-hover-name').textContent(), 'snapshot fixture 1');
+    const update = await card.locator('.image-update').textContent();
+    assert.match(update, /^Image updated /);
+    const expected = await page.evaluate(value => new Intl.DateTimeFormat('en-HK', { timeZone: 'Asia/Hong_Kong', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(value)), modified);
+    assert.ok(update.includes(expected), 'Date and time are the official Last-Modified in Hong Kong time');
+    assert.match(await card.locator('.snapshot-note').textContent(), /see the image for its capture time/);
+    assert.equal(await card.locator('img').evaluate(image => getComputedStyle(image).objectFit), 'contain', 'Full image retains the stamped capture time');
+    await card.hover(); await page.waitForTimeout(400);
+    assert.equal(await card.count(), 1, 'Pointer can enter and inspect the rich card');
+    const unrelatedLayer = page.locator('.layer-card.rainfall .layer-toggle');
+    await unrelatedLayer.evaluate(button => button.click());
+    assert.equal(await card.count(), 1, 'Unrelated feed/layer updates retain the hovered snapshot');
+    await unrelatedLayer.evaluate(button => button.click());
+    await card.getByRole('button', { name: 'Refresh snapshot', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('.snapshot-hover .refresh-image')?.disabled);
+    assert.equal(requests, loadedRequests + 1, 'Refresh remains usable inside hover');
+    await page.screenshot({ path: path.join(evidence, 'snapshot-hover-en.png') });
+    await page.keyboard.press('Escape'); await card.waitFor({ state: 'detached' });
+    await page.keyboard.press('Tab'); await marker.focus(); await card.waitFor();
+    assert.equal(await card.evaluate(element => document.activeElement === element), true, 'Keyboard focus opens an accessible card');
+    await page.keyboard.press('Escape'); await card.waitFor({ state: 'detached' });
+    assert.equal(await marker.evaluate(element => document.activeElement === element), true, 'Escape restores the marker tab position');
+    await page.locator('.map-tools button').first().focus();
+    await hoverMarker(page, marker); await card.waitFor();
+    await page.evaluate(() => { window.__map.panBy([20, 0], { animate: false }); });
+    await card.waitFor({ state: 'detached' });
+    await hoverMarker(page, marker); await card.waitFor();
+    await page.mouse.move(50, 20); await card.waitFor({ state: 'detached' });
+    for (const edge of ['right', 'left']) {
+      await page.evaluate(edge => {
+        const m = window.__map, point = m.latLngToContainerPoint([22.288, 113.949]);
+        const area = document.querySelector('.map-canvas').getBoundingClientRect(), sidebar = document.querySelector('.sidebar').getBoundingClientRect();
+        m.panBy(point.subtract([edge === 'right' ? m.getSize().x - 100 : Math.max(0, sidebar.right - area.left) + 60, 180]), { animate: false });
+      }, edge);
+    await hoverMarker(page, marker); await card.waitFor(); await card.locator('img').waitFor();
+    await card.locator('.warning-text').waitFor(); await page.waitForTimeout(100);
+    const contained = await card.evaluate(element => {
+      const card = element.closest('.leaflet-popup').getBoundingClientRect(), map = document.querySelector('.map-canvas').getBoundingClientRect();
+      return card.left >= Math.max(map.left, document.querySelector('.sidebar').getBoundingClientRect().right) && card.top >= Math.max(map.top, document.querySelector('.topbar').getBoundingClientRect().bottom, document.querySelector('.traffic-status').getBoundingClientRect().bottom) && card.right <= Math.min(map.right, document.querySelector('.map-tools').getBoundingClientRect().left) && card.bottom <= map.bottom;
+    });
+    assert.equal(contained, true, 'Near-edge popup remains inside the map without panning');
+    await page.screenshot({ path: path.join(evidence, `snapshot-hover-${edge}-edge.png`) });
+    await page.keyboard.press('Escape');
+    }
+    await hoverMarker(page, marker); await card.waitFor();
+    await page.getByRole('button', { name: 'Chinese', exact: true }).click();
+    await card.waitFor({ state: 'detached' });
+    await hoverMarker(page, marker); await card.waitFor();
+    await card.locator('img').waitFor();
+    assert.equal(await card.locator('.snapshot-hover-name').textContent(), '快拍測試 1');
+    assert.match(await card.locator('.image-update').textContent(), /^影像更新 /);
+    assert.match(await card.locator('.snapshot-note').textContent(), /拍攝時間以圖中標示為準/);
+    assert.equal(await page.locator('[data-marker-id="parking-1"]').getAttribute('title'), '10 個空位 / 共 100 個私家車車位');
+    await page.screenshot({ path: path.join(evidence, 'snapshot-hover-zh.png') });
+    await page.keyboard.press('Escape');
+    await marker.focus(); await page.keyboard.press('Enter');
+    await page.getByRole('heading', { level: 4, name: '快拍測試 1', exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.__errors), []);
+    await context.close();
+  });
+  await test('Snapshot hover retains missing-time and retry states and closes when its layer is removed', async () => {
+    const { page, context } = await create();
+    let failure = false, requests = 0;
+    await context.route('**/fixture.jpg*', route => { requests++; return route.fulfill(failure ? { status: 503, body: 'Unavailable' } : { contentType: 'image/png', body: imagePixel }); });
+    await page.evaluate(() => { window.__map.setView([22.288, 113.949], 16, { animate: false }); });
+    const marker = page.locator('[data-marker-id="snapshot-1"]'), card = page.locator('.snapshot-hover');
+    await hoverMarker(page, marker); await card.waitFor(); await card.locator('img').waitFor();
+    assert.equal(await card.locator('.image-update').textContent(), 'The source did not provide an image update time');
+    await page.keyboard.press('Escape'); failure = true;
+    await page.mouse.move(50, 20); await hoverMarker(page, marker); await card.waitFor();
+    await card.getByRole('alert').waitFor();
+    assert.equal(await card.locator('img').count(), 0, 'Failed source never appears as a loaded snapshot');
+    const failedRequests = requests;
+    await card.hover(); failure = false;
+    await card.getByRole('button', { name: 'Reload snapshot', exact: true }).click();
+    await card.locator('img').waitFor(); assert.equal(requests, failedRequests + 1);
+    const retriedRequests = requests;
+    const toggle = page.locator('.layer-card.snapshot .layer-toggle');
+    await toggle.click(); await card.waitFor({ state: 'detached' });
+    assert.equal(await marker.count(), 0);
+    await toggle.click(); await marker.waitFor();
+    await hoverMarker(page, marker); await page.waitForTimeout(500);
+    await toggle.click(); await page.waitForTimeout(1700);
+    assert.equal(requests, retriedRequests, 'Removing the layer cancels a pending photo request');
+    assert.deepEqual(await page.evaluate(() => window.__errors), []);
+    await context.close();
+  });
+  await test('Snapshot hover fits a narrow mobile map and closes when the layers panel opens', async () => {
+    const { page, context } = await create(true);
+    await page.setViewportSize({ width: 375, height: 844 });
+    await page.evaluate(() => { window.__map.setView([22.288, 113.949], 16, { animate: false }); });
+    const marker = page.locator('[data-marker-id="snapshot-1"]'), card = page.locator('.snapshot-hover');
+    await hoverMarker(page, marker); await card.waitFor(); await card.locator('img').waitFor();
+    await page.waitForTimeout(100);
+    assert.equal(await card.evaluate(element => {
+      const card = element.closest('.leaflet-popup').getBoundingClientRect(), map = document.querySelector('.map-canvas').getBoundingClientRect(), tools = document.querySelector('.map-tools').getBoundingClientRect();
+      return card.left >= map.left && card.right <= tools.left && card.bottom <= map.bottom;
+    }), true, 'Full photo fits the actual 375px map space clear of controls');
+    await page.screenshot({ path: path.join(evidence, 'snapshot-hover-mobile-375.png') });
+    await page.locator('.mobile-panel-button').click(); await card.waitFor({ state: 'detached' });
+    assert.deepEqual(await page.evaluate(() => window.__errors), []);
+    await context.close();
+  });
   await test('Parking hover preserves location and shows bilingual vacancy / total counts in the native title', async () => {
     const { page, context } = await create(false, [{ vacancy: 10, space: 100 }, { vacancy: 0, space: 0 }, { vacancy: 4 }, { space: 80 }, { vacancy: 1, space: 20, type: 'B' }, { vacancy: 0, space: 30, type: 'C' }]);
     await page.evaluate(() => { window.__map.setView([22.292, 113.964], 15, { animate: false }); });

@@ -13,6 +13,7 @@ import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
 import { busDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '@/lib/bus-route-motion';
 import { markerOffsets, type MarkerPoint } from '@/lib/marker-layout';
 import { vehicleIcon, vehicleIconHeadingOffset } from '@/lib/vehicle-icons';
+import SnapshotImage from './snapshot-image';
 
 const symbols = {
   redlight: '<rect x="8" y="2" width="8" height="20" rx="3"/><path d="M5 5h3m8 0h3M5 12h3m8 0h3M5 19h3m8 0h3"/><circle cx="12" cy="7" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="17" r="1"/>',
@@ -98,6 +99,8 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const markerData = useRef(new Map<string, { camera: Camera; style: string; labelLines?: number }>());
   const [popupStopId, setPopupStopId] = useState<string | null>(null);
   const [popupElement, setPopupElement] = useState<HTMLDivElement | null>(null);
+  const [snapshotHover, setSnapshotHover] = useState<{ camera: Camera; element: HTMLDivElement } | null>(null);
+  const snapshotPopupRef = useRef<Leaflet.Popup | null>(null);
   const popupRef = useRef<{ popup: Leaflet.Popup; stopId: string } | null>(null);
   const [revealedRouteKey, setRevealedRouteKey] = useState<string | null>(null);
   const routeFocusRef = useRef(false);
@@ -265,6 +268,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       const style = language;
       const previous = markerData.current.get(camera.id);
       if (previous?.camera === camera && previous.style === style) return;
+      if (camera.kind === 'snapshot' && previous?.style === style && JSON.stringify(previous.camera) === JSON.stringify(camera)) { markerData.current.set(camera.id, { ...previous, camera }); return; }
       const oldMarker = markers.current.get(camera.id);
       const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
       const badge = camera.kind === 'crossing' ? camera.badge : undefined;
@@ -273,7 +277,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       const marker = oldMarker ?? enableMarkerKeyboard(L.marker([camera.lat, camera.lng], { icon, keyboard: true, cameraKind: camera.kind } as Leaflet.MarkerOptions).addTo(group));
       if (oldMarker) marker.setIcon(icon).setLatLng([camera.lat, camera.lng]);
       const node = marker.getElement();
-      if (node) { node.title = camera.kind === 'parking' ? copy.parkingAvailability(camera.vacancy?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—', camera.capacity?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—') : `${layerText(camera.kind, language).name}: ${name}`; node.setAttribute('aria-label', name); node.dataset.markerId = camera.id; }
+      if (node) { if (camera.kind === 'snapshot') node.removeAttribute('title'); else node.title = camera.kind === 'parking' ? copy.parkingAvailability(camera.vacancy?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—', camera.capacity?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—') : `${layerText(camera.kind, language).name}: ${name}`; node.setAttribute('aria-label', name); node.dataset.markerId = camera.id; }
       const label = document.createElement('span'); label.textContent = name;
       marker.bindTooltip(label, { direction: 'top', offset: [0, -12] });
       if (!oldMarker) marker.on('click', () => { const latest = markerData.current.get(camera.id)?.camera; if (!latest) return; if (isBusStop(latest)) { if (!routeFocusRef.current) setPopupStopId(camera.id); } else selectRef.current(latest); });
@@ -282,6 +286,102 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     });
     layoutMarkers.current();
   }, [cameras, ready, language, copy, mapZoom]);
+  const snapshotMarkerKey = JSON.stringify(cameras.filter(camera => camera.kind === 'snapshot'));
+  useEffect(() => {
+    const L = library.current, m = map.current;
+    if (!ready || !L || !m || inactive) return;
+    let delay: ReturnType<typeof setTimeout> | undefined, dismiss: ReturnType<typeof setTimeout> | undefined;
+    let popup: Leaflet.Popup | undefined, content: HTMLDivElement | undefined, activeNode: HTMLElement | undefined;
+    const clearDismiss = () => { clearTimeout(dismiss); dismiss = undefined; };
+    const close = () => {
+      clearTimeout(delay); delay = undefined; clearDismiss();
+      activeNode?.removeAttribute('aria-controls');
+      const popupNode = popup?.getElement();
+      if (popupNode) { popupNode.removeEventListener('mouseenter', clearDismiss); popupNode.removeEventListener('mouseleave', leave); popupNode.style.pointerEvents = 'none'; }
+      popup?.off('remove', close); popup?.remove(); popup = undefined; content = undefined; activeNode = undefined;
+      snapshotPopupRef.current = null;
+      setSnapshotHover(null);
+    };
+    const leave = () => {
+      clearTimeout(delay); delay = undefined;
+      if (!popup) { close(); return; }
+      clearDismiss();
+      dismiss = setTimeout(() => {
+        if (!activeNode?.matches(':hover') && document.activeElement !== activeNode && !popup?.getElement()?.matches(':hover') && !content?.contains(document.activeElement)) close();
+      }, 250);
+    };
+    const listeners: (() => void)[] = [];
+    markerData.current.forEach(({ camera }) => {
+      if (camera.kind !== 'snapshot') return;
+      const marker = markers.current.get(camera.id), node = marker?.getElement();
+      if (!marker || !node) return;
+      node.setAttribute('aria-haspopup', 'dialog');
+      const enter = () => {
+        if (activeNode === node) { clearDismiss(); return; }
+        close(); activeNode = node;
+        delay = setTimeout(() => {
+          delay = undefined;
+          const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
+          content = document.createElement('div'); content.id = 'snapshot-hover'; content.className = 'snapshot-hover';
+          const topbar = document.querySelector('.topbar')?.getBoundingClientRect();
+          const status = m.getContainer().closest('.map-workspace')?.querySelector('.traffic-status')?.getBoundingClientRect();
+          content.style.maxHeight = `${Math.max(80, m.getContainer().getBoundingClientRect().bottom - Math.max(topbar?.bottom ?? 0, status?.bottom ?? 0) - 48)}px`;
+          content.setAttribute('role', 'dialog'); content.setAttribute('aria-label', name); content.tabIndex = -1;
+          content.addEventListener('focusin', clearDismiss); content.addEventListener('focusout', leave);
+          node.setAttribute('aria-controls', content.id);
+          const offset = displayOffsets.current.get(camera.id);
+          popup = L.popup({ offset: L.point(offset?.x ?? 0, -12 + (offset?.y ?? 0)), autoPan: false, closeButton: false, maxWidth: 320, className: 'snapshot-hover-popup' })
+            .setLatLng(marker.getLatLng()).setContent(content).openOn(m);
+          popup.getElement()?.addEventListener('mouseenter', clearDismiss); popup.getElement()?.addEventListener('mouseleave', leave);
+          popup.on('remove', close);
+          snapshotPopupRef.current = popup;
+          setSnapshotHover({ camera, element: content });
+          if (document.activeElement === node && node.matches(':focus-visible')) content.focus();
+        }, 2000);
+      };
+      node.addEventListener('mouseenter', enter); node.addEventListener('mouseleave', leave);
+      node.addEventListener('focus', enter); node.addEventListener('blur', leave); node.addEventListener('click', close);
+      listeners.push(() => {
+        node.removeEventListener('mouseenter', enter); node.removeEventListener('mouseleave', leave);
+        node.removeEventListener('focus', enter); node.removeEventListener('blur', leave); node.removeEventListener('click', close);
+        node.removeAttribute('aria-haspopup');
+      });
+    });
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const node = content?.contains(document.activeElement) ? activeNode : undefined;
+      node?.focus(); close();
+    };
+    const visibility = () => { if (document.visibilityState !== 'visible') close(); };
+    m.on('movestart click', close); document.addEventListener('keydown', escape); document.addEventListener('visibilitychange', visibility);
+    return () => { listeners.forEach(remove => remove()); m.off('movestart click', close); document.removeEventListener('keydown', escape); document.removeEventListener('visibilitychange', visibility); close(); };
+  }, [snapshotMarkerKey, ready, language, mapZoom, inactive]);
+  useEffect(() => {
+    const popup = snapshotPopupRef.current;
+    if (!snapshotHover || !popup || !element.current || !library.current) return;
+    const container = element.current, L = library.current;
+    const position = () => {
+      const focused = snapshotHover.element.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+      popup.update();
+      let bounds = popup.getElement()?.getBoundingClientRect();
+      const area = container.getBoundingClientRect();
+      if (!bounds) return;
+      const top = Math.max(area.top, container.closest('.app-shell')?.querySelector('.topbar')?.getBoundingClientRect().bottom ?? area.top, container.closest('.map-workspace')?.querySelector('.traffic-status')?.getBoundingClientRect().bottom ?? area.top);
+      const sidebar = container.closest('.app-shell')?.querySelector<HTMLElement>('.sidebar');
+      const sidebarBounds = sidebar?.getBoundingClientRect();
+      const left = sidebar && sidebarBounds?.width && getComputedStyle(sidebar).visibility !== 'hidden' ? Math.max(area.left, sidebarBounds.right) : area.left;
+      const right = Math.min(area.right, container.parentElement?.querySelector('.map-tools')?.getBoundingClientRect().left ?? area.right);
+      const content = popup.getElement()?.querySelector<HTMLElement>('.snapshot-hover');
+      if (content) { content.style.maxWidth = `${Math.max(80, right - left - 16 - (bounds.width - content.getBoundingClientRect().width))}px`; popup.update(); bounds = popup.getElement()!.getBoundingClientRect(); }
+      const x = Math.max(left + 8 - bounds.left, Math.min(0, right - 8 - bounds.right));
+      const y = Math.max(top + 8 - bounds.top, Math.min(0, area.bottom - 8 - bounds.bottom));
+      if (x || y) { const offset = L.point(popup.options.offset ?? [0, 0]); popup.options.offset = offset.add([x, y]); popup.update(); }
+      focused?.focus({ preventScroll: true });
+    };
+    position();
+    const observer = new ResizeObserver(position); observer.observe(snapshotHover.element);
+    return () => observer.disconnect();
+  }, [snapshotHover]);
   // Separate close icons in screen pixels, keeping the source point and motion exact.
   // Plates and tooltips follow the displayed icon; a leader marks any displacement.
   useEffect(() => {
@@ -643,5 +743,6 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     {!ready && !mapError && <div className="map-loading"><LoaderCircle className="spin" size={20}/> {copy.mapLoading}</div>}
     {ready && !loading && cameras.length === 0 && !segments?.length && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
     {popupElement && popupCamera && createPortal(<StopEtaPopup camera={popupCamera} language={language} now={now} activeTracking={busSelection ?? null} onShowRoute={tracking => { onShowBusRoute?.(popupCamera, tracking); setPopupStopId(null); }} onShowDetails={() => { selectRef.current(popupCamera); setPopupStopId(null); }}/>, popupElement)}
+    {snapshotHover && createPortal(<><strong className="snapshot-hover-name">{language === 'en' ? snapshotHover.camera.nameEn || snapshotHover.camera.name : snapshotHover.camera.name}</strong><SnapshotImage camera={snapshotHover.camera} language={language} onActivity={onActivity}/></>, snapshotHover.element)}
   </section>;
 }

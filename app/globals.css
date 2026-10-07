@@ -139,6 +139,10 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .refresh-image { padding: 4px; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 8px; background: #f0f4f6; color: #116c79; flex-shrink: 0; }
 .subtle { font-size: 12px; line-height: 1.8; color: var(--muted); }
 .snapshot-note { white-space: pre-line; }
+.snapshot-hover { width: min(292px, calc(100vw - 80px)); overflow-y: auto; }
+.snapshot-hover-popup .leaflet-popup-tip-container { display: none; }
+.snapshot-hover-name { display: block; margin-bottom: 8px; }
+.snapshot-hover .snapshot-note { margin-bottom: 0; font-size: 11px; }
 .stale, .warning-text { color: #80551a !important; }
 .incident-text { white-space: pre-line; font-size: 14px; line-height: 1.8; background: #fdf6ee; border-radius: 12px; padding: 12px; margin: 8px 0; color: #4c3d28; }
 .incident-notices { border-top: 1px solid var(--border); padding: 8px 12px 12px; }
