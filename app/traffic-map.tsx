@@ -279,7 +279,8 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       const node = marker.getElement();
       if (node) { if (camera.kind === 'snapshot') node.removeAttribute('title'); else node.title = camera.kind === 'parking' ? copy.parkingAvailability(camera.vacancy?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—', camera.capacity?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—') : `${layerText(camera.kind, language).name}: ${name}`; node.setAttribute('aria-label', name); node.dataset.markerId = camera.id; }
       const label = document.createElement('span'); label.textContent = name;
-      marker.bindTooltip(label, { direction: 'top', offset: [0, -12] });
+      if (marker.getTooltip()) marker.setTooltipContent(label);
+      else marker.bindTooltip(label, { direction: 'top', offset: [0, -12] });
       if (!oldMarker) marker.on('click', () => { const latest = markerData.current.get(camera.id)?.camera; if (!latest) return; if (isBusStop(latest)) { if (!routeFocusRef.current) setPopupStopId(camera.id); } else selectRef.current(latest); });
       markers.current.set(camera.id, marker);
       markerData.current.set(camera.id, { camera, style, labelLines: plate?.lines.length });
@@ -379,8 +380,13 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       focused?.focus({ preventScroll: true });
     };
     position();
-    const observer = new ResizeObserver(position); observer.observe(snapshotHover.element);
-    return () => observer.disconnect();
+    let frame: number | undefined;
+    const observer = new ResizeObserver(() => {
+      if (frame !== undefined) return;
+      frame = requestAnimationFrame(() => { frame = undefined; position(); });
+    });
+    observer.observe(snapshotHover.element);
+    return () => { observer.disconnect(); if (frame !== undefined) cancelAnimationFrame(frame); };
   }, [snapshotHover]);
   // Separate close icons in screen pixels, keeping the source point and motion exact.
   // Plates and tooltips follow the displayed icon; a leader marks any displacement.

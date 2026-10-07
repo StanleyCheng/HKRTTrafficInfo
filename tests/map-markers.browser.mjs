@@ -208,6 +208,12 @@ try {
     const marker = page.locator('[data-marker-id="snapshot-1"]'), card = page.locator('.snapshot-hover');
     await hoverMarker(page, marker); await card.waitFor(); await card.locator('img').waitFor();
     await page.waitForTimeout(100);
+    const resizeNotifications = await card.evaluate(element => new Promise(resolve => {
+      let count = 0;
+      const observer = new ResizeObserver(() => count++); observer.observe(element);
+      setTimeout(() => { observer.disconnect(); resolve(count); }, 400);
+    }));
+    assert.ok(resizeNotifications <= 2, 'Loaded hover geometry settles without a frame-to-frame resize loop');
     assert.equal(await card.evaluate(element => {
       const card = element.closest('.leaflet-popup').getBoundingClientRect(), map = document.querySelector('.map-canvas').getBoundingClientRect(), tools = document.querySelector('.map-tools').getBoundingClientRect();
       return card.left >= map.left && card.right <= tools.left && card.bottom <= map.bottom;
