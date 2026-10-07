@@ -10,6 +10,7 @@ import {
 import { parseCsv, parseSegmentRouteNumbers, pickLatestPeriod, popupFields } from '../lib/traffic-parsing.ts';
 import { cameraFromFlowSegment, displayFlowSegments, searchTrafficItems } from '../lib/traffic-view.ts';
 import type { FlowSegment } from '../lib/traffic.ts';
+import { getCameraData } from '../lib/traffic-client.ts';
 
 test('speedLevel classifies urban-road traffic bands', () => {
   assert.equal(speedLevel(0), 'slow');
@@ -96,4 +97,23 @@ test('traffic search matches both languages, district names and identifiers with
   assert.deepEqual(searchTrafficItems([road, parking], 'Wan Chai', 'zh'), [parking]);
   assert.deepEqual(searchTrafficItems([road, parking], 'missing road', 'en'), []);
   assert.equal(road.camera.district, undefined);
+});
+
+test('parking joins private-car capacity with exact vacancy counts without inventing missing data', async () => {
+  const values = [10, 0, '12', undefined, null, '', ' ', -1, 'unknown', 'Infinity', 1.5, true];
+  const expected = [10, 0, 12, null, null, null, null, null, null, null, null, null];
+  const info = values.map((space, index) => ({ park_Id: String(index), name: `Park ${index}`, latitude: 22.3, longitude: 114.1, privateCar: { space } }));
+  const vacancy: { park_Id: string; privateCar: { vacancy_type?: string; vacancy: unknown }[] }[] = values.map((count, index) => ({ park_Id: String(index), privateCar: [{ vacancy_type: 'A', vacancy: count }] }));
+  for (const [index, type] of ['B', 'C', undefined].entries()) {
+    info.push({ park_Id: `status-${index}`, name: `Status ${index}`, latitude: 22.3, longitude: 114.1, privateCar: { space: 100 } });
+    vacancy.push({ park_Id: `status-${index}`, privateCar: [{ vacancy_type: type, vacancy: 1 }] });
+  }
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => Response.json({ results: new URL(String(input)).searchParams.get('data') === 'info' ? info : vacancy });
+  try {
+    const data = await getCameraData('parking');
+    assert.deepEqual(data.cameras.slice(0, values.length).map(camera => camera.capacity), expected);
+    assert.deepEqual(data.cameras.slice(0, values.length).map(camera => camera.vacancy), expected);
+    assert.deepEqual(data.cameras.slice(values.length).map(camera => [camera.vacancy, camera.capacity]), [[null, 100], [null, 100], [null, 100]]);
+  } finally { globalThis.fetch = originalFetch; }
 });

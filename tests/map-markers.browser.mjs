@@ -12,7 +12,7 @@ const imagePixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAA
 const network = JSON.parse(await fs.readFile(new URL('../data/mtr-network.json', import.meta.url), 'utf8'));
 const lrt = JSON.parse(await fs.readFile(new URL('../data/light-rail-stations.json', import.meta.url), 'utf8'));
 const featureCollection = (kind, extra = {}) => ({ type: 'FeatureCollection', features: [1, 2].map(index => ({ type: 'Feature', properties: { id: `${kind}-${index}`, code: `${kind}-${index}`, name: `${kind} fixture ${index}`, ...extra }, geometry: { type: 'Point', coordinates: [113.943 + index * .006, 22.280] } })) });
-async function create(mobile = false) {
+async function create(mobile = false, parking = [{ vacancy: 10, space: 100 }, { vacancy: 0 }]) {
   const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
   contexts.push(context);
   const observedAt = new Date().toISOString(), localTime = new Date(Date.now() + 8 * 3600000).toISOString();
@@ -27,7 +27,7 @@ async function create(mobile = false) {
       return route.fulfill({ headers, json: { features: Array.from({ length: count }, (_, i) => ({ attributes: { OBJECTID: i + 1, PopupInfo: `<table><tr><th>SITE_DESC_CHI</th><td>${kind} fixture ${i + 1}</td></tr><tr><th>SITE_DESC_ENG</th><td>${kind} fixture ${i + 1}</td></tr></table>` }, geometry: { x: kind === 'redlight' ? 113.951 : 113.943 + i * .006, y: kind === 'redlight' ? 22.282 : 22.285 } })) } });
     }
     if (url.pathname.includes('Traffic_Camera_Locations_')) return route.fulfill({ headers, body: `<image-list>${[1, 2].map(index => `<image><key>${index}</key><description>snapshot fixture ${index}</description><latitude>22.288</latitude><longitude>${113.943 + index * .006}</longitude><url>${origin}/fixture.jpg</url></image>`).join('')}</image-list>` });
-    if (url.pathname.endsWith('/carpark-info-vacancy')) return route.fulfill({ headers, json: { results: [1, 2].map(index => ({ park_Id: String(index), name: `parking fixture ${index}`, latitude: 22.292, longitude: 113.943 + index * .006, privateCar: [{ vacancy: 10 }] })) } });
+    if (url.pathname.endsWith('/carpark-info-vacancy')) return route.fulfill({ headers, json: { results: parking.map((counts, index) => ({ park_Id: String(index + 1), name: `parking fixture ${index + 1}`, latitude: 22.292, longitude: 113.943 + (index + 1) * .006, privateCar: url.searchParams.get('data') === 'info' ? { space: counts.space } : [{ vacancy_type: counts.type ?? 'A', vacancy: counts.vacancy }] })) } });
     if (url.searchParams.get('dataType') === 'rhrread') return route.fulfill({ headers, json: { rainfall: { data: [{ place: 'Islands District', max: 2 }, { place: 'Central & Western District', max: 3 }], endTime: observedAt } } });
     if (url.pathname.endsWith('/specialtrafficnews.xml')) return route.fulfill({ headers, body: `<body><message><msgID>1</msgID><ChinText>測試道路事故</ChinText><EngText>Fixture Road collision</EngText></message><message><msgID>2</msgID><ChinText>第二測試道路事故</ChinText><EngText>Other Road collision</EngText></message></body>` });
     if (url.hostname === 'www.als.gov.hk') return route.fulfill({ headers, json: { SuggestedAddress: [{ ValidationInformation: { Score: 100 }, Address: { PremisesAddress: { GeospatialInformation: { Latitude: '22.296', Longitude: url.searchParams.get('q') === 'Fixture Road' ? '113.949' : '113.955' } } } }] } });
@@ -84,6 +84,27 @@ async function test(name, run) {
 }
 try {
   await fs.mkdir(evidence, { recursive: true });
+  await test('Parking hover preserves location and shows bilingual vacancy / total counts in the native title', async () => {
+    const { page, context } = await create(false, [{ vacancy: 10, space: 100 }, { vacancy: 0, space: 0 }, { vacancy: 4 }, { space: 80 }, { vacancy: 1, space: 20, type: 'B' }, { vacancy: 0, space: 30, type: 'C' }]);
+    await page.evaluate(() => { window.__map.setView([22.292, 113.964], 15, { animate: false }); });
+    const expected = ['10 available / 100 total private car spaces', '0 available / 0 total private car spaces', '4 available / — total private car spaces', '— available / 80 total private car spaces', '— available / 20 total private car spaces', '— available / 30 total private car spaces'];
+    for (const [index, title] of expected.entries()) {
+      const marker = page.locator(`[data-marker-id="parking-${index + 1}"]`);
+      await marker.waitFor();
+      assert.equal(await marker.getAttribute('title'), title);
+      assert.equal(await marker.getAttribute('aria-label'), `parking fixture ${index + 1}`);
+    }
+    await page.locator('[data-marker-id="parking-1"] .marker-inner').hover();
+    await page.getByRole('tooltip', { name: 'parking fixture 1', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Chinese', exact: true }).click();
+    await page.waitForFunction(() => document.documentElement.lang === 'zh-HK');
+    assert.equal(await page.locator('[data-marker-id="parking-1"]').getAttribute('title'), '10 個空位 / 共 100 個私家車車位');
+    assert.equal(await page.locator('[data-marker-id="parking-2"]').getAttribute('title'), '0 個空位 / 共 0 個私家車車位');
+    await page.locator('[data-marker-id="parking-1"] .marker-inner').hover();
+    await page.getByRole('tooltip', { name: 'parking fixture 1', exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.__errors), []);
+    await context.close();
+  });
   await test('All point layers retain individual source records across zoom and language changes', async () => {
     const { page, context } = await create();
     const expected = { redlight: 3, speed: 2, snapshot: 2, parking: 2, rainfall: 2, incident: 2, crossing: 2, works: 2, toll: 2, boundary: 2, mtr: Object.keys(network.stations).length, lrt: lrt.stations.length, kmb: 2, citybus: 2, gmb: 2, nlb: 2, ferry: 2 };

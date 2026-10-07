@@ -273,7 +273,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       const marker = oldMarker ?? enableMarkerKeyboard(L.marker([camera.lat, camera.lng], { icon, keyboard: true, cameraKind: camera.kind } as Leaflet.MarkerOptions).addTo(group));
       if (oldMarker) marker.setIcon(icon).setLatLng([camera.lat, camera.lng]);
       const node = marker.getElement();
-      if (node) { node.title = `${layerText(camera.kind, language).name}: ${name}`; node.setAttribute('aria-label', name); node.dataset.markerId = camera.id; }
+      if (node) { node.title = camera.kind === 'parking' ? copy.parkingAvailability(camera.vacancy?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—', camera.capacity?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—') : `${layerText(camera.kind, language).name}: ${name}`; node.setAttribute('aria-label', name); node.dataset.markerId = camera.id; }
       const label = document.createElement('span'); label.textContent = name;
       marker.bindTooltip(label, { direction: 'top', offset: [0, -12] });
       if (!oldMarker) marker.on('click', () => { const latest = markerData.current.get(camera.id)?.camera; if (!latest) return; if (isBusStop(latest)) { if (!routeFocusRef.current) setPopupStopId(camera.id); } else selectRef.current(latest); });
@@ -281,7 +281,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       markerData.current.set(camera.id, { camera, style, labelLines: plate?.lines.length });
     });
     layoutMarkers.current();
-  }, [cameras, ready, language, mapZoom]);
+  }, [cameras, ready, language, copy, mapZoom]);
   // Separate close icons in screen pixels, keeping the source point and motion exact.
   // Plates and tooltips follow the displayed icon; a leader marks any displacement.
   useEffect(() => {

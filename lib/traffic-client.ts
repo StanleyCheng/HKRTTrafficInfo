@@ -348,8 +348,13 @@ async function loadIncidents(): Promise<CameraData> {
   return { cameras, count: cameras.length, expectedCount: notices.length, complete: true, fetchedAt: new Date().toISOString(), sourceLastModified: response.headers.get('Last-Modified'), source: speedNewsUrl, notices };
 }
 
-type ParkingInfo = { park_Id: string; name?: string; displayAddress?: string; latitude?: number | string; longitude?: number | string; opening_status?: string; heightLimits?: { height?: number | string }[]; district?: string; nature?: string; carpark_Type?: string };
-type ParkingVacancy = { park_Id: string; privateCar?: { vacancy?: number | string; lastupdate?: string }[] };
+type ParkingInfo = { park_Id: string; name?: string; displayAddress?: string; latitude?: number | string; longitude?: number | string; opening_status?: string; heightLimits?: { height?: number | string }[]; district?: string; nature?: string; carpark_Type?: string; privateCar?: { space?: number | string } };
+type ParkingVacancy = { park_Id: string; privateCar?: { vacancy_type?: string; vacancy?: number | string; lastupdate?: string }[] };
+
+function parkingCount(value: unknown): number | null {
+  const count = typeof value === 'number' || (typeof value === 'string' && value.trim()) ? Number(value) : NaN;
+  return Number.isSafeInteger(count) && count >= 0 ? count : null;
+}
 
 async function loadParking(): Promise<CameraData> {
   const [infoEn, infoZh, vacancy] = await Promise.all([
@@ -375,14 +380,15 @@ async function loadParking(): Promise<CameraData> {
     const lng = Number(row.longitude);
     if (!row.park_Id || !inHongKong(lat, lng)) continue;
     const live = vacancyByPark.get(row.park_Id);
-    const vacancyCount = live && live.vacancy !== undefined && live.vacancy !== null && Number(live.vacancy) >= 0 ? Number(live.vacancy) : null;
+    // Only type A reports a count; B reports availability and C reports closure.
+    const vacancyCount = live?.vacancy_type === 'A' ? parkingCount(live.vacancy) : null;
     const zh = zhNames.get(row.park_Id);
     cameras.push({
       id: `parking-${row.park_Id}`, sourceId: row.park_Id, kind: 'parking',
       name: zh?.name || row.name || row.park_Id, nameEn: row.name,
       lat, lng, district: row.district || undefined,
       remarks: (zh?.displayAddress || row.displayAddress || '').trim() || undefined,
-      vacancy: vacancyCount, heightLimit: Number(row.heightLimits?.[0]?.height) || undefined,
+      vacancy: vacancyCount, capacity: parkingCount(row.privateCar?.space), heightLimit: Number(row.heightLimits?.[0]?.height) || undefined,
       openingStatus: row.opening_status || undefined, dataUpdated: live?.lastupdate?.replace(' ', 'T') ? `${live.lastupdate.replace(' ', 'T')}+08:00` : undefined,
     });
   }

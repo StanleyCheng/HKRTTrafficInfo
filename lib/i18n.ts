@@ -82,6 +82,7 @@ type AppMessages = {
   speedLayerNote: string;
   parkingSpaces: string;
   parkingNoLive: string;
+  parkingAvailability: (vacancy: string, total: string) => string;
   heightLimitLabel: string;
   metres: (height: string) => string;
   openingStatusLabel: string;
@@ -194,6 +195,7 @@ export const messages: Record<Language, AppMessages> = {
     flowCoverage: (mapped, expected) => `已配對 ${mapped} / ${expected} 個官方車速路段；未有相符路網線段的不會顯示。`,
     speedLayerNote: '路段顏色按官方道路限速及實時平均車速分類：一般道路紅色 ≤15、黃色 ≤30、綠色 >30 km/h；限速 70 km/h 或以上道路紅色 ≤25、黃色 ≤50、綠色 >50 km/h。失效、格式錯誤或超過 10 分鐘的讀數顯示灰色。',
     parkingSpaces: '私家車空位', parkingNoLive: '暫無實時空位數據',
+    parkingAvailability: (vacancy, total) => `${vacancy} 個空位 / 共 ${total} 個私家車車位`,
     heightLimitLabel: '高度限制', metres: height => `${height} 米`, openingStatusLabel: '開放狀態',
     rainfallAmount: '過去一小時雨量', millimetres: mm => `${mm} 毫米`,
     rainfallNote: '天文台提供分區最高雨量讀數；標記位置為分區參考點，並非量度站。',
@@ -278,6 +280,7 @@ export const messages: Record<Language, AppMessages> = {
     flowCoverage: (mapped, expected) => `Matched ${mapped} / ${expected} official speed segments; segments without matching road geometry are not shown.`,
     speedLayerNote: 'Segment colours use official road speed limits and live average speeds: ordinary roads are red at ≤15, amber at ≤30 and green above 30 km/h; roads limited to 70 km/h or more are red at ≤25, amber at ≤50 and green above 50 km/h. Invalid, malformed or over-10-minute-old readings are grey.',
     parkingSpaces: 'Private car spaces', parkingNoLive: 'No live vacancy data',
+    parkingAvailability: (vacancy, total) => `${vacancy} available / ${total} total private car spaces`,
     heightLimitLabel: 'Height limit', metres: height => `${height} m`, openingStatusLabel: 'Opening status',
     rainfallAmount: 'Rainfall in the past hour', millimetres: mm => `${mm} mm`,
     rainfallNote: 'HKO publishes district-maximum readings; markers sit at district reference points, not measuring stations.',

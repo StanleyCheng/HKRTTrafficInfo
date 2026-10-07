@@ -15,7 +15,7 @@ export type Camera = {
   color?: string; rotation?: number; vehicleIcon?: string;
   level?: SpeedLevel; speedKmh?: number | null;
   speedLimitKmh?: number;
-  vacancy?: number | null; heightLimit?: number; openingStatus?: string;
+  vacancy?: number | null; capacity?: number | null; heightLimit?: number; openingStatus?: string;
   rainfallMm?: number;
   text?: string; textEn?: string;
   dataUpdated?: string;
