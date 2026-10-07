@@ -151,7 +151,6 @@ type AppMessages = {
   noCameraLocations: string;
   turnOnLayer: string;
   checkLayers: string;
-  clusterLabel: (count: number) => string;
 };
 
 export const messages: Record<Language, AppMessages> = {
@@ -226,7 +225,7 @@ export const messages: Record<Language, AppMessages> = {
     snapshotNoUpdateTime: '來源未提供影像更新時間', snapshotWaiting: '等待官方影像', refreshSnapshot: '更新快拍',
     snapshotStale: '此影像已超過 10 分鐘未更新，可能暫停服務。',
     snapshotNote: '每 2 分鐘自動重新讀取 · 香港時間\n更新時間取自官方影像檔案；拍攝時間以圖中標示為準。若顯示「No Service」，代表官方暫未提供影像。',
-    mapLabel: '香港交通互動地圖', mapKeyboardHelp: '使用方向鍵移動地圖，點選數字群組放大；使用面板搜尋以鍵盤查找道路及位置',
+    mapLabel: '香港交通互動地圖', mapKeyboardHelp: '使用方向鍵移動地圖，以 Tab 選取個別標記；使用面板搜尋以鍵盤查找道路及位置',
     zoomIn: '放大地圖', zoomOut: '縮小地圖',
     showAll: '顯示全港交通', returnToHongKong: '返回全港',
     locateMe: '顯示我的位置', locating: '正在取得位置…', locationFound: '已找到你的位置，地圖已移至你的位置。',
@@ -238,7 +237,6 @@ export const messages: Record<Language, AppMessages> = {
     mapLoading: '正在載入地圖', allLayersOff: '所有圖層已關閉', cameraLoadFailed: '暫時未能載入相機位置',
     noCameraLocations: '暫無相機位置資料', turnOnLayer: '開啟相機圖層，即可在地圖查看位置。',
     checkLayers: '請查看圖層狀態，並按重新整理再試。',
-    clusterLabel: count => `${count} 個相機位置，按下展開`,
   },
   en: {
     languageControl: 'Language', english: 'English', chinese: 'Chinese',
@@ -311,7 +309,7 @@ export const messages: Record<Language, AppMessages> = {
     snapshotNoUpdateTime: 'The source did not provide an image update time', snapshotWaiting: 'Waiting for official image', refreshSnapshot: 'Refresh snapshot',
     snapshotStale: 'This image has not updated for more than 10 minutes and may be temporarily unavailable.',
     snapshotNote: 'Automatically refreshed every 2 minutes · Hong Kong time\nUpdate time comes from the official image file; see the image for its capture time. “No Service” means the official source has no image available.',
-    mapLabel: 'Interactive map of Hong Kong traffic', mapKeyboardHelp: 'Use arrow keys to move the map and select a numbered cluster to zoom in; use panel search to find roads and locations by keyboard',
+    mapLabel: 'Interactive map of Hong Kong traffic', mapKeyboardHelp: 'Use arrow keys to move the map and Tab to select individual markers; use panel search to find roads and locations by keyboard',
     zoomIn: 'Zoom in', zoomOut: 'Zoom out',
     showAll: 'Show all Hong Kong traffic', returnToHongKong: 'Return to all Hong Kong',
     locateMe: 'Show my location', locating: 'Finding your location…', locationFound: 'Location found. The map is centred on your location.',
@@ -323,7 +321,6 @@ export const messages: Record<Language, AppMessages> = {
     mapLoading: 'Loading map', allLayersOff: 'All layers are off', cameraLoadFailed: 'Camera locations could not be loaded',
     noCameraLocations: 'No camera location data is available', turnOnLayer: 'Turn on a camera layer to see its locations on the map.',
     checkLayers: 'Check the layer status, then refresh and try again.',
-    clusterLabel: count => `${count} camera locations; select to expand`,
   },
 };
 

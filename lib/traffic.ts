@@ -12,7 +12,7 @@ export type Camera = {
   id: string; sourceId: string; kind: LayerKind; name: string; nameEn?: string;
   lat: number; lng: number; district?: string; districtEn?: string; region?: string; regionEn?: string; remarks?: string;
   sourceUpdated?: string; imageUrl?: string;
-  color?: string; rotation?: number;
+  color?: string; rotation?: number; vehicleIcon?: string;
   level?: SpeedLevel; speedKmh?: number | null;
   speedLimitKmh?: number;
   vacancy?: number | null; heightLimit?: number; openingStatus?: string;

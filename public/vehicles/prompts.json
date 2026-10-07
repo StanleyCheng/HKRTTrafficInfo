@@ -1,0 +1,166 @@
+{
+  "mode": "built-in image_gen",
+  "initialStyleGenerationPrompt": "Use case: stylized-concept\nAsset type: small moving vehicle icon for Hong Kong transit map.\nPrimary request: one cute miniature Hong Kong MTR urban-line train, based on the actual Q-Train: metallic silver body, charcoal wraparound cab windshield, bright red framing around cab glass and lower front, small orange swoosh on flank, silver roof equipment, dark rectangular side windows and sliding silver doors. A short single cab car, compact toy proportions yet recognisable real train.\nScene/backdrop: genuinely transparent background with actual alpha.\nStyle/medium: polished 3D toy miniature, soft rounded corners, clean diecast finish, simple readable forms, soft studio lighting.\nComposition/framing: one vehicle centered, entire vehicle visible, elevated almost-top-down three-quarter view. Longitudinal centerline strictly vertical, nose/bow at the TOP of the image (12 o'clock), tail at BOTTOM, see roof and right flank; the front windshield is at top. This is a heading-rotated map marker. Vehicle fills 82% of square canvas.\nConstraints: a thin pale buttery-yellow cutout edge hugging the vehicle silhouette for map visibility; no background plane, no tracks, no ground, no cast shadow beyond outline, no words, no numbers, no branding, no route badge, no watermarks, no people, no face, no extra objects. No full train consist; one cab car only.",
+  "orientation": "Final artwork faces nose-down; original urban prompt requested up, but the accepted generated pose faces down. Renderer applies a 180-degree heading offset.",
+  "styleReference": "rail-urban.webp",
+  "assets": [
+    {
+      "asset": "bus-citybus",
+      "original": "exec-c2f850f1-0ac3-441c-a15d-4487cdf92fe5.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong Citybus Enviro500 double-decker bus. Actual modern Citybus corporate livery: dominant sunny yellow body and roof, vivid deep blue rear side panel and lower side section separated from yellow by a thin diagonal red band; front remains yellow, two decks of black windows, oversized friendly broad front, thick rubber wheels. Rounded stubby tall double-decker.",
+      "sources": [
+        "https://www.citybus.com.hk/tc/uploadedPublication/9080_Full.pdf"
+      ],
+      "src": "/vehicles/bus-citybus.webp"
+    },
+    {
+      "asset": "bus-gmb",
+      "original": "exec-bb4cd59e-6df7-4ec5-a1ef-28e9d040308a.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong Toyota Coaster green-roof public light bus minibus. Actual green roof and upper cap, warm ivory/cream white lower body, thin green flank stripe, big black front windshield, ONE row of dark passenger windows, black rubber wheels. Very cute little single-deck boxy minibus silhouette with rounded corners, much smaller and shorter than big buses.",
+      "sources": [
+        "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/minibuses/"
+      ],
+      "src": "/vehicles/bus-gmb.webp"
+    },
+    {
+      "asset": "bus-kmb",
+      "original": "exec-75b8e57a-bb1f-478e-ac87-ef4648a7a602.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong Kowloon Motor Bus KMB modern Enviro500 double-decker city bus. Actual bright red body with metallic silver roof and silver lower accent, two decks of large charcoal-black rectangular windows, broad two-tier front windshield, two pairs of thick black rubber wheels, left front boarding door visible. Stubby tall double-decker with rounded front corners.",
+      "sources": [
+        "https://www.kmb.hk/morekmb/moreKMB2024.pdf"
+      ],
+      "src": "/vehicles/bus-kmb.webp"
+    },
+    {
+      "asset": "bus-lwb",
+      "original": "exec-c07aa34b-07bb-4dd8-a85a-b771cf3d064c.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong Long Win LWB airport Enviro500 double-decker bus. Actual vivid orange body with white/light silver roof and white flank accent panels, black window band on both decks, broad two-tier front windshield, small orange side mirrors, thick black rubber wheels. Compact tall double-decker, rounded front corners.",
+      "sources": [
+        "https://www.kmb.hk/morekmb/moreLWB2024.pdf"
+      ],
+      "src": "/vehicles/bus-lwb.webp"
+    },
+    {
+      "asset": "bus-nlb",
+      "original": "exec-79a3b6b0-eb22-4ce9-8986-bee3b512790c.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong New Lantao Bus NLB MAN single-decker rural low-floor bus. Actual white main body with dark forest-green sweeping wave stripe and subtle gold wavy accent along flank, white roof, large black windshield and single row of dark passenger windows. Green nose accents, chunky rubber wheels. Single deck only, short broad friendly rounded bus.",
+      "sources": [
+        "https://www.nlb.com.hk/assets/uploads/cover_photos/e5f4a-recruitment.jpg"
+      ],
+      "src": "/vehicles/bus-nlb.webp"
+    },
+    {
+      "asset": "ferry-fortune",
+      "original": "exec-cf289091-30be-4eff-8712-daf0dc0f585f.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong Fortune Ferry ordinary two-deck passenger ferry seen on operator official fleet introduction banner. Actual livery: white upper cabin/superstructure, dark royal-blue lower hull, thin red stripe immediately above blue hull, two rows of black rectangular passenger windows, white small raised wheelhouse, roof mast, black round rubber tyre fenders. Broad rounded monohull bow DOWN, compact passenger ferry. No water/wake.",
+      "sources": [
+        "https://www.fortuneferry.com.hk/zh/home/ferry_introduction"
+      ],
+      "src": "/vehicles/ferry-fortune.webp"
+    },
+    {
+      "asset": "ferry-hkkf",
+      "original": "exec-86629dd4-c3d2-43c8-836f-d52ffb248895.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong & Kowloon Ferry HKKF Sea Serene class two-deck passenger catamaran. Actual operator fleet photograph livery: black/dark charcoal twin hulls, white wedge-shaped forward superstructure, vivid yellow aft side panel and yellow upper aft roof, dark continuous passenger windows, three narrow diagonal yellow/white stripes down side. Two separated pointed bow noses DOWN, black rubber fenders, small roof mast. No blue hull, no water/wake.",
+      "sources": [
+        "https://hkkf.com.hk/en/our-fleet/",
+        "https://hkkf.com.hk/wp-content/uploads/2019/04/f007.jpg"
+      ],
+      "src": "/vehicles/ferry-hkkf.webp"
+    },
+    {
+      "asset": "ferry-star",
+      "original": "exec-6383f89a-9244-47e5-bb11-c398f372e308.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong Star Ferry traditional double-ended passenger harbour ferry. Actual iconic dark forest-green hull and dark-green roof, ivory-white superstructure, TWO passenger decks with long open rectangular dark window rows, small central white wheelhouse and short funnel. Rounded classic broad double-ended boat hull, low railings, black round rubber side fenders. Cute stubby ferry, front bow DOWN, no water/wake.",
+      "sources": [
+        "https://starferry.com.hk/index.php/en/theCompany"
+      ],
+      "src": "/vehicles/ferry-star.webp"
+    },
+    {
+      "asset": "ferry-sun",
+      "original": "exec-c624f58d-269c-4987-b98c-9cd21c0b34de.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong Sun Ferry modern Xin Ming Zhu passenger catamaran. Actual livery: white superstructure and roof, bright azure blue lower hull and blue curving side wave stripe, two levels of dark continuous window band, small orange/red safety life rings, compact elevated bridge. Broad twin-hull catamaran silhouette with two separated blunt bows facing DOWN, no water/wake. Also retain the actual thin vermilion-red keel immediately below the blue hull, as seen on Xin Ming Zhu III.",
+      "sources": [
+        "https://www.sunferry.com.hk/zh/sun-ferry/about-us/milestones/1000",
+        "https://www.sunferry.com.hk/assets/uploads/milestones/FxWBOKiR-珠3_2_修.jpg"
+      ],
+      "src": "/vehicles/ferry-sun.webp"
+    },
+    {
+      "asset": "rail-airport",
+      "original": "exec-cdaa750d-9660-49ec-819b-a1c7e0b159cd.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong MTR Airport Express CAF A-train cab car. Actual livery: deep teal-blue sweeping rounded nose surround and teal side stripe, metallic silver main body and roof, large charcoal wraparound windshield, small white headlights, no red cab border. Smooth aerodynamic rounded train silhouette.",
+      "sources": [
+        "https://estore.mtr.com.hk/en/products/mtr-mini-diecast-train-airport-express"
+      ],
+      "src": "/vehicles/rail-airport.webp"
+    },
+    {
+      "asset": "rail-disney",
+      "original": "exec-f3ba1388-f5f2-48f1-8735-016e1c4f1c1f.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong MTR Disneyland Resort Line train cab car. Actual distinctive livery: deep navy dark-blue cab front, metallic silver body and roof, blue stripe along lower side with a thin gold trim, dark side windows shaped like Mickey heads (round circle with two small round ear circles), broad curved black cab windshield. Toy train not a character, no added face, no characters riding it. Short single cab car.",
+      "sources": [
+        "https://estore.mtr.com.hk/en/pages/disney-20th-anniversary-xnolongerinuse"
+      ],
+      "src": "/vehicles/rail-disney.webp"
+    },
+    {
+      "asset": "rail-east",
+      "original": "exec-47d180f2-8564-4410-8505-f7d09708c5fa.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong MTR East Rail Line Hyundai Rotem R-train cab car. Metallic silver body, bright red U-shaped cab windshield frame and lower nose, orange curved flank accent, black window band. Cab has distinctive central vertical rectangular gangway emergency door in black windshield, silver grey roof vents, blunt rounded nose. Short single cab car.",
+      "sources": [
+        "https://estore.mtr.com.hk/en/pages/mtr-tiny-mini-diecast-trains-1234568"
+      ],
+      "src": "/vehicles/rail-east.webp"
+    },
+    {
+      "asset": "rail-light",
+      "original": "exec-a6fbe427-2835-448d-92c1-be82270dd88c.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong MTR Phase5 Light Rail street-running single tram car. Actual livery from MTR official Phase5 fleet photograph: white/light grey body and roof, burgundy RED frame across top edge and below black cab windshield, white lower nose, flowing thin PURPLE and OLIVE GREEN wave stripes along flank. Black front windshield split by vertical silver pillar, ONE clearly visible small raised diamond pantograph on roof. Boxy tram silhouette with rounded corners, small chunky rail wheels, no track. Short single Light Rail car.",
+      "sources": [
+        "https://www.mtr.com.hk/en/corporate/projects/projects_ops_improve_train_lrt.html",
+        "https://www.mtr.com.hk/en/corporate/images/projects/train_lrt.jpg"
+      ],
+      "src": "/vehicles/rail-light.webp"
+    },
+    {
+      "asset": "rail-south",
+      "original": "exec-4a6ac7b4-ad41-4af7-8c61-8e71f04e8752.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong MTR South Island Line S-train compact driverless cab car. Metallic silver, red lower cab band and red curved frame around broad black front glass, orange flank swoosh, silver roof HVAC. Round black front window and more compact nose than mainline rail, tiny chunky wheels. Short single cab car.",
+      "sources": [
+        "https://estore.mtr.com.hk/en/products/mtr-mini-diecast-train-south-island-line"
+      ],
+      "src": "/vehicles/rail-south.webp"
+    },
+    {
+      "asset": "rail-tuen-ma",
+      "original": "exec-37d5ef8c-0b3a-40ea-b0a8-553a68a06e87.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong MTR Tuen Ma Line modern C-train cab car. Metallic silver main body, red curved front border around black cab windshield, silver central rectangular gangway emergency door down middle of windshield, orange sweeping arc on side panel, small white-red flank waves. Angular broad cab silhouette and two small triangular white headlights, silver roof HVAC. Single short cab car.",
+      "sources": [
+        "https://www.mtr.com.hk/archive/corporate/en/press_release/PR-16-083-E.pdf"
+      ],
+      "src": "/vehicles/rail-tuen-ma.webp"
+    },
+    {
+      "asset": "rail-tung-chung",
+      "original": "exec-7f99e9d0-def4-4cd2-8394-5bc5382eae91.png",
+      "prompt": "Use case: stylized-concept\nAsset type: small animated moving vehicle bitmap for Hong Kong transit map, CSS supplies animation.\nInput images: image1 is STYLE AND POSE REFERENCE ONLY; use matching miniature toy rendering, proportions, pose and fine yellow outline, replace subject with requested vehicle.\nScene/backdrop: true transparent alpha, no background.\nStyle/medium: VERY CUTE chunky chibi 3D diecast toy, stubby body, width-to-length about 1:1.5, rounded corners, simplified oversize details readable at32pixels; soft studio light, polished clean materials.\nComposition/framing: single complete vehicle centered, elevated three-quarter view seeing roof and right side, FRONT/NOSE/BOW pointing DOWN toward 6o'clock, tail UP, long axis VERTICAL; centered with10percent transparent margin.\nConstraints: thin PALE CREAM #fff3b0 edge hugging vehicle silhouette. No ground plane, no railway track, no cast shadow outside outline, no water, no wake, no motion lines, no people, no logos, no text, no letters/numbers, no route badge, no faces, no extra objects, no watermark.\nSubject: Hong Kong MTR Tung Chung Line CAF A-train cab car. Actual livery: metallic silver main body and roof, orange rounded band framing broad black cab windshield, orange horizontal side stripe, black lower nose, white headlights. Broad curved smooth streamlined cab; short single cab car.",
+      "sources": [
+        "https://estore.mtr.com.hk/en/products/mtr-mini-diecast-train-tung-chung-line"
+      ],
+      "src": "/vehicles/rail-tung-chung.webp"
+    },
+    {
+      "asset": "rail-urban",
+      "original": "exec-91ed2f4f-b9d3-4ae4-863e-3b98ecd0c2f1.png",
+      "prompt": "Use case: precise-object-edit\nInput images: image 1 is the edit target train icon. Keep silver/red/orange real Hong Kong train livery and transparent alpha.\nPrimary request: make this a VERY CUTE chibi toy icon with stubby compact body (length only 1.5 times width), oversized friendly round cab and simplified toy wheels. ROTATE THE TRAIN VIEW: front driving cab must point toward the TOP of the image, rear at BOTTOM. Long axis VERTICAL. From overhead, front windshield visible on the UPPER end, right side flank visible; tail BOTTOM. Nose UP at 12 o'clock. Entire vehicle fit with 10% transparent margin.\nStyle: soft clean 3D toy, same thin pale-yellow cutout outline. No background, no shadow plane, no text/logos, no numbers, no extra objects.",
+      "sources": [
+        "https://www.mtr.com.hk/en/corporate/projects/projects_ops_improve_train.html",
+        "https://estore.mtr.com.hk/en/products/q-train-models"
+      ],
+      "src": "/vehicles/rail-urban.webp"
+    }
+  ],
+  "fleetNote": "Artwork represents recognizable fleet liveries. Position feeds do not identify exact rolling stock or vessels for each run."
+}

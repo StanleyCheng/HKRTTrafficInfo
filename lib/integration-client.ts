@@ -5,6 +5,7 @@ import { mtrStationCollection, mtrTrackCollection, stationRecord, lineRecord, pr
 import { lrtStationCollection, lrtTrackCollection, lrtPoint, lrtStation } from './lrt-network.ts';
 import { projectTrain } from './mtr-estimate.ts';
 import { placeOnPath } from './ferry-run.ts';
+import { ferryVehicleIcon } from './vehicle-icons.ts';
 import { decorateControlPoints } from './control-points.ts';
 
 export type MapViewport = { lng: number; lat: number; zoom: number };
@@ -137,7 +138,7 @@ export function movingCameras(kind: 'mtr' | 'lrt' | 'ferry', data: CameraData, n
   if (kind === 'ferry') return (data.payload as FerryResponse).vessels.flatMap(vessel => {
     const path = vessel.pathLng?.map((lng, i) => ({ lng, lat: vessel.pathLat?.[i] ?? vessel.lat })) ?? [{ lng: vessel.fromLng ?? vessel.lng, lat: vessel.fromLat ?? vessel.lat }, { lng: vessel.toLng ?? vessel.lng, lat: vessel.toLat ?? vessel.lat }];
     const spot = vessel.fix === 'gps' ? vessel : placeOnPath(path, vessel.departAt ?? null, vessel.arriveAt ?? null, now);
-    return spot ? [{ id: `ferry-vessel-${vessel.id}`, sourceId: vessel.id, kind, name: vessel.nameTc, nameEn: vessel.nameEn, lat: spot.lat, lng: spot.lng, estimated: vessel.fix !== 'gps', positionType: 'vehicle', dataUpdated: data.observedAt ?? undefined, arrivals: [{ route: vessel.route, destination: vessel.destTc || vessel.nameTc, destinationEn: vessel.destEn || vessel.nameEn, minutes: spot.minutes, eta: vessel.eta }] }] : [];
+    return spot ? [{ id: `ferry-vessel-${vessel.id}`, sourceId: vessel.id, kind, vehicleIcon: ferryVehicleIcon(vessel.route, vessel.id), name: vessel.nameTc, nameEn: vessel.nameEn, lat: spot.lat, lng: spot.lng, estimated: vessel.fix !== 'gps', positionType: 'vehicle', dataUpdated: data.observedAt ?? undefined, arrivals: [{ route: vessel.route, destination: vessel.destTc || vessel.nameTc, destinationEn: vessel.destEn || vessel.nameEn, minutes: spot.minutes, eta: vessel.eta }] }] : [];
   });
   return (data.payload as MtrResponse | LrtResponse).trains.flatMap(train => {
     const spot = kind === 'mtr' ? projectNetworkTrain(train, now) : projectTrain({ ...train, observedAt: Date.parse(train.observedAt) }, lrtPoint, now);

@@ -24,7 +24,7 @@ const variants = [
 function response(selection, mode = 'live', correction = 0) {
   const now = Date.now();
   const key = JSON.stringify(selection);
-  return { ok: true, observedAt: new Date(now).toISOString(), stale: mode === 'stale', route: { key, operator: selection.operator, route: selection.route, geometry: mode === 'approximate' ? 'stops' : 'road', coordinates, stops: [0, 3, 5].map((index, seq) => ({ id: `route-${seq}`, seq: seq + 1, nameTc: `測試車站${seq + 1}`, nameEn: ['Fixture origin', 'Fixture interchange', 'Fixture terminus'][seq], lng: coordinates[index][0], lat: coordinates[index][1], distance: distance[index] })) }, vehicle: ['empty', 'stale', 'approximate'].includes(mode) ? null : { id: key, fromDistance: 0, toDistance: distance[3], departureAt: now - 60000 - correction, arrivalAt: now + 120000 - correction, validUntil: now + 180000 } };
+  return { ok: true, observedAt: new Date(now).toISOString(), stale: mode === 'stale', route: { key, operator: selection.operator, company: selection.company, route: selection.route, geometry: mode === 'approximate' ? 'stops' : 'road', coordinates, stops: [0, 3, 5].map((index, seq) => ({ id: `route-${seq}`, seq: seq + 1, nameTc: `測試車站${seq + 1}`, nameEn: ['Fixture origin', 'Fixture interchange', 'Fixture terminus'][seq], lng: coordinates[index][0], lat: coordinates[index][1], distance: distance[index] })) }, vehicle: ['empty', 'stale', 'approximate'].includes(mode) ? null : { id: key, fromDistance: 0, toDistance: distance[3], departureAt: now - 60000 - correction, arrivalAt: now + 120000 - correction, validUntil: now + 180000 } };
 }
 async function create({ mobile = false, reducedMotion = 'no-preference' } = {}) {
   const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, reducedMotion });
@@ -70,10 +70,13 @@ async function select(fixture, variant) {
   const { page, mobile } = fixture;
   if (mobile && await page.locator('.sidebar.mobile-open').count()) await page.locator('.mobile-panel-close').click();
   await page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
-  await page.locator(`.camera-marker[title$="${variant.operator} fixture stop"]`).click();
-  const button = page.locator(`.bus-route-button[aria-label^="Show route ${variant.route} ·"]`).first();
+  if (await page.locator('.map-canvas.route-focus').count()) await page.locator('.map-canvas').click({ position: { x: 30, y: 150 } });
+  await page.locator(`.camera-marker[title$="${variant.operator} fixture stop"] .marker-displacement`).click();
+  const button = page.locator(`.stop-eta-popup .bus-route-button[aria-label^="Show route ${variant.route} ·"]`).first();
+  await page.evaluate(() => { window.__busRouteFitComplete = false; window.__map.once('zoomend', () => { window.__busRouteFitComplete = true; }); });
   await button.click();
   await page.locator('.bus-route-polyline').waitFor();
+  await page.waitForFunction(() => window.__busRouteFitComplete);
 }
 async function samples(page, count = 14) {
   return page.evaluate(count => new Promise(resolve => { const frames = []; function frame() { const e = document.querySelector('.bus-route-marker'); frames.push(e?.style.transform); if (frames.length >= count) resolve(frames); else requestAnimationFrame(frame); } requestAnimationFrame(frame); }), count);
@@ -95,11 +98,22 @@ try {
       const actual = f.requests.at(-1);
       for (const [key, value] of Object.entries(variant)) assert.equal(actual[key], String(value), `${variant.operator} ${key}`);
       await f.page.locator('.bus-route-marker').waitFor();
+      await f.page.waitForFunction(() => { const image = document.querySelector('.bus-route-marker .vehicle-art'); return image?.complete && image.naturalWidth > 0; });
+      const artwork = await f.page.locator('.bus-route-marker').evaluate(element => ({
+        src: element.querySelector('.vehicle-art').getAttribute('src'), heading: element.querySelector('.vehicle-heading').style.transform,
+        running: element.classList.contains('is-running'), width: element.getBoundingClientRect().width,
+        animations: element.getAnimations({ subtree: true }).map(animation => animation.playState),
+      }));
+      assert.match(artwork.src, new RegExp(`bus-${variant.company === 'LWB' ? 'lwb' : variant.operator}`), 'Bus miniature matches its actual operator');
+      assert.match(artwork.heading, /^rotate\(-?[\d.]+deg\)$/, 'Bearing rotates the inner wrapper');
+      assert.equal(artwork.width, 32); assert.equal(artwork.running, true);
+      assert.ok(artwork.animations.includes('running'), 'Estimated bus runs its CSS miniature animation');
       const geometry = await f.page.evaluate(() => { let points; window.__map.eachLayer(layer => { if (layer.options?.className === 'bus-route-polyline') points = layer.getLatLngs().map(p => [p.lng, p.lat]); }); return { points, bounds: window.__map.getBounds().toBBoxString() }; });
       assert.deepEqual(geometry.points, coordinates, 'Route includes road bends between the three stops');
       const [west, south, east, north] = geometry.bounds.split(',').map(Number);
       for (const [lng, lat] of coordinates) assert.ok(lng >= west && lng <= east && lat >= south && lat <= north, 'Whole route must fit');
-      assert.ok(new Set(await samples(f.page)).size >= 10, 'Bus moves continuously with fractional projected coordinates');
+      const motion = await samples(f.page);
+      assert.ok(new Set(motion).size >= 10, `${variant.operator} ${variant.route} moves continuously: ${new Set(motion).size} positions; ${await f.page.locator('.map-canvas').getAttribute('class')}`);
     }
     assert.deepEqual(await f.page.evaluate(() => window.__errors), []);
     await f.page.screenshot({ path: path.join(evidence, 'desktop-route.png') });
@@ -119,6 +133,8 @@ try {
     f.controls.mode = 'stale'; await refresh(f.page);
     await f.page.locator('.bus-route-marker').waitFor({ state: 'detached' });
     assert.equal(await f.page.locator('.bus-route-polyline').count(), 1, 'Stale route stays visible without misleading movement');
+    // Selecting a route from the map popup keeps the current sidebar tab.
+    await f.page.locator('#panel-tab-details').click();
     await f.page.getByRole('button', { name: 'Close route', exact: true }).click();
     await f.page.locator('.bus-route-polyline').waitFor({ state: 'detached' });
     await f.context.close();
@@ -126,6 +142,7 @@ try {
   await test('Missing position and unavailable road geometry remain explicit without invented movement', async () => {
     const f = await create(); f.controls.mode = 'approximate'; await select(f, variants[2]);
     assert.equal(await f.page.locator('.bus-route-marker').count(), 0);
+    await f.page.locator('#panel-tab-details').click();
     await f.page.getByText('Route connects published stops; road geometry is unavailable.', { exact: true }).waitFor();
     await f.page.getByText('No current position estimate available.', { exact: true }).waitFor();
     await f.context.close();
@@ -145,8 +162,9 @@ try {
     await f.page.locator('.layer-card.kmb [role="switch"]').click();
     f.controls.delay = 700;
     await f.page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
-    await f.page.locator('.camera-marker[title$="kmb fixture stop"]').click();
+    await f.page.locator('.camera-marker[title$="kmb fixture stop"] .marker-displacement').click();
     await f.page.locator('.bus-route-button').first().click();
+    await f.page.locator('#panel-tab-details').click();
     await f.page.locator('.clear-selection').click();
     await f.page.waitForTimeout(900);
     assert.equal(await f.page.locator('.bus-route-polyline, .bus-route-marker').count(), 0, 'Cancelled selection cannot revive after response');

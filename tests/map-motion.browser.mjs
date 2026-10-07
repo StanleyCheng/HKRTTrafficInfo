@@ -44,8 +44,8 @@ async function create({ mobile = false, reducedMotion = 'no-preference', gps = f
   });
   await context.route('**/api/lrt**', route => route.fulfill({ json: { ok: true, observedAt, boards: [], trains: [{ id: 'motion-lrt', line: '614P', dest: '100', plat: '1', ttnt: .3, observedAt, delay: false, timeType: 'A', anchor: '240', path: ['1', '240', '250', '100'], hold: ['1', '240', '250', '100'] }] } }));
   await context.route('**/api/ferry**', route => {
-    const vessels = [{ id: 'motion-ferry', nameTc: '測試渡輪', nameEn: 'Fixture ferry', lng: 114.163, lat: 22.291, route: 'Fixture', fix: 'clock', eta: new Date(Date.parse(observedAt) + 180000).toISOString(), minutes: 3, departAt: Date.parse(observedAt) - 30000, arriveAt: Date.parse(observedAt) + 180000, pathLng: [114.159, 114.166], pathLat: [22.287, 22.296] }];
-    if (gps) vessels.push({ id: 'motion-gps', nameTc: '定位渡輪', nameEn: 'GPS fixture ferry', lng: gpsUpdated ? 114.163 : 114.161, lat: 22.292, route: 'Fixture', fix: 'gps', eta: '', minutes: 3 });
+    const vessels = [{ id: 'motion-ferry', nameTc: '測試渡輪', nameEn: 'Fixture ferry', lng: 114.163, lat: 22.291, route: '天星', fix: 'clock', eta: new Date(Date.parse(observedAt) + 180000).toISOString(), minutes: 3, departAt: Date.parse(observedAt) - 30000, arriveAt: Date.parse(observedAt) + 180000, pathLng: [114.159, 114.166], pathLat: [22.287, 22.296] }];
+    if (gps) vessels.push({ id: 'motion-gps', nameTc: '定位渡輪', nameEn: 'GPS fixture ferry', lng: gpsUpdated ? 114.163 : 114.161, lat: 22.292, route: '天星', fix: 'gps', eta: '', minutes: 3 });
     return route.fulfill({ json: { ok: true, observedAt, piers: [], vessels } });
   });
   await context.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgQIAI7mY6QAAAABJRU5ErkJggg==', 'base64') }));
@@ -98,6 +98,12 @@ async function dotStyles(page) {
     return result.sort((a, b) => a.lat - b.lat);
   });
 }
+async function vehicleMotion(page) {
+  return page.locator('.vehicle-marker').evaluateAll(elements => elements.map(element => ({
+    title: element.title, running: element.classList.contains('is-running'),
+    animations: element.getAnimations({ subtree: true }).map(animation => animation.playState),
+  })));
+}
 async function test(name, run) {
   if (filter && !filter.test(name)) return;
   try { await run(); results.push({ name, ok: true }); console.log('PASS ' + name); }
@@ -106,19 +112,20 @@ async function test(name, run) {
 
 try {
   await fs.mkdir(evidence, { recursive: true });
-  await test('Desktop: readable rail artwork, scaled ferry, continuous fractional movement and stable marker identity on feed/language changes', async () => {
+  await test('Desktop: loaded vehicle images, continuous fractional movement and stable marker identity on feed/language changes', async () => {
     const { page, context, mtrCalls } = await create();
+    await page.waitForFunction(() => [...document.querySelectorAll('.vehicle-art')].every(image => image.complete && image.naturalWidth > 0));
     const sizes = await page.locator('.vehicle-marker').evaluateAll(elements => elements.map(element => {
-      const body = element.querySelector('.marker-inner').getBoundingClientRect(), svg = element.querySelector('svg').getBoundingClientRect(), target = element.getBoundingClientRect();
-      return { body: body.width, svg: svg.width, target: target.width, tabindex: element.tabIndex, rail: element.classList.contains('rail-marker') };
+      const image = element.querySelector('.vehicle-art'), target = element.getBoundingClientRect();
+      return { loaded: image?.complete && image.naturalWidth > 0, target: target.width, tabindex: element.tabIndex };
     }));
     for (const size of sizes) {
-      assert.ok(Math.abs(size.body - (size.rail ? 26 : 16.64)) < .1, `Rail artwork uses 26px; other visible glyphs retain 16.64px: ${JSON.stringify(size)}`);
-      assert.ok(Math.abs(size.svg - (size.rail ? 22 : 10.88)) < .1, 'Rail SVG uses 22px; other SVGs retain 10.88px');
-      assert.ok(Math.abs(size.target - 26) < .01 && size.tabindex === 0, 'Small glyph retains its 26px pointer bounds and keyboard focus');
+      assert.equal(size.loaded, true, 'Generated vehicle artwork must load');
+      assert.ok(Math.abs(size.target - 32) < .01 && size.tabindex === 0, 'Vehicle retains its 32px pointer bounds and keyboard focus');
     }
     const samples = await frameSamples(page);
     for (let index = 0; index < 3; index++) assert.ok(new Set(samples.map(sample => sample[index])).size >= 10, `Vehicle ${index} must move visibly on at least 10 of 14 frames`);
+    assert.ok((await vehicleMotion(page)).every(vehicle => vehicle.running && vehicle.animations.includes('running')), 'Moving miniatures run their CSS motion');
     await page.evaluate(() => { window.__originalVehicles = [...document.querySelectorAll('.vehicle-marker')]; });
     const calls = mtrCalls();
     await page.getByRole('button', { name: 'Chinese', exact: true }).click();
@@ -132,57 +139,39 @@ try {
     await page.screenshot({ path: path.join(evidence, 'desktop-motion.png') });
     await context.close();
   });
-  await test('Train artwork: yellow rail outlines, distinct MTR/LRT colors and keyboard targets preserve ferry styling', async () => {
+  await test('Vehicle images: distinct MTR/LRT/ferry artwork, yellow rail stations and keyboard targets', async () => {
     const { page, context } = await create({ reducedMotion: 'reduce', deviceScaleFactor: 3 });
-    const rail = await page.locator('.rail-marker').evaluateAll(elements => elements.map(element => {
-      const body = element.querySelector('.marker-inner'), svg = body.querySelector('svg');
-      return { station: element.classList.contains('station-marker'), border: getComputedStyle(body).borderColor, width: svg.getBoundingClientRect().width, strokes: [...svg.children].map(shape => getComputedStyle(shape).stroke) };
-    }));
-    assert.ok(rail.some(marker => marker.station), 'Fixture must render rail stations as well as moving trains');
-    for (const marker of rail) {
-      assert.equal(marker.border, 'rgb(255, 243, 176)', 'Rail marker border stays light yellow');
-      assert.ok(marker.strokes.every(stroke => stroke === 'rgb(255, 243, 176)'), 'Every station/train outline stays light yellow');
-      if (marker.station) assert.equal(marker.width, 14, 'Station glyph retains its 14px size');
-    }
-    const trains = page.locator('.rail-marker.vehicle-marker');
-    assert.equal(await trains.count(), 2, 'MTR and LRT vehicles both receive rail artwork');
-    const artwork = await trains.evaluateAll(elements => elements.map(element => ({
-      html: element.querySelector('svg').innerHTML,
-      body: getComputedStyle(element.querySelector('.train-body')).fill,
-      cab: getComputedStyle(element.querySelector('.train-cab')).fill,
-      livery: getComputedStyle(element.querySelector('.train-livery')).fill,
-      role: element.getAttribute('role'), tabindex: element.tabIndex,
-      label: element.getAttribute('aria-label'), title: element.title,
+    const stations = await page.locator('.rail-marker.station-marker').evaluateAll(elements => elements.map(element => ({
+      border: getComputedStyle(element.querySelector('.marker-inner')).borderColor,
+      strokes: [...element.querySelector('svg').children].map(shape => getComputedStyle(shape).stroke),
+    })));
+    assert.ok(stations.length, 'Fixture includes stationary rail symbols');
+    assert.ok(stations.every(marker => marker.border === 'rgb(255, 243, 176)' && marker.strokes.every(stroke => stroke === marker.border)), 'Rail station outlines stay light yellow');
+    const vehicles = page.locator('.vehicle-marker');
+    await page.waitForFunction(() => [...document.querySelectorAll('.vehicle-art')].every(image => image.complete && image.naturalWidth > 0));
+    const artwork = await vehicles.evaluateAll(elements => elements.map(element => ({
+      src: element.querySelector('.vehicle-art').getAttribute('src'), role: element.getAttribute('role'),
+      tabindex: element.tabIndex, label: element.getAttribute('aria-label'), title: element.title,
       width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height,
     })));
-    assert.notEqual(artwork[0].html, artwork[1].html, 'MTR and LRT must use distinct train artwork');
-    for (const train of artwork) {
-      assert.equal(train.body, 'rgb(220, 227, 231)', 'Silver train body keeps its real fill');
-      assert.equal(train.cab, 'rgb(36, 59, 71)', 'Dark cab keeps its real fill');
-      assert.equal(train.livery, 'rgb(200, 50, 67)', 'Red livery keeps its real fill');
-      assert.equal(train.role, 'button'); assert.equal(train.tabindex, 0);
-      assert.equal(train.label, train.title); assert.ok(train.label);
-      assert.equal(train.width, 26); assert.equal(train.height, 26);
+    assert.equal(new Set(artwork.map(vehicle => vehicle.src)).size, 3, 'MTR, LRT and ferry use distinct generated miniatures');
+    for (const vehicle of artwork) {
+      assert.equal(vehicle.role, 'button'); assert.equal(vehicle.tabindex, 0);
+      assert.equal(vehicle.label, vehicle.title); assert.ok(vehicle.label);
+      assert.equal(vehicle.width, 32); assert.equal(vehicle.height, 32);
     }
-    const ferry = await page.locator('.vehicle-marker:not(.rail-marker)').evaluate(element => ({
-      stroke: getComputedStyle(element.querySelector('svg')).stroke,
-      fill: getComputedStyle(element.querySelector('svg')).fill,
-      border: getComputedStyle(element.querySelector('.marker-inner')).borderColor,
-    }));
-    assert.deepEqual(ferry, { stroke: 'rgb(23, 44, 57)', fill: 'none', border: 'rgb(255, 255, 255)' }, 'Train styling must leave ferry rendering unchanged');
-    for (let index = 0; index < 2; index++) {
-      await page.evaluate(index => { const target = [...document.querySelectorAll('.rail-marker.vehicle-marker')][index]; window.__map.eachLayer(layer => { if (layer.getElement?.() === target) window.__map.setView(layer.getLatLng(), 16, { animate: false }); }); }, index);
-      await trains.nth(index).focus();
-      assert.equal(await trains.nth(index).evaluate(element => document.activeElement === element), true, 'Train target retains keyboard focus');
-      await trains.nth(index).click();
+    for (let index = 0; index < 3; index++) {
+      await page.evaluate(index => { const target = [...document.querySelectorAll('.vehicle-marker')][index]; window.__map.eachLayer(layer => { if (layer.getElement?.() === target) window.__map.setView(layer.getLatLng(), 16, { animate: false }); }); }, index);
+      await vehicles.nth(index).focus();
+      assert.equal(await vehicles.nth(index).evaluate(element => document.activeElement === element), true);
+      await vehicles.nth(index).press('Enter');
       await page.locator('.arrival-board').waitFor();
-      const details = await page.locator('.arrival-board').innerText();
-      assert.match(details, index === 0 ? /TWL/ : /614P/, 'Train target selects the corresponding details');
-      await trains.nth(index).evaluate(element => element.blur());
+      assert.match(await page.locator('.arrival-board').innerText(), [/TWL/, /614P/, /Fixture/][index], 'Keyboard activation selects corresponding vehicle details');
+      await vehicles.nth(index).evaluate(element => element.blur());
       await page.mouse.move(0, 0);
       await page.locator('.leaflet-tooltip').waitFor({ state: 'hidden' });
-      const target = await trains.nth(index).boundingBox();
-      await page.screenshot({ path: path.join(evidence, index === 0 ? 'mtr-artwork.png' : 'lrt-artwork.png'), clip: { x: target.x - 80, y: target.y - 55, width: 186, height: 136 } });
+      const target = await vehicles.nth(index).boundingBox();
+      await page.screenshot({ path: path.join(evidence, ['mtr-image.png', 'lrt-image.png', 'ferry-image.png'][index]), clip: { x: target.x - 80, y: target.y - 55, width: 192, height: 142 } });
     }
     assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await context.close();
@@ -223,6 +212,7 @@ try {
     const { page, context } = await create({ reducedMotion: 'reduce' });
     const still = await frameSamples(page);
     assert.equal(new Set(still.map(sample => JSON.stringify(sample))).size, 1, 'Reduced motion disables continuous movement');
+    assert.ok((await vehicleMotion(page)).every(vehicle => !vehicle.animations.includes('running')), 'Reduced motion stops miniature animation');
     assert.ok((await dotStyles(page)).every(dot => dot.state === 'paused' || dot.duration === 0), 'Reduced motion disables dot animation');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.waitForTimeout(80);
@@ -230,6 +220,7 @@ try {
     await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); document.dispatchEvent(new Event('visibilitychange')); });
     const hidden = await frameSamples(page);
     assert.equal(new Set(hidden.map(sample => JSON.stringify(sample))).size, 1, 'Hidden document must stop marker work');
+    assert.ok((await vehicleMotion(page)).every(vehicle => !vehicle.animations.includes('running')), 'Hidden document stops miniature animation');
     assert.ok((await dotStyles(page)).every(dot => dot.state === 'paused' || dot.duration === 0), 'Hidden document must pause dots');
     await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' }); document.dispatchEvent(new Event('visibilitychange')); });
     assert.ok(new Set((await frameSamples(page)).map(sample => sample[0])).size >= 10, 'Visibility restoration resumes movement');
@@ -250,19 +241,23 @@ try {
     assert.ok(Math.abs((await position()) - 114.163) < 1e-10, 'Correction reaches the confirmed fix');
     await page.waitForTimeout(250);
     assert.ok(Math.abs((await position()) - 114.163) < 1e-10, 'Unconfirmed velocity must not continue moving a GPS ferry');
+    const gpsMotion = (await vehicleMotion(page)).find(vehicle => vehicle.title === 'GPS fixture ferry');
+    assert.equal(gpsMotion.running, false, 'Stationary GPS fix must not run a miniature animation');
+    assert.ok(!gpsMotion.animations.includes('running'));
     await context.close();
   });
   await test('Mobile: marker remains clickable; inactive map pauses and resumes motion without replacing markers', async () => {
     const { page, context } = await create({ mobile: true });
     await page.evaluate(() => { window.__mobileVehicles = [...document.querySelectorAll('.vehicle-marker')]; });
     await page.evaluate(() => { let marker; window.__map.eachLayer(layer => { if (!marker && layer.options?.icon?.options?.className?.includes('vehicle-marker')) marker = layer; }); window.__map.setView(marker.getLatLng(), 16, { animate: false }); });
-    const target = await page.locator('.vehicle-marker').first().boundingBox();
+    const target = await page.locator('.vehicle-marker .marker-displacement').first().boundingBox();
     await page.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
     await page.locator('.sidebar.mobile-open .arrival-board').waitFor();
     assert.equal(await page.locator('.map-area').getAttribute('inert'), '', 'Mobile details make map inactive');
     await page.waitForTimeout(350);
     const inactive = await frameSamples(page);
     assert.equal(new Set(inactive.map(sample => JSON.stringify(sample))).size, 1, 'Inactive mobile map pauses marker work');
+    assert.ok((await vehicleMotion(page)).every(vehicle => !vehicle.animations.includes('running')), 'Inactive map stops miniature animation');
     assert.ok((await dotStyles(page)).every(dot => dot.state === 'paused' || dot.duration === 0), 'Inactive map pauses road dots');
     await page.locator('.mobile-panel-close').click();
     assert.ok(new Set((await frameSamples(page)).map(sample => sample[0])).size >= 10, 'Closing details resumes animation');
