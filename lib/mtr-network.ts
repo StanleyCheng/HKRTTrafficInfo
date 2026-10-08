@@ -1,6 +1,7 @@
 import networkFile from "../data/mtr-network.json" with { type: "json" }
 import { projectTrain, type EstimateRoute, type GeoPoint, type TrainSpot } from "./mtr-estimate.ts"
 import type { MtrTrain } from "./types.ts"
+import { railPoint, railSegment } from "./rail-geometry.ts"
 
 type StationRecord = { en: string; tc: string; lng: number; lat: number }
 type LineRecord = { en: string; tc: string; color: string }
@@ -11,6 +12,7 @@ type NetworkFile = {
 }
 
 const network = networkFile as NetworkFile
+let trackCollection: GeoJSON.FeatureCollection | undefined
 
 const linesThroughStation = new Map<string, string[]>()
 for (const route of network.routes) {
@@ -58,19 +60,19 @@ export function stationPoint(code: string): GeoPoint | null {
 export function projectNetworkTrain(train: MtrTrain, atMs: number): TrainSpot | null {
   const observedAt = Date.parse(train.observedAt)
   if (!Number.isFinite(observedAt)) return null
-  return projectTrain({ ...train, observedAt }, stationPoint, atMs)
+  return projectTrain({ ...train, observedAt }, stationPoint, atMs, (line, from, to, progress) => railPoint("mtr", line, from, to, progress))
 }
 
 export function mtrTrackCollection(): GeoJSON.FeatureCollection {
+  if (trackCollection) return trackCollection
   const features: GeoJSON.Feature[] = []
   for (const [line, meta] of Object.entries(network.lines)) {
     const edges = new Map<string, [number, number][]>()
     const addEdge = (fromCode: string, toCode: string) => {
-      const from = stationPoint(fromCode)
-      const to = stationPoint(toCode)
-      if (!from || !to) return
-      const key = [fromCode, toCode].sort().join(">")
-      if (!edges.has(key)) edges.set(key, [[from.lng, from.lat], [to.lng, to.lat]])
+      const coordinates = railSegment("mtr", line, fromCode, toCode)
+      if (!coordinates) return
+      const key = JSON.stringify(fromCode < toCode ? coordinates : coordinates.slice().reverse())
+      if (!edges.has(key)) edges.set(key, coordinates)
     }
     for (const route of network.routes) {
       if (route.line !== line) continue
@@ -83,6 +85,8 @@ export function mtrTrackCollection(): GeoJSON.FeatureCollection {
     if (line === "EAL") {
       addEdge("SHT", "RAC")
       addEdge("RAC", "UNI")
+      addEdge("UNI", "RAC")
+      addEdge("RAC", "SHT")
     }
     if (edges.size === 0) continue
     features.push({
@@ -91,7 +95,7 @@ export function mtrTrackCollection(): GeoJSON.FeatureCollection {
       geometry: { type: "MultiLineString", coordinates: [...edges.values()] },
     })
   }
-  return { type: "FeatureCollection", features }
+  return trackCollection = { type: "FeatureCollection", features }
 }
 
 export function mtrStationCollection(): GeoJSON.FeatureCollection {

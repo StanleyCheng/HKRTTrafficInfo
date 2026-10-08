@@ -2,8 +2,8 @@ import { integrationMessages as labels, messages, boundaryNames, tollNames } fro
 import { hkTime, layers, staticExport, type Arrival, type Camera, type CameraData, type DetailRow, type FlowSegment, type IntegrationKind, type Language, type MapPath } from './traffic.ts';
 import type { ApproachesResponse, ControlPointsResponse, FerryResponse, LrtResponse, MtrResponse, CitybusResponse, WarningsResponse } from './types.ts';
 import { linesThrough, lineRecord, mtrStationCollection, mtrTrackCollection, projectNetworkTrain, stationRecord } from './mtr-network.ts';
-import { lrtColor, lrtPoint, lrtStation, lrtStationCollection, lrtTrackCollection } from './lrt-network.ts';
-import { projectTrain } from './mtr-estimate.ts';
+import { lrtColor, lrtStation, lrtStationCollection, lrtTrackCollection, projectLrtTrain } from './lrt-network.ts';
+import { railPosition } from './rail-geometry.ts';
 import { placeOnPath } from './ferry-run.ts';
 import { ferryInstant } from './ferry-clock.ts';
 import { ferryVehicleIcon } from './vehicle-icons.ts';
@@ -60,6 +60,7 @@ function base(kind: IntegrationKind, payload: Envelope): CameraData {
 function validDate(value: string | null | undefined) { return value && Number.isFinite(Date.parse(value)) ? value : null; }
 const text = (value: unknown) => typeof value === 'string' || typeof value === 'number' ? String(value) : '';
 const tones = { red: '#e15d69', amber: '#d49b25', green: '#1f9d63', none: '#8a9aa5' };
+const railPaths: Partial<Record<'mtr' | 'lrt', MapPath[]>> = {};
 function row(key: keyof typeof labels.en, value: string, valueEn = value): DetailRow {
   return { label: text(labels.zh[key]), labelEn: text(labels.en[key]), value, valueEn };
 }
@@ -104,7 +105,7 @@ export function normalizeIntegration(kind: IntegrationKind, payload: Envelope): 
   } else if (kind === 'boundary') {
     data.cameras = boundaryCameras((payload as ControlPointsResponse).points);
   } else if (kind === 'mtr' || kind === 'lrt') {
-    data.paths = pathsFromFeatures(kind === 'mtr' ? mtrTrackCollection() : lrtTrackCollection(), kind);
+    data.paths = railPaths[kind] ??= pathsFromFeatures(kind === 'mtr' ? mtrTrackCollection() : lrtTrackCollection(), kind);
     data.cameras = featureCameras(kind, kind === 'mtr' ? mtrStationCollection() : lrtStationCollection()).map(camera => {
       const arrivals: Arrival[] = kind === 'mtr' ? (payload as MtrResponse).boards.filter(board => board.station === camera.sourceId).flatMap(board => board.trains.map(call => ({ route: board.line, destination: stationRecord(call.dest)?.tc || call.dest, destinationEn: stationRecord(call.dest)?.en || call.dest, minutes: call.ttnt, eta: board.observedAt && Number.isFinite(Date.parse(board.observedAt)) ? new Date(Date.parse(board.observedAt) + call.ttnt * 60000).toISOString() : undefined, observedAt: board.observedAt, timeType: call.timeType, platform: call.plat, remark: call.delay ? labels.zh.delayed : '', remarkEn: call.delay ? labels.en.delayed : '' }))) : (payload as LrtResponse).boards.filter(board => board.station === camera.sourceId).flatMap(board => board.calls.map(call => ({ route: call.route, destination: call.destTc, destinationEn: call.destEn, minutes: call.ttnt, eta: board.observedAt && Number.isFinite(Date.parse(board.observedAt)) ? new Date(Date.parse(board.observedAt) + call.ttnt * 60000).toISOString() : undefined, observedAt: board.observedAt, timeType: call.timeType, platform: call.plat })));
       const observed = (payload as MtrResponse | LrtResponse).boards.filter(board => board.station === camera.sourceId).map(board => validDate(board.observedAt)).filter((time): time is string => Boolean(time)).sort();
@@ -154,12 +155,13 @@ export function movingCameras(kind: 'mtr' | 'lrt' | 'ferry', data: CameraData, n
     return spot ? [{ id: `ferry-vessel-${vessel.id}`, sourceId: vessel.id, kind, vehicleIcon: ferryVehicleIcon(vessel.route, vessel.id), name: vessel.nameTc, nameEn: vessel.nameEn, lat: spot.lat, lng: spot.lng, estimated: vessel.fix !== 'gps', positionType: 'vehicle', dataUpdated: data.observedAt ?? undefined, arrivals: [{ route: vessel.route, destination: vessel.destTc || vessel.nameTc, destinationEn: vessel.destEn || vessel.nameEn, minutes: spot.minutes, eta: vessel.eta }] }] : [];
   });
   return (data.payload as MtrResponse | LrtResponse).trains.flatMap(train => {
-    const spot = kind === 'mtr' ? projectNetworkTrain(train, now) : projectTrain({ ...train, observedAt: Date.parse(train.observedAt) }, lrtPoint, now);
+    const spot = kind === 'mtr' ? projectNetworkTrain(train, now) : projectLrtTrain(train, now);
     if (!spot) return [];
     const dest = kind === 'mtr' ? stationRecord(train.dest) : lrtStation(train.dest);
     const nextCode = spot.clamp !== 'none' && spot.minutes > 0 ? train.anchor : spot.to;
     const next = kind === 'mtr' ? stationRecord(nextCode) : lrtStation(nextCode);
-    return [{ id: `${kind}-train-${train.id}`, sourceId: train.id, kind, name: `${train.line} → ${dest?.tc || train.dest}`, nameEn: `${train.line} → ${dest?.en || train.dest}`, nextStation: { name: next?.tc || nextCode, nameEn: next?.en || nextCode }, lat: spot.lat, lng: spot.lng, color: kind === 'mtr' ? lineRecord(train.line)?.color : layers.lrt.color, estimated: true, positionType: 'vehicle', dataUpdated: train.observedAt, arrivals: [{ route: train.line, destination: dest?.tc || train.dest, destinationEn: dest?.en || train.dest, minutes: spot.minutes, eta: new Date(now + spot.minutes * 60000).toISOString(), observedAt: train.observedAt, platform: train.plat }] }];
+    const position = railPosition(kind, train.line, train.path, spot.from, spot.to, spot.progress);
+    return [{ id: `${kind}-train-${train.id}`, sourceId: train.id, kind, name: `${train.line} → ${dest?.tc || train.dest}`, nameEn: `${train.line} → ${dest?.en || train.dest}`, nextStation: { name: next?.tc || nextCode, nameEn: next?.en || nextCode }, lat: spot.lat, lng: spot.lng, ...(position ? { railPosition: position } : {}), color: kind === 'mtr' ? lineRecord(train.line)?.color : lrtColor(), estimated: true, positionType: 'vehicle', dataUpdated: train.observedAt, arrivals: [{ route: train.line, destination: dest?.tc || train.dest, destinationEn: dest?.en || train.dest, minutes: spot.minutes, eta: new Date(now + spot.minutes * 60000).toISOString(), observedAt: train.observedAt, platform: train.plat }] }];
   });
 }
 

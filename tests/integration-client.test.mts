@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { movingCameras, normalizeIntegration, railHoverText, viewportNote } from "../lib/integration-client.ts"
 import { stationRecord } from "../lib/mtr-network.ts"
+import { railPoint } from "../lib/rail-geometry.ts"
 import { integrationMessages, messages } from "../lib/i18n.ts"
 import { hkTime } from "../lib/traffic.ts"
 import type { CitybusResponse, FerryResponse, LrtResponse, MtrResponse } from "../lib/types.ts"
@@ -69,7 +70,7 @@ test("a clamped train pairs its ETA with the observed arrival station", () => {
   const observedAt = new Date(now).toISOString()
   const data = normalizeIntegration("mtr", { ok: true, observedAt, boards: [], trains: [{ id: "clamped", line: "TWL", dest: "TSW", plat: "1", ttnt: 20, observedAt, delay: false, timeType: "A", anchor: "ADM", path: ["CEN", "ADM", "TST"], hold: ["CEN", "ADM", "TST"] }] } as MtrResponse)
   const train = movingCameras("mtr", data, now)[0]!
-  assert.equal(train.lng, stationRecord("CEN")?.lng)
+  assert.equal(train.lng, railPoint("mtr", "TWL", "CEN", "ADM", 0)?.lng)
   assert.equal(train.nextStation?.nameEn, stationRecord("ADM")?.en)
   assert.equal(train.arrivals?.[0]?.eta, new Date(now + 20 * 60000).toISOString())
 })

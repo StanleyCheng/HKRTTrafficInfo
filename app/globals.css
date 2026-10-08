@@ -431,5 +431,5 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .vehicle-heading,.vehicle-art{display:block;width:16px;height:16px;transform-origin:center}
 .vehicle-art{object-fit:contain;filter:drop-shadow(0 1px 1px #18364366);user-select:none}
 .rail-marker .vehicle-art{filter:drop-shadow(0 0 1px #fff3b0) drop-shadow(0 1px 1px #fff3b0)}
-.vehicle-dest{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);white-space:nowrap;padding:1px 7px;border:1px solid #dce6e9;border-radius:999px;background:#fff;box-shadow:0 2px 4px #24384726;color:#1f3a47;font:600 10px/1.4 system-ui,sans-serif;pointer-events:auto;cursor:pointer}
+.vehicle-dest{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);white-space:nowrap;padding:1px 7px;border:1px solid var(--marker-color);border-radius:999px;background:#fff;box-shadow:0 2px 4px #24384726;color:#1f3a47;font:600 10px/1.4 system-ui,sans-serif;pointer-events:auto;cursor:pointer}
 .vehicle-dest::after{content:"";position:absolute;left:50%;top:100%;width:1px;height:5px;background:#8aa3b0}

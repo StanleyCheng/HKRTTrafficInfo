@@ -1,12 +1,15 @@
 import routesFile from "../data/light-rail-routes.json" with { type: "json" }
 import stationsFile from "../data/light-rail-stations.json" with { type: "json" }
-import type { EstimateRoute, GeoPoint } from "./mtr-estimate.ts"
+import { projectTrain, type EstimateRoute, type GeoPoint, type TrainSpot } from "./mtr-estimate.ts"
+import { railPoint, railSegment } from "./rail-geometry.ts"
+import type { MtrTrain } from "./types.ts"
 
 type StationRecord = { id: string; tc: string; en: string; lng: number; lat: number; aliases?: string[] }
 type RoutesFile = { color: string; routes: EstimateRoute[] }
 
 const stations = (stationsFile as { stations: StationRecord[] }).stations
 const routes = routesFile as RoutesFile
+let trackCollection: GeoJSON.FeatureCollection | undefined
 
 const byId = new Map(stations.map((station) => [station.id, station]))
 const byName = new Map<string, string>()
@@ -39,21 +42,33 @@ export function lrtPoint(id: string): GeoPoint | null {
   return { lng: station.lng, lat: station.lat }
 }
 
+export function projectLrtTrain(train: MtrTrain, atMs: number): TrainSpot | null {
+  const observedAt = Date.parse(train.observedAt)
+  if (!Number.isFinite(observedAt)) return null
+  return projectTrain({ ...train, observedAt }, lrtPoint, atMs, (line, from, to, progress) => railPoint("lrt", line, from, to, progress))
+}
+
 export function lrtTrackCollection(): GeoJSON.FeatureCollection {
+  if (trackCollection) return trackCollection
   const edges = new Map<string, [number, number][]>()
+  const addEdge = (line: string, fromId: string, toId: string) => {
+    const coordinates = railSegment("lrt", line, fromId, toId)
+    if (!coordinates) return
+    const key = JSON.stringify(fromId < toId ? coordinates : coordinates.slice().reverse())
+    if (!edges.has(key)) edges.set(key, coordinates)
+  }
   for (const route of routes.routes) {
     for (let index = 1; index < route.stations.length; index += 1) {
       const fromId = route.stations[index - 1]
       const toId = route.stations[index]
       if (!fromId || !toId) continue
-      const from = lrtPoint(fromId)
-      const to = lrtPoint(toId)
-      if (!from || !to) continue
-      const key = [fromId, toId].sort().join(">")
-      if (!edges.has(key)) edges.set(key, [[from.lng, from.lat], [to.lng, to.lat]])
+      addEdge(route.line, fromId, toId)
     }
   }
-  return {
+  // Circular ETA paths end at Tin Shui Wai; also draw their departure from it.
+  addEdge("705", "430", "435")
+  addEdge("706", "430", "445")
+  return trackCollection = {
     type: "FeatureCollection",
     features: [{
       type: "Feature",

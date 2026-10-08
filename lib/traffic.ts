@@ -1,5 +1,6 @@
 import { integrationLayerNames } from './i18n.ts';
 import type { BusRouteSelection } from './bus-route.ts';
+import type { RailPosition } from './rail-geometry.ts';
 export type OriginalLayerKind = 'redlight' | 'speed' | 'snapshot' | 'flow' | 'incident' | 'parking' | 'rainfall';
 export type IntegrationKind = 'crossing' | 'works' | 'toll' | 'boundary' | 'weather-warning' | 'mtr' | 'lrt' | 'kmb' | 'citybus' | 'gmb' | 'nlb' | 'ferry';
 export type LayerKind = OriginalLayerKind | IntegrationKind;
@@ -20,6 +21,7 @@ export type Camera = {
   text?: string; textEn?: string;
   dataUpdated?: string;
   nextStation?: { name: string; nameEn: string };
+  railPosition?: RailPosition;
   rows?: DetailRow[]; arrivals?: Arrival[]; routes?: string[]; badge?: string; estimated?: boolean; positionType?: 'station' | 'vehicle' | 'pier';
   intel?: { score: number; urgent: boolean; tone: 'red' | 'amber' | 'green' | 'none' };
 };

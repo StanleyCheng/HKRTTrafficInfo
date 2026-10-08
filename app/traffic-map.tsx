@@ -38,7 +38,7 @@ const symbols = {
   ferry: '<path d="M3 14h18l-4 6H7l-4-6zM7 14V8h10v6M12 3v5M2 22l4-1 4 1 4-1 4 1 4-1"/>',
 };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
-const vehicleHtml = (src: string | null, color: string | undefined, destination: string) => `<span class="marker-leader" aria-hidden="true" hidden></span><div class="marker-displacement"><span class="vehicle-dest" aria-hidden="true">${escapeHtml(destination)}</span><div class="marker-inner"${color ? ` style="--marker-color:${escapeHtml(color)}"` : ''}><div class="vehicle-heading" style="transform:rotate(${vehicleIconHeadingOffset}deg)"><img class="vehicle-art" src="${escapeHtml(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}${src ?? ''}`)}" alt="" draggable="false"/></div></div></div>`;
+const vehicleHtml = (src: string | null, color: string, destination: string) => `<span class="marker-leader" aria-hidden="true" hidden></span><div class="marker-displacement" style="--marker-color:${escapeHtml(color)}"><span class="vehicle-dest" aria-hidden="true">${escapeHtml(destination)}</span><div class="marker-inner"><div class="vehicle-heading" style="transform:rotate(${vehicleIconHeadingOffset}deg)"><img class="vehicle-art" src="${escapeHtml(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}${src ?? ''}`)}" alt="" draggable="false"/></div></div></div>`;
 const enableMarkerKeyboard = (marker: Leaflet.Marker) => marker.on('keydown', (event: Leaflet.LeafletKeyboardEvent) => {
   if (event.originalEvent.key !== 'Enter' && event.originalEvent.key !== ' ') return;
   event.originalEvent.preventDefault();
@@ -133,11 +133,12 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const displayOffsets = useRef(new Map<string, { x: number; y: number }>());
   const segmentGroup = useRef<Leaflet.LayerGroup | null>(null);
   const segmentRenderer = useRef<Leaflet.Renderer | null>(null);
+  const railRenderer = useRef<Leaflet.Renderer | null>(null);
   const segmentPolylines = useRef(new Map<string, Leaflet.Polyline>());
   const vehicleGroup = useRef<Leaflet.LayerGroup | null>(null);
   const fittedBusRoute = useRef<string | null>(null);
   const busVehicle = useRef<{ key: string; marker: Leaflet.Marker; distance: number; feed: BusRouteResponse; correction?: { distance: number; at: number }; heading?: HTMLElement | null } | null>(null);
-  const vehicles = useRef(new Map<string, { marker: Leaflet.Marker; camera: Camera; feed: CameraData | undefined; language: Language; hoverAt: number; correction?: { lat: number; lng: number; at: number } }>());
+  const vehicles = useRef(new Map<string, { marker: Leaflet.Marker; camera: Camera; feed: CameraData | undefined; language: Language; hoverAt: number; railDistance?: number; correction?: { lat: number; lng: number; at: number }; railCorrection?: { distance: number; at: number } }>());
   const previousSegmentSelection = useRef<string | null>(null);
   const onSelectSegmentRef = useRef(onSelectSegment);
   const [ready, setReady] = useState(false);
@@ -224,6 +225,11 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(m);
       markerGroup.current = L.layerGroup().addTo(m);
       segmentRenderer.current = L.canvas({ padding: 0.5 });
+      const railPane = m.createPane('railRoutes');
+      railPane.style.zIndex = '410';
+      // Decorative tracks must let clicks reach the road canvas underneath.
+      railPane.style.pointerEvents = 'none';
+      railRenderer.current = L.canvas({ padding: 0.5, pane: 'railRoutes' });
       segmentGroup.current = L.layerGroup().addTo(m);
       observer = new ResizeObserver(() => m.invalidateSize());
       observer.observe(element.current);
@@ -533,8 +539,14 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     const L = library.current, m = map.current;
     if (!ready || !L || !m) return;
     const group = L.layerGroup().addTo(m);
-    paths?.forEach(path => L.polyline(path.points, { color: path.color, weight: 3, opacity: .65, interactive: false, renderer: segmentRenderer.current ?? undefined }).addTo(group));
-    return () => { group.remove(); };
+    const rail = (paths ?? []).filter(path => /^(mtr|lrt)-/.test(path.id));
+    if (rail.length) m.attributionControl.addAttribution(OSM_ATTRIBUTION);
+    rail.forEach(path => L.polyline(path.points, { color: '#fff', weight: 6, opacity: .9, smoothFactor: 0, interactive: false, renderer: railRenderer.current ?? undefined, className: 'rail-route-halo' }).addTo(group));
+    paths?.forEach(path => {
+      const isRail = /^(mtr|lrt)-/.test(path.id);
+      L.polyline(path.points, { color: path.color, weight: isRail ? 3.5 : 3, opacity: isRail ? .95 : .65, smoothFactor: isRail ? 0 : 1, interactive: false, renderer: (isRail ? railRenderer.current : segmentRenderer.current) ?? undefined, className: isRail ? 'rail-route-polyline' : undefined }).addTo(group);
+    });
+    return () => { group.remove(); if (rail.length) m.attributionControl.removeAttribution(OSM_ATTRIBUTION); };
   }, [paths, ready]);
   useEffect(() => {
     const L = library.current, m = map.current;
@@ -608,7 +620,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       if (!coordinate) { remove(); return; }
       const point = L.latLng(coordinate[1], coordinate[0]);
       if (!entry) {
-        const icon = L.divIcon({ className: 'camera-marker vehicle-marker bus-route-marker', html: vehicleHtml(vehicleIcon({ kind: route.operator, route: route.route, company: route.company }), undefined, destination), iconSize: [16, 16], iconAnchor: [8, 8] });
+        const icon = L.divIcon({ className: 'camera-marker vehicle-marker bus-route-marker', html: vehicleHtml(vehicleIcon({ kind: route.operator, route: route.route, company: route.company }), layers[route.operator].color, destination), iconSize: [16, 16], iconAnchor: [8, 8] });
         const marker = enableMarkerKeyboard(L.marker(point, { icon, title: name, alt: name, keyboard: true, zIndexOffset: 500 }).addTo(m));
         marker.getElement()?.setAttribute('aria-label', name);
         busVehicle.current = entry = { key: route.key, marker, distance: displayDistance, feed: busRoute, heading: marker.getElement()?.querySelector<HTMLElement>('.vehicle-heading') ?? null };
@@ -661,13 +673,18 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       next.forEach(camera => {
         const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
         const rail = camera.kind === 'mtr' || camera.kind === 'lrt';
+        const railPosition = camera.railPosition;
         const feed = transitFeeds?.[camera.kind as 'mtr' | 'lrt' | 'ferry'];
         const existing = entries.get(camera.id);
         if (existing) {
           const node = existing.marker.getElement();
-          if (existing.feed !== feed && !reducedMotion.matches) {
-            const position = existing.marker.getLatLng();
-            existing.correction = { lat: position.lat - camera.lat, lng: position.lng - camera.lng, at: now };
+          if (existing.feed !== feed) {
+            // Refresh corrections follow the track; latitude/longitude tweens cut across curves.
+            if (railPosition) existing.railCorrection = !reducedMotion.matches && existing.camera.railPosition?.key === railPosition.key && existing.railDistance !== undefined ? { distance: existing.railDistance - railPosition.distance, at: now } : undefined;
+            else if (!rail && !reducedMotion.matches) {
+              const position = existing.marker.getLatLng();
+              existing.correction = { lat: position.lat - camera.lat, lng: position.lng - camera.lng, at: now };
+            }
           }
           if (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn) {
             const destination = vehicleDestination(camera, language, name);
@@ -677,8 +694,11 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
           if (!rail && (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn || existing.camera.estimated !== camera.estimated)) {
             const icon = existing.marker.getElement(); if (icon) { icon.title = name; icon.setAttribute('aria-label', `${name} · ${camera.estimated ? integrationMessages[language].estimatedFerry : integrationMessages[language].gps}`); }
           }
-          const remaining = !reducedMotion.matches && existing.correction ? Math.max(0, 1 - (now - existing.correction.at) / 1000) ** 3 : 0;
-          const point = L.latLng(camera.lat + (existing.correction?.lat ?? 0) * remaining, camera.lng + (existing.correction?.lng ?? 0) * remaining);
+          const correction = railPosition ? existing.railCorrection : existing.correction;
+          const remaining = !reducedMotion.matches && correction ? Math.max(0, 1 - (now - correction.at) / 1000) ** 3 : 0;
+          const railDistance = railPosition ? railPosition.distance + (existing.railCorrection?.distance ?? 0) * remaining : undefined;
+          const railPoint = railPosition && railDistance !== undefined ? routePointAtDistance(railPosition.coordinates, railPosition.distances, railDistance) : null;
+          const point = railPoint ? L.latLng(railPoint[1], railPoint[0]) : L.latLng(camera.lat + (existing.correction?.lat ?? 0) * remaining, camera.lng + (existing.correction?.lng ?? 0) * remaining);
           const previous = existing.marker.getLatLng();
           const dx = (point.lng - previous.lng) * Math.cos(point.lat * Math.PI / 180), dy = point.lat - previous.lat;
           const running = Math.abs(dx) + Math.abs(dy) > 1e-10;
@@ -687,14 +707,15 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
             if (node.title !== hover) { node.title = hover; node.setAttribute('aria-label', hover); }
             existing.hoverAt = now;
           }
-          if (existing.camera.color !== camera.color) node?.querySelector<HTMLElement>('.marker-inner')?.style.setProperty('--marker-color', camera.color ?? layers[camera.kind].color);
+          if (existing.camera.color !== camera.color) node?.querySelector<HTMLElement>('.marker-displacement')?.style.setProperty('--marker-color', camera.color ?? layers[camera.kind].color);
           const heading = node?.querySelector<HTMLElement>('.vehicle-heading');
           if (running && heading) heading.style.transform = `rotate(${Math.atan2(dx, dy) * 180 / Math.PI + vehicleIconHeadingOffset}deg)`;
           const art = node?.querySelector<HTMLImageElement>('.vehicle-art');
           if (art && vehicleIcon(existing.camera) !== vehicleIcon(camera)) art.src = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}${vehicleIcon(camera)}`;
           existing.camera = camera; existing.feed = feed; existing.language = language;
           if (move) {
-            if (!remaining) existing.correction = undefined;
+            if (!remaining) { existing.correction = undefined; existing.railCorrection = undefined; }
+            existing.railDistance = railDistance;
             existing.marker.setLatLng(point);
             // Leaflet rounds marker pixels; retain its geographic state with subpixel display motion.
             const icon = existing.marker.getElement(); if (icon) L.DomUtil.setPosition(icon, m.project(point).subtract(m.getPixelOrigin()));
@@ -707,7 +728,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
         const vehicleLabel = rail ? hover : `${name} · ${camera.estimated ? integrationMessages[language].estimatedFerry : integrationMessages[language].gps}`;
         marker.getElement()?.setAttribute('aria-label', vehicleLabel);
         marker.on('click', () => { const latest = entries.get(camera.id); if (latest) selectRef.current(latest.camera); });
-        entries.set(camera.id, { marker, camera, feed, language, hoverAt: now });
+        entries.set(camera.id, { marker, camera, feed, language, hoverAt: now, railDistance: railPosition?.distance });
       });
     };
     const animate = () => { tick(); frame = requestAnimationFrame(animate); };

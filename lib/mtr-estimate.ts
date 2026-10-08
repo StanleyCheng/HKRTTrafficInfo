@@ -19,6 +19,7 @@ const ARRIVAL_DWELL_MIN = 0.5
 const ZERO_CLOCK_MAX_MS = 4 * 60_000
 
 export type GeoPoint = { lng: number; lat: number }
+export type TrackPoint = (line: string, from: string, to: string, progress: number) => GeoPoint | null
 
 export type EstimateRoute = {
   id: string
@@ -60,6 +61,7 @@ export type TrainSpot = {
   to: string
   clamp: "none" | "origin" | "junction"
   minutes: number
+  progress: number
 }
 
 type IndexedObservation = TrainObservation & { index: number }
@@ -163,19 +165,19 @@ export function estimateTrains(
   return enteredService(trains, locate)
 }
 
-export function projectTrain(train: EstimatedTrain, locate: (code: string) => GeoPoint | null, atMs: number): TrainSpot | null {
+export function projectTrain(train: EstimatedTrain, locate: (code: string) => GeoPoint | null, atMs: number, trackPoint?: TrackPoint): TrainSpot | null {
   const elapsed = Math.max(0, (atMs - train.observedAt) / 60_000)
   const untilEvent = train.ttnt - elapsed
-  const anchorPoint = locate(train.anchor)
+  const anchorPoint = stationOnTrack(train, train.anchor, locate, trackPoint)
   if (!anchorPoint) return null
   if (train.timeType === "D") {
     if (untilEvent > 0) return atPoint(anchorPoint, train.anchor, untilEvent)
-    return rideForward(train, locate, -untilEvent) ?? atPoint(anchorPoint, train.anchor, 0)
+    return rideForward(train, locate, -untilEvent, trackPoint) ?? atPoint(anchorPoint, train.anchor, 0)
   }
-  if (untilEvent > 0) return approachStation(train, locate, untilEvent, anchorPoint)
+  if (untilEvent > 0) return approachStation(train, locate, untilEvent, anchorPoint, trackPoint)
   const sinceArrival = -untilEvent
   if (sinceArrival < ARRIVAL_DWELL_MIN) return atPoint(anchorPoint, train.anchor, 0)
-  return rideForward(train, locate, sinceArrival - ARRIVAL_DWELL_MIN) ?? atPoint(anchorPoint, train.anchor, 0)
+  return rideForward(train, locate, sinceArrival - ARRIVAL_DWELL_MIN, trackPoint) ?? atPoint(anchorPoint, train.anchor, 0)
 }
 
 export function carryArrivalClock(previous: TrainObservation[], next: TrainObservation[]): TrainObservation[] {
@@ -201,7 +203,8 @@ function approachStation(
   locate: (code: string) => GeoPoint | null,
   minutes: number,
   anchorPoint: GeoPoint,
-): TrainSpot {
+  trackPoint?: TrackPoint,
+): TrainSpot | null {
   const hold = new Set(train.hold)
   let at = train.path.indexOf(train.anchor)
   if (at < 0) return { ...atPoint(anchorPoint, train.anchor, minutes), clamp: "junction" }
@@ -216,28 +219,31 @@ function approachStation(
     const segment = segmentMinutes(metresBetween(start, end))
     if (remain <= segment) {
       const mix = segment <= 0 ? 1 : 1 - remain / segment
+      const point = trackPoint ? trackPoint(train.line, previous, here, mix) : { lng: start.lng + (end.lng - start.lng) * mix, lat: start.lat + (end.lat - start.lat) * mix }
+      if (!point) return null
       return {
-        lng: start.lng + (end.lng - start.lng) * mix,
-        lat: start.lat + (end.lat - start.lat) * mix,
+        ...point,
         from: previous,
         to: here,
         clamp: "none",
         minutes: remain,
+        progress: mix,
       }
     }
     remain -= segment
     at -= 1
   }
   const code = train.path[at] ?? train.anchor
-  const point = locate(code) ?? anchorPoint
+  const point = stationOnTrack(train, code, locate, trackPoint) ?? anchorPoint
   const clamp = remain > 0.05 ? (code === train.path[0] ? "origin" : "junction") : "none"
-  return { lng: point.lng, lat: point.lat, from: code, to: code, clamp, minutes: Math.max(0, minutes) }
+  return { lng: point.lng, lat: point.lat, from: code, to: code, clamp, minutes: Math.max(0, minutes), progress: 0 }
 }
 
 function rideForward(
   train: EstimatedTrain,
   locate: (code: string) => GeoPoint | null,
   travelMin: number,
+  trackPoint?: TrackPoint,
 ): TrainSpot | null {
   const hold = new Set(train.hold)
   let index = train.path.indexOf(train.anchor)
@@ -254,27 +260,37 @@ function rideForward(
     const segment = segmentMinutes(metresBetween(start, end))
     if (remain <= segment) {
       const mix = segment <= 0 ? 1 : remain / segment
+      const point = trackPoint ? trackPoint(train.line, here, next, mix) : { lng: start.lng + (end.lng - start.lng) * mix, lat: start.lat + (end.lat - start.lat) * mix }
+      if (!point) return null
       return {
-        lng: start.lng + (end.lng - start.lng) * mix,
-        lat: start.lat + (end.lat - start.lat) * mix,
+        ...point,
         from: here,
         to: next,
         clamp: "none",
         minutes: Math.max(0, segment - remain),
+        progress: mix,
       }
     }
     remain -= segment
     index += 1
   }
   const code = train.path[index] ?? train.anchor
-  const point = locate(code)
+  const point = stationOnTrack(train, code, locate, trackPoint)
   if (!point) return null
   const held = index < train.path.length - 1
-  return { lng: point.lng, lat: point.lat, from: code, to: code, clamp: held ? "junction" : "none", minutes: 0 }
+  return { lng: point.lng, lat: point.lat, from: code, to: code, clamp: held ? "junction" : "none", minutes: 0, progress: 0 }
 }
 
 function atPoint(point: GeoPoint, code: string, minutes: number): TrainSpot {
-  return { lng: point.lng, lat: point.lat, from: code, to: code, clamp: "none", minutes: Math.max(0, minutes) }
+  return { lng: point.lng, lat: point.lat, from: code, to: code, clamp: "none", minutes: Math.max(0, minutes), progress: 0 }
+}
+
+function stationOnTrack(train: EstimatedTrain, code: string, locate: (code: string) => GeoPoint | null, trackPoint?: TrackPoint): GeoPoint | null {
+  if (!trackPoint) return locate(code)
+  const index = train.path.indexOf(code)
+  const next = train.path[index + 1]
+  const previous = train.path[index - 1]
+  return (next && trackPoint(train.line, code, next, 0)) || (previous && trackPoint(train.line, previous, code, 1)) || locate(code)
 }
 
 function enteredService(
