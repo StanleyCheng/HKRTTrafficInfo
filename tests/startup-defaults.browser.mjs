@@ -96,16 +96,14 @@ try {
     assert.deepEqual(await page.evaluate(() => window.__errors), [], 'Startup must not cause runtime errors');
     await context.close();
   });
-  await test('MTR polls while enabled and a user choice to disable survives rerenders', async () => {
-    const { page, context, calls, times } = await create();
+  await test('MTR loads initially and a user choice to disable survives rerenders without refetching', async () => {
+    const { page, context, calls } = await create();
     const mtr = page.locator('.layer-card.mtr [role="switch"]');
     await page.locator('.vehicle-marker').waitFor({ timeout: 10000 });
     await page.waitForTimeout(250);
     const initialCalls = calls();
     await page.waitForTimeout(16000);
-    assert.ok(calls() > initialCalls, 'Enabled MTR must refresh automatically after 15 seconds');
-    const interval = times[initialCalls] - times[initialCalls - 1];
-    assert.ok(interval >= 14000 && interval <= 17000, `MTR polling interval must be about 15 seconds: ${interval}ms`);
+    assert.equal(calls(), initialCalls, 'Enabled MTR must retain its initial data until manually refreshed');
     await mtr.click();
     assert.equal(await mtr.getAttribute('aria-checked'), 'false');
     assert.equal(await page.locator('.vehicle-marker').count(), 0, 'Disabling MTR must remove its moving vehicles');
@@ -114,7 +112,7 @@ try {
     await page.evaluate(() => { window.__map.setView([22.285, 114.16], 15, { animate: false }); });
     await page.waitForTimeout(16000);
     assert.equal(await mtr.getAttribute('aria-checked'), 'false', 'User disabling MTR must survive language and viewport rerenders');
-    assert.equal(calls(), afterDisable, 'Disabled MTR must stop polling');
+    assert.equal(calls(), afterDisable, 'Language and viewport changes must not reload MTR');
     assert.equal(await page.evaluate(() => window.__gpsRequests.length), 1, 'Layer, language and viewport rerenders must not request GPS again');
     await context.close();
   });

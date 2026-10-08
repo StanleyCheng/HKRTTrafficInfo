@@ -8,7 +8,6 @@ import { placeOnPath } from './ferry-run.ts';
 import { ferryInstant } from './ferry-clock.ts';
 import { ferryVehicleIcon } from './vehicle-icons.ts';
 import { decorateControlPoints } from './control-points.ts';
-import { ETA_FRESH_MS } from './place-arrivals.ts';
 
 export type MapViewport = { lng: number; lat: number; zoom: number };
 export const initialViewport: MapViewport = { lng: 114.13, lat: 22.355, zoom: 11 };
@@ -19,7 +18,8 @@ export function viewportNote(kind: string, view: MapViewport): 'viewportBus' | '
   if (kind === 'nlb' && (view.lng < 113.8 || view.lng > 114.05 || view.lat < 22.18 || view.lat > 22.34)) return 'viewportNlb';
 }
 const endpoints: Record<IntegrationKind, string> = { crossing: 'approaches', works: 'works', toll: 'tolls', boundary: 'control-points', 'weather-warning': 'warnings', mtr: 'mtr', lrt: 'lrt', kmb: 'kmb', citybus: 'citybus', gmb: 'gmb', nlb: 'nlb', ferry: 'ferry' };
-export const pollingMs: Record<IntegrationKind, number> = { crossing: 120000, works: 300000, toll: 21600000, boundary: 60000, 'weather-warning': 60000, mtr: ETA_FRESH_MS, lrt: ETA_FRESH_MS, kmb: ETA_FRESH_MS, citybus: ETA_FRESH_MS, gmb: ETA_FRESH_MS, nlb: ETA_FRESH_MS, ferry: ETA_FRESH_MS };
+// Zero means one initial load, followed by manual refreshes.
+export const pollingMs: Record<IntegrationKind, number> = { crossing: 120000, works: 300000, toll: 21600000, boundary: 60000, 'weather-warning': 60000, mtr: 0, lrt: 0, kmb: 0, citybus: 0, gmb: 0, nlb: 0, ferry: 0 };
 type Envelope = { ok: boolean; complete?: boolean; error?: string; fetchedAt?: string; observedAt?: string | null; capturedAt?: string | null; stale?: boolean };
 type FeaturesResponse = Envelope & { works?: GeoJSON.FeatureCollection; tolls?: GeoJSON.FeatureCollection };
 

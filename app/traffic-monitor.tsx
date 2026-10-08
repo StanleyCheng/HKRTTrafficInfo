@@ -20,6 +20,7 @@ import { busDistanceAtTime } from '@/lib/bus-route-motion';
 import { ETA_FRESH_MS } from '@/lib/place-arrivals';
 
 type LayerState = { data?: CameraData; loading: boolean; error: boolean };
+type BusRouteState = { selection: BusRouteSelection; data?: BusRouteResponse; error?: boolean; loading: boolean };
 type PanelTab = 'layers' | 'search' | 'details';
 const panelTabs: PanelTab[] = ['layers', 'search', 'details'];
 
@@ -200,8 +201,10 @@ export default function TrafficMonitor() {
   const dockKinds = layerGroups.find(group => group.id === dockGroup)!.kinds;
   const [selectedSnapshot, setSelectedSnapshot] = useState<Camera | null>(null);
   const [busSelection, setBusSelection] = useState<BusRouteSelection | null>(null);
-  const [busRouteState, setBusRouteState] = useState<{ selection: BusRouteSelection; data?: BusRouteResponse; error?: boolean; loading: boolean } | null>(null);
+  const [busRouteState, setBusRouteState] = useState<BusRouteState | null>(null);
   const [busRouteRetry, setBusRouteRetry] = useState(0);
+  const busRouteCache = useRef(new Map<string, { promise: Promise<BusRouteState>; pending: boolean }>());
+  const busRouteLastRetry = useRef(0);
   const [showDetectors, setShowDetectors] = useState(false);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [panelTab, setPanelTab] = useState<PanelTab>('layers');
@@ -330,15 +333,20 @@ export default function TrafficMonitor() {
   }, [fetchLayer]);
 
   useEffect(() => () => {
-    integrationPending.current.forEach(request => request.controller.abort());
-    integrationPending.current.clear();
+    integrationPending.current.forEach((request, kind) => {
+      // Preserve one-shot loads through React's effect replay.
+      if (pollingMs[kind] === 0) return;
+      request.controller.abort();
+      integrationPending.current.delete(kind);
+      integrationLastFetch.current.delete(kind);
+    });
     refreshIntegration.current = async () => {};
   }, []);
 
   useEffect(() => {
     integrationContext.current = { enabled, viewport, language };
     integrationKinds.forEach(kind => {
-      if (!enabled[kind] || !layerAvailable(kind)) {
+      if (pollingMs[kind] > 0 && (!enabled[kind] || !layerAvailable(kind))) {
         integrationPending.current.get(kind)?.controller.abort();
         integrationPending.current.delete(kind);
         integrationLastFetch.current.delete(kind);
@@ -346,10 +354,17 @@ export default function TrafficMonitor() {
     });
     const refresh = async (kind: IntegrationKind, force = false) => {
       if (!enabled[kind] || !layerAvailable(kind) || document.visibilityState !== 'visible') return;
+      const manual = pollingMs[kind] === 0;
+      const last = integrationLastFetch.current.get(kind);
+      if (!force && manual && last) return;
+      if (manual && viewportNote(kind, viewport)) {
+        setStates(state => state[kind].loading ? { ...state, [kind]: { ...state[kind], loading: false } } : state);
+        return;
+      }
       const spatial = ['kmb', 'citybus', 'gmb', 'nlb'].includes(kind);
       const key = `${language}:${spatial ? `${viewport.lng}:${viewport.lat}:${viewport.zoom}` : ''}`;
-      if (integrationPending.current.get(kind)?.key === key) return;
-      const last = integrationLastFetch.current.get(kind);
+      const pending = integrationPending.current.get(kind);
+      if (pending && (manual || pending.key === key)) return;
       if (!force && last?.key === key && Date.now() - last.at < pollingMs[kind]) return;
       integrationPending.current.get(kind)?.controller.abort();
       const request = { key, controller: new AbortController() };
@@ -358,7 +373,7 @@ export default function TrafficMonitor() {
       const isCurrent = () => {
         const current = integrationContext.current;
         const currentKey = `${current.language}:${spatial ? `${current.viewport.lng}:${current.viewport.lat}:${current.viewport.zoom}` : ''}`;
-        return current.enabled[kind] && currentKey === key && integrationPending.current.get(kind) === request;
+        return integrationPending.current.get(kind) === request && (manual || (current.enabled[kind] && currentKey === key));
       };
       integrationLastFetch.current.set(kind, { key, at: Date.now() });
       setStates(state => ({ ...state, [kind]: { ...state[kind], loading: true } }));
@@ -418,30 +433,38 @@ export default function TrafficMonitor() {
   useEffect(() => {
     if (!activeBusSelection) return;
     const selection = activeBusSelection;
+    const key = JSON.stringify([selection.operator, selection.company, selection.route, selection.stopId, selection.bound, selection.serviceType, selection.routeId, selection.routeSeq, selection.stopSeq]);
+    const manual = busRouteRetry !== busRouteLastRetry.current;
+    busRouteLastRetry.current = busRouteRetry;
     let disposed = false;
-    let request: AbortController | undefined;
+    let loaded = false;
     const refresh = async () => {
-      if (disposed || request || document.visibilityState !== 'visible') return;
-      const abort = new AbortController();
-      request = abort;
-      setBusRouteState(previous => ({ selection, data: previous?.selection === selection ? previous.data : undefined, loading: true }));
-      try {
-        const data = await getBusRoute(selection, abort.signal);
-        if (!disposed && !abort.signal.aborted) setBusRouteState({ selection, data, error: !data.ok, loading: false });
-      } catch {
-        if (!disposed && !abort.signal.aborted) setBusRouteState(previous => ({ selection, data: previous?.selection === selection && previous.data ? { ...previous.data, stale: true, vehicle: null } : undefined, error: true, loading: false }));
-      } finally {
-        if (request === abort) request = undefined;
+      if (disposed || loaded || document.visibilityState !== 'visible') return;
+      loaded = true;
+      let cached = busRouteCache.current.get(key);
+      if (!cached || (manual && !cached.pending)) {
+        const previous = cached;
+        const promise = getBusRoute(selection).then<BusRouteState>(data => {
+          if (!data.ok) throw new Error(data.error || 'Bus route unavailable');
+          return { selection, data, error: Boolean(data.error || data.stale), loading: false };
+        }).catch(async () => {
+          const retained = await previous?.promise;
+          return { selection, data: retained?.data ? { ...retained.data, stale: true, vehicle: null } : undefined, error: true, loading: false };
+        });
+        const entry = { promise, pending: true };
+        void promise.then(() => { entry.pending = false; });
+        busRouteCache.current.set(key, entry);
+        cached = entry;
       }
+      const pending = cached.pending;
+      setBusRouteState(previous => ({ selection, data: previous?.selection === selection ? previous.data : undefined, loading: pending }));
+      const state = await cached.promise;
+      if (!disposed) setBusRouteState({ ...state, selection });
     };
-    const visible = () => {
-      if (document.visibilityState !== 'visible') { request?.abort(); request = undefined; }
-      else void refresh();
-    };
+    const visible = () => void refresh();
     void refresh();
-    const interval = setInterval(() => void refresh(), ETA_FRESH_MS);
     document.addEventListener('visibilitychange', visible);
-    return () => { disposed = true; request?.abort(); clearInterval(interval); document.removeEventListener('visibilitychange', visible); };
+    return () => { disposed = true; document.removeEventListener('visibilitychange', visible); };
   }, [activeBusSelection, busRouteRetry]);
   const searchItems = useMemo<TrafficSearchItem[]>(() => [
     ...segments.map(segment => ({ camera: cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated), segment })),
@@ -458,6 +481,11 @@ export default function TrafficMonitor() {
   const activeErrors = activeKinds.some(kind => states[kind].error);
   const activeLoading = activeKinds.some(kind => states[kind].loading);
   const activeFetched = activeKinds.flatMap(kind => states[kind].data ? [states[kind].data!.fetchedAt] : []).sort()[0];
+
+  function refreshAllLayers() {
+    kinds.forEach(kind => void fetchLayer(kind));
+    if (activeBusSelection) setBusRouteRetry(value => value + 1);
+  }
 
   function toggle(kind: LayerKind) {
     if (!layerAvailable(kind)) return;
@@ -644,13 +672,13 @@ export default function TrafficMonitor() {
           </div>
           </section>
         </div>
-        <footer className="sidebar-footer"><div className="connection" aria-live="polite"><span className={`connection-dot ${errors ? 'warning' : ''}`}/>{loading ? copy.loadingOfficialData : errors ? copy.partialUpdateFailure : latest ? copy.inventoryFetched(hkTime(latest, false, language)) : copy.noData}</div><button className="icon-button" title={copy.refreshAll} aria-label={copy.refreshAll} disabled={loading} onClick={() => kinds.forEach(kind => fetchLayer(kind))}><RefreshCw size={15} className={loading ? 'spin' : ''}/></button></footer>
+        <footer className="sidebar-footer"><div className="connection" aria-live="polite"><span className={`connection-dot ${errors ? 'warning' : ''}`}/>{loading ? copy.loadingOfficialData : errors ? copy.partialUpdateFailure : latest ? copy.inventoryFetched(hkTime(latest, false, language)) : copy.noData}</div><button className="icon-button" title={copy.refreshAll} aria-label={copy.refreshAll} disabled={loading} onClick={refreshAllLayers}><RefreshCw size={15} className={loading ? 'spin' : ''}/></button></footer>
       </aside>
       <button ref={panelReopenButton} type="button" className="panel-reopen" aria-label={copy.expandSidebar} title={copy.expandSidebar} onClick={() => { toggleSidebar(false); requestAnimationFrame(() => document.getElementById(`panel-tab-${panelTab}`)?.focus()); }}><PanelLeftOpen size={18}/></button>
       <div className={`map-workspace ${mobilePanelOpen ? 'panel-active' : ''}`} inert={mobilePanelOpen || undefined} aria-hidden={mobilePanelOpen || undefined}>
       <TrafficMap onActivity={beginActivity} busRoute={busRoute} paths={paths} transitFeeds={transitFeeds} onViewport={setViewport} cameras={cameras} segments={enabled.flow ? segments : undefined} selected={selected} selectedSegmentId={selected?.id && selected.id.startsWith('flow-segment-') ? selected.id : null} onSelect={choose} onSelectSegment={onSelectSegment} focusTarget={focusTarget} loading={loading} allDisabled={kinds.every(kind => !enabled[kind])} hasErrors={errors} language={language} basemap={basemap} inactive={mobilePanelOpen} now={now} busSelection={activeBusSelection} onShowBusRoute={showBusRoute}/>
       <IntelPanel input={intelInput} language={language} onSelect={selectSearchItem}/>
-      <TrafficStatus feeds={kinds.filter(kind => enabled[kind]).map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={() => kinds.forEach(kind => fetchLayer(kind))}/>
+      <TrafficStatus feeds={kinds.filter(kind => enabled[kind]).map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={refreshAllLayers}/>
       <TooltipProvider delayDuration={180} skipDelayDuration={100}>
         <div className="layer-group-picker" role="group" aria-label={copy.mapLayers}>{layerGroups.map(group => <button type="button" key={group.id} aria-pressed={dockGroup === group.id} onClick={() => setDockGroup(group.id)}>{extra.groups[group.id]}</button>)}</div>
         <nav className="desktop-layer-dock" aria-label={copy.mapLayers}>

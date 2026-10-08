@@ -6,10 +6,11 @@ import path from 'node:path';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = (process.argv[2] || 'http://localhost:5173').replace(/\/$/, '');
 const evidence = path.resolve(process.argv[3] || 'outputs/transit-refresh');
+const filter = process.env.TRANSIT_TEST_FILTER ? new RegExp(process.env.TRANSIT_TEST_FILTER) : null;
 const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL ?? 'chrome', headless: true });
 const kinds = ['mtr', 'lrt', 'kmb', 'citybus', 'gmb', 'nlb', 'ferry'];
 const buses = ['kmb', 'citybus', 'gmb', 'nlb'];
-const contexts = [], results = [], cadence = {};
+const contexts = [], results = [];
 const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgQIAI7mY6QAAAABJRU5ErkJggg==', 'base64');
 const selection = { operator: 'kmb', company: 'KMB', route: '1', bound: 'O', serviceType: '1', stopId: 'fixture', stopSeq: 1 };
 
@@ -31,11 +32,11 @@ async function until(condition, message = 'Expected browser state did not arrive
   }
   assert.ok(await condition(), message);
 }
-async function create({ incomplete = false } = {}) {
+async function create({ incomplete = false, gated = false, hold = false } = {}) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
   contexts.push(context);
   const calls = Object.fromEntries([...kinds, 'bus-route'].map(kind => [kind, []]));
-  const mode = Object.fromEntries(kinds.map(kind => [kind, incomplete && ['mtr', 'lrt'].includes(kind) ? 'incomplete' : 'complete']));
+  const mode = Object.fromEntries(kinds.map(kind => [kind, hold ? 'hold' : incomplete && ['mtr', 'lrt'].includes(kind) ? 'incomplete' : 'complete']));
   const held = [], failed = [];
   await context.route(url => url.hostname.endsWith('.gov.hk'), route => route.fulfill({ status: 503, headers: { 'access-control-allow-origin': '*' }, body: 'Unrelated official feed excluded from fixture' }));
   await context.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: pixel }));
@@ -65,25 +66,30 @@ async function create({ incomplete = false } = {}) {
     const generation = calls[kind].push({ at, url: route.request().url() });
     const json = payload(kind, generation, at, mode[kind] !== 'incomplete');
     if (mode[kind] === 'hold') { held.push({ kind, route, json }); return; }
+    if (mode[kind] === 'api-fail') return route.fulfill({ json: { ok: false, error: 'Fixture route upstream unavailable', observedAt: null, stale: false, vehicle: null } });
     if (mode[kind] === 'fail') return route.fulfill({ status: 503, body: 'Fixture feed failure' });
     return route.fulfill({ json });
   });
   await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => window.__map?._loaded);
-  await page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
+  if (!gated) await page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
   for (const kind of kinds.filter(kind => kind !== 'mtr')) await page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
-  await until(() => kinds.every(kind => calls[kind].length > 0));
-  await until(async () => (await page.locator('[data-marker-id="ferry-fixture"]').count()) === 1 && (await page.locator('[data-marker-id="nlb-fixture"]').count()) === 1);
+  await until(() => kinds.filter(kind => !gated || !buses.includes(kind)).every(kind => calls[kind].length > 0));
+  if (!hold) {
+    await until(async () => (await page.locator('[data-marker-id="ferry-fixture"]').count()) === 1 && (gated || (await page.locator('[data-marker-id="nlb-fixture"]').count()) === 1));
+    await until(() => page.locator('.sidebar-footer > button').isEnabled());
+  }
   await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 100));
   return { context, page, calls, mode, held, failed };
 }
 const counts = state => Object.fromEntries(kinds.map(kind => [kind, state.calls[kind].length]));
-async function tick(state, milliseconds = 5000) {
-  await state.page.clock.runFor(milliseconds);
+async function tick(state, milliseconds = 60000) {
+  if (milliseconds >= 30000) await state.page.clock.fastForward(milliseconds);
+  else await state.page.clock.runFor(milliseconds);
   await new Promise(resolve => setTimeout(resolve, 150));
 }
 async function changed(state, before) {
-  await until(() => kinds.every(kind => state.calls[kind].length === before[kind] + 1), `Every transit endpoint must poll once in 5 seconds: ${JSON.stringify(counts(state))}`);
+  await until(() => kinds.every(kind => state.calls[kind].length === before[kind] + 1), `Manual refresh must reload every active transit endpoint once: ${JSON.stringify(counts(state))}`);
 }
 async function labels(state) {
   return state.page.evaluate(() => Object.fromEntries(['mtr-ADM', 'lrt-1', 'kmb-fixture', 'citybus-fixture', 'gmb-fixture', 'nlb-fixture', 'ferry-fixture'].map(id => [id, document.querySelector(`[data-marker-id="${id}"]`)?.getAttribute('aria-label')])));
@@ -91,69 +97,128 @@ async function labels(state) {
 async function waitLabels(state, before) {
   await until(async () => Object.entries(await labels(state)).every(([id, value]) => value && value !== before[id]), 'New endpoint responses must visibly update every transit marker label or arrival board');
 }
-async function assertCadence(state, kind) {
-  const times = await state.page.evaluate(kind => window.__transitFetchTimes[kind], kind);
-  cadence[kind] = times.at(-1) - times.at(-2);
-  assert.equal(cadence[kind], 5000, `${kind} browser fetch invocations are exactly 5 seconds apart`);
+async function requestCounts(state) {
+  return {
+    network: Object.fromEntries(Object.entries(state.calls).map(([kind, calls]) => [kind, calls.length])),
+    invoked: await state.page.evaluate(() => Object.fromEntries(['mtr', 'lrt', 'kmb', 'citybus', 'gmb', 'nlb', 'ferry', 'bus-route'].map(kind => [kind, window.__transitFetchTimes[kind]?.length ?? 0]))),
+  };
+}
+async function refresh(state) {
+  await until(() => state.page.locator('.sidebar-footer > button').isEnabled());
+  await state.page.locator('.sidebar-footer > button').evaluate(element => element.click());
+}
+async function visibility(page) {
+  await page.evaluate(() => {
+    for (const value of ['hidden', 'visible']) {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }
+  });
+}
+async function languageChanges(state) {
+  for (const [index, expected] of [[1, 'zh-HK'], [0, 'en-HK']]) {
+    await state.page.locator('.language-toggle button').nth(index).evaluate(element => element.click());
+    await until(() => state.page.evaluate(expected => document.documentElement.lang === expected, expected));
+  }
 }
 async function test(name, run) {
+  if (filter && !filter.test(name)) return;
   try { await run(); results.push({ name, ok: true }); console.log('PASS ' + name); }
   catch (error) { results.push({ name, ok: false, error: error.stack }); console.error('FAIL ' + name + '\n' + error.stack); }
 }
 
 try {
   await fs.mkdir(evidence, { recursive: true });
-  await test('All seven transit feeds update every 5 seconds; incomplete rail startup cannot suppress polling', async () => {
-    const state = await create({ incomplete: true });
-    for (const kind of ['mtr', 'lrt']) assert.equal(await state.page.locator(`.layer-card.${kind} [role="alert"]`).count(), 1);
-    for (const kind of kinds) state.mode[kind] = 'complete';
-    let before = counts(state), visible = await labels(state);
-    await tick(state); await changed(state, before); await waitLabels(state, visible);
-    for (const kind of ['mtr', 'lrt']) assert.equal(await state.page.locator(`.layer-card.${kind} [role="alert"]`).count(), 0);
-    before = counts(state); visible = await labels(state);
-    await tick(state); await changed(state, before); await waitLabels(state, visible);
-    for (const kind of kinds) await assertCadence(state, kind);
+  await test('Transit loads once; timers, visibility, language, switches and panning do not reload; station borders are black', async () => {
+    const state = await create();
+    const before = await requestCounts(state);
+    const once = Object.fromEntries([...kinds.map(kind => [kind, 1]), ['bus-route', 0]]);
+    assert.deepEqual(before, { network: once, invoked: once }, 'Each eligible transit layer loads exactly once initially');
+    for (const kind of ['mtr', 'lrt']) {
+      const styles = await state.page.locator(`[data-marker-id^="${kind}-"].station-marker.rail-marker .marker-inner`).evaluateAll(elements => elements.map(element => ({ color: getComputedStyle(element).borderColor, width: getComputedStyle(element).borderWidth })));
+      assert.ok(styles.length, `${kind} includes real station markers`);
+      assert.ok(styles.every(style => style.color === 'rgb(0, 0, 0)' && style.width === '2px'), `${kind} station borders must be black and 2px wide`);
+    }
+    await state.page.locator('.source-button').evaluate(element => element.click());
+    assert.equal(await state.page.locator('.sources-dialog').getByText('Loads initially; use Refresh or Retry to update.', { exact: true }).count(), 7, 'Source descriptions must advertise initial/manual refresh for every transit feed');
+    await state.page.locator('.sources-dialog .close-button').evaluate(element => element.click());
+    await tick(state, 300000);
+    assert.deepEqual(await requestCounts(state), before, 'Long clock advances must not poll any transit feed');
+    await visibility(state.page);
+    await languageChanges(state);
+    for (const kind of kinds) await state.page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
+    for (const kind of kinds) await state.page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
+    await state.page.evaluate(() => { window.__map.setView([22.31, 114.18], 12, { animate: false }); });
+    await state.page.evaluate(() => { window.__map.setView([22.283, 113.952], 17, { animate: false }); });
+    await tick(state);
+    assert.deepEqual(await requestCounts(state), before, 'Visibility, language, off/on and panning reuse the initial data');
+    const visible = await labels(state), manualBefore = counts(state);
+    await refresh(state); await changed(state, manualBefore); await waitLabels(state, visible);
     assert.deepEqual(await state.page.evaluate(() => window.__errors), []);
     await state.page.screenshot({ path: path.join(evidence, 'all-transit-refresh.png') });
     await state.context.close();
   });
-  await test('Failures recover on the next poll; slow requests survive later ticks; manual refresh and layer switches work', async () => {
+  await test('Gated bus layers load at the first eligible viewport and never reload automatically afterward', async () => {
+    const state = await create({ gated: true });
+    const before = await requestCounts(state);
+    for (const kind of buses) assert.equal(before.network[kind], 0, `${kind} cannot load before its viewport is eligible`);
+    await tick(state);
+    assert.deepEqual(await requestCounts(state), before);
+    await state.page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
+    await until(() => buses.every(kind => state.calls[kind].length === 1));
+    await until(async () => (await state.page.locator('[data-marker-id="nlb-fixture"]').count()) === 1);
+    const loaded = await requestCounts(state);
+    await state.page.evaluate(() => { window.__map.setView([22.285, 113.955], 17, { animate: false }); });
+    await tick(state);
+    assert.deepEqual(await requestCounts(state), loaded, 'Panning after the first eligible bus load does not fetch again');
+    await state.context.close();
+  });
+  await test('Pending initial transit responses survive panning, language changes and off/on without duplicate fetches', async () => {
+    const state = await create({ hold: true });
+    const before = await requestCounts(state), failedBefore = state.failed.length;
+    await state.page.evaluate(() => { window.__map.setView([22.283, 113.952], 17, { animate: false }); });
+    await languageChanges(state);
+    for (const kind of kinds) await state.page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
+    for (const kind of kinds) await state.page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
+    await tick(state, 20000);
+    assert.deepEqual(await requestCounts(state), before, 'Initial requests are neither canceled nor replaced by context changes');
+    assert.deepEqual(state.failed.slice(failedBefore), [], 'Every initial request remains alive');
+    for (const item of state.held.splice(0)) await item.route.fulfill({ json: item.json });
+    await until(async () => Object.values(await labels(state)).every(Boolean), 'All initial responses must become visible after context changes');
+    await tick(state);
+    assert.deepEqual(await requestCounts(state), before, 'Completing retained initial loads must not schedule more requests');
+    assert.deepEqual(await state.page.evaluate(() => window.__errors), []);
+    await state.context.close();
+  });
+  await test('Failures wait for manual Retry; slow manual refreshes survive time advances without duplicate requests', async () => {
     const state = await create();
     let before = counts(state), visible = await labels(state);
     for (const kind of kinds) state.mode[kind] = 'fail';
-    await tick(state); await changed(state, before);
+    await refresh(state); await changed(state, before);
     await until(async () => (await state.page.locator(kinds.map(kind => `.layer-card.${kind} [role="alert"]`).join(',')).count()) === 7);
     assert.deepEqual(await labels(state), visible, 'Failed refresh keeps the last known data visible');
+    const failedCounts = await requestCounts(state);
+    await tick(state);
+    assert.deepEqual(await requestCounts(state), failedCounts, 'Errors must not start automatic retries');
     before = counts(state);
     for (const kind of kinds) state.mode[kind] = 'complete';
-    await tick(state); await changed(state, before); await waitLabels(state, visible);
+    for (const kind of kinds) await state.page.locator(`.layer-card.${kind}`).getByRole('button', { name: 'Retry', exact: true }).evaluate(element => element.click());
+    await changed(state, before); await waitLabels(state, visible);
     await until(async () => (await state.page.locator(kinds.map(kind => `.layer-card.${kind} [role="alert"]`).join(',')).count()) === 0);
     before = counts(state); visible = await labels(state);
     const failedBeforeSlowRequest = state.failed.length;
     for (const kind of kinds) state.mode[kind] = 'hold';
-    await tick(state); await changed(state, before);
-    await tick(state, 10000);
-    assert.deepEqual(counts(state), Object.fromEntries(kinds.map(kind => [kind, before[kind] + 1])), 'Later timer ticks neither abort nor duplicate pending requests');
-    assert.deepEqual(state.failed.slice(failedBeforeSlowRequest), [], 'A request slower than the cadence must remain alive');
+    await refresh(state); await changed(state, before);
+    const pending = await requestCounts(state);
+    await tick(state, 20000);
+    assert.deepEqual(await requestCounts(state), pending, 'Time advances must neither abort nor duplicate a pending manual request');
+    assert.deepEqual(state.failed.slice(failedBeforeSlowRequest), [], 'Slow manual requests remain alive');
     for (const item of state.held.splice(0)) await item.route.fulfill({ json: item.json });
     await waitLabels(state, visible);
-    for (const kind of kinds) state.mode[kind] = 'complete';
-    await until(() => state.page.locator('.sidebar-footer > button').isEnabled());
-    before = counts(state); visible = await labels(state);
-    await state.page.locator('.sidebar-footer > button').evaluate(element => element.click());
-    await changed(state, before); await waitLabels(state, visible);
-    for (const kind of kinds) await state.page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
-    before = counts(state);
-    await tick(state, 15000);
-    assert.deepEqual(counts(state), before, 'Disabled layers stop polling');
-    for (const kind of kinds) await state.page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
-    await changed(state, before);
-    before = counts(state);
-    await tick(state); await changed(state, before);
     assert.deepEqual(await state.page.evaluate(() => window.__errors), []);
     await state.context.close();
   });
-  await test('Selected bus route refreshes actual data and estimated marker every 5 seconds', async () => {
+  await test('Selected bus route loads once, retains data across visibility and language changes, and refreshes explicitly', async () => {
     const state = await create();
     await state.page.locator('[data-marker-id="kmb-fixture"] .marker-displacement').evaluate(element => element.click());
     await state.page.locator('.stop-eta-popup .bus-route-button').first().evaluate(element => element.click());
@@ -161,13 +226,31 @@ try {
     await until(async () => (await state.page.locator('.bus-route-marker').count()) === 1);
     await state.page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
     const position = () => state.page.evaluate(() => { let point; window.__map.eachLayer(layer => { if (layer.getElement?.()?.classList.contains('bus-route-marker')) point = layer.getLatLng().lng; }); return point; });
-    for (const expected of [2, 3]) {
-      const before = await position();
-      await tick(state);
-      await until(() => state.calls['bus-route'].length === expected);
-      await until(async () => (await position()) !== before, 'The route marker consumes the refreshed vehicle estimate');
-      await assertCadence(state, 'bus-route');
-    }
+    const initial = await requestCounts(state);
+    await tick(state);
+    await visibility(state.page);
+    await languageChanges(state);
+    await tick(state);
+    assert.deepEqual(await requestCounts(state), initial, 'An already selected route never refreshes automatically');
+    const before = await position();
+    await refresh(state);
+    await until(() => state.calls['bus-route'].length === 2);
+    await until(async () => (await position()) !== before, 'Manual refresh updates the route vehicle estimate');
+    state.mode['bus-route'] = 'api-fail';
+    await refresh(state);
+    await until(() => state.calls['bus-route'].length === 3);
+    await state.page.locator('#panel-tab-details').evaluate(element => element.click());
+    await until(async () => (await state.page.locator('.bus-route-status .warning-text').count()) > 0);
+    assert.equal(await state.page.locator('.bus-route-polyline').count(), 1, 'An HTTP-200 API failure retains the last route geometry');
+    assert.equal(await state.page.locator('.bus-route-marker').count(), 0, 'Failed route data must not show an estimated vehicle');
+    assert.match(await state.page.locator('.bus-route-status').innerText(), /Retained data/);
+    const failed = await requestCounts(state);
+    await tick(state);
+    assert.deepEqual(await requestCounts(state), failed, 'A failed selected route waits for an explicit Retry');
+    state.mode['bus-route'] = 'complete';
+    await state.page.locator('.bus-route-status').getByRole('button', { name: 'Retry', exact: true }).evaluate(element => element.click());
+    await until(() => state.calls['bus-route'].length === 4);
+    await until(async () => (await state.page.locator('.bus-route-status .warning-text').count()) === 0);
     assert.deepEqual(await state.page.evaluate(() => window.__errors), []);
     await state.page.screenshot({ path: path.join(evidence, 'bus-route-refresh.png') });
     await state.context.close();
@@ -175,6 +258,6 @@ try {
 } finally {
   for (const context of contexts) await context.close().catch(() => {});
   await browser.close();
-  await fs.writeFile(path.join(evidence, 'transit-refresh-results.json'), JSON.stringify({ origin, results, cadenceMs: cadence, fixture: 'Mocked official and transit endpoints; Playwright clock advances the real application timers; synchronous browser fetch timestamps, actual request counts and visible Leaflet data updates are asserted.' }, null, 2));
+  await fs.writeFile(path.join(evidence, 'transit-refresh-results.json'), JSON.stringify({ origin, results, fixture: 'Mocked official and transit endpoints; long Playwright clock advances and application interactions verify no automatic transit fetches. Native fetch invocation counts, actual requests, manual updates and rendered station borders are asserted.' }, null, 2));
 }
 if (results.some(result => !result.ok)) process.exitCode = 1;

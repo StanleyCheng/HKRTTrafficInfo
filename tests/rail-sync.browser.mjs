@@ -29,26 +29,24 @@ async function create(kind = 'mtr', response = () => 'complete', language = 'en'
   const page = await context.newPage();
   await page.clock.install();
   const calls = [], held = [];
-  let recording = false;
   await context.route('**/api/**', async route => {
     const endpoint = new URL(route.request().url()).pathname.split('/')[2];
     if (endpoint !== 'mtr' && endpoint !== 'lrt') return route.fulfill({ status: 503, body: 'Fixture: unrelated feeds unavailable' });
     const at = await page.evaluate(() => Date.now());
-    const status = recording && endpoint === kind ? response(calls.push({ at, language: new URL(route.request().url()).searchParams.get('lang') })) : 'complete';
-    if (status === 'hold') { held.push(route); return; }
+    const status = endpoint === kind ? response(calls.push({ at, language: new URL(route.request().url()).searchParams.get('lang') })) : 'complete';
     if (status === 'fail') return route.fulfill({ status: 503, body: 'Fixture: rail feed failed' });
     const observedAt = new Date(at - 60000).toISOString();
     const train = { id: 'fixture', line: 'TWL', dest: 'TSW', plat: '1', ttnt: 3, observedAt, delay: false, timeType: 'A', anchor: 'ADM', path: ['CEN', 'ADM', 'TST'], hold: ['CEN', 'ADM', 'TST'] };
     const boards = endpoint === 'mtr'
       ? [{ line: 'TWL', station: 'ADM', observedAt, message: '', trains: [{ dest: 'TSW', plat: '1', ttnt: 3, delay: false, timeType: 'A' }] }]
       : [{ station: '1', observedAt, calls: [{ route: '610', dest: '2', destTc: '兆康', destEn: 'Siu Hong', plat: '1', ttnt: 3, timeType: 'A' }] }];
-    return route.fulfill({ json: { ok: true, complete: status !== 'incomplete', stale: status === 'stale', fetchedAt: new Date(at).toISOString(), observedAt, trains: endpoint === 'mtr' ? [train] : [], boards } });
+    const json = { ok: true, complete: status !== 'incomplete', stale: status === 'stale', fetchedAt: new Date(at).toISOString(), observedAt, trains: endpoint === 'mtr' ? [train] : [], boards };
+    if (status === 'hold') { held.push({ route, json }); return; }
+    return route.fulfill({ json });
   });
   await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => window.__map?._loaded);
-  await page.locator('.layer-card.mtr [role="switch"]').click();
-  recording = true;
-  await page.locator(`.layer-card.${kind} [role="switch"]`).click();
+  if (kind === 'lrt') await page.locator('.layer-card.lrt [role="switch"]').evaluate(element => element.click());
   await until(() => calls.length >= 1);
   await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 1000));
   return { page, context, calls, held, card: page.locator(`.layer-card.${kind}`), toggle: page.locator(`.layer-card.${kind} [role="switch"]`) };
@@ -75,60 +73,63 @@ async function test(name, run) {
 try {
   await fs.mkdir(evidence, { recursive: true });
   for (const kind of ['mtr', 'lrt']) {
-    await test(`${kind}: continuous five-second polling recovers incomplete station coverage`, async () => {
-      const state = await create(kind, call => call <= 4 ? 'incomplete' : 'complete');
+    await test(`${kind}: incomplete initial coverage waits for an explicit Retry`, async () => {
+      const state = await create(kind, call => call === 1 ? 'incomplete' : 'complete');
       await state.card.locator('[role="alert"]').waitFor();
-      await advance(state, 3000);
-      assert.equal(state.calls.length, 1, `Polling must wait five seconds: ${JSON.stringify(state.calls)}`);
-      await advance(state, 2000, 2);
-      await advance(state, 5000, 3);
-      await advance(state, 5000, 4);
+      await state.page.clock.fastForward(60000);
+      assert.equal(state.calls.length, 1, 'Incomplete coverage must not schedule automatic retries');
       assert.equal(await state.card.locator('[role="alert"]').count(), 1, 'Incomplete coverage must remain visibly incomplete');
-      await advance(state, 5000, 5);
+      await state.card.getByRole('button', { name: 'Retry', exact: true }).evaluate(element => element.click());
+      await until(() => state.calls.length === 2);
       await state.card.locator('[role="alert"]').waitFor({ state: 'hidden' });
-      await advance(state, 5000, 6);
+      await state.page.clock.fastForward(60000);
+      assert.equal(state.calls.length, 2, 'A successful manual Retry must not start polling');
       assert.deepEqual(await state.page.evaluate(() => window.__errors), []);
       await state.context.close();
     });
   }
-  await test('MTR failures keep polling, manual retry bypasses cadence, and disabling stops requests', async () => {
+  await test('MTR failures wait for manual Retry and toggling a loaded layer never retries automatically', async () => {
     const state = await create('mtr', () => 'fail');
     await state.card.locator('[role="alert"]').waitFor();
-    for (const expected of [2, 3, 4, 5]) await advance(state, 5000, expected);
-    await state.card.getByRole('button', { name: 'Retry', exact: true }).click();
-    await until(() => state.calls.length === 6);
+    await state.page.clock.fastForward(60000);
+    assert.equal(state.calls.length, 1);
+    await state.card.getByRole('button', { name: 'Retry', exact: true }).evaluate(element => element.click());
+    await until(() => state.calls.length === 2);
     await until(() => state.page.locator('.sidebar-footer > button').isEnabled());
-    await advance(state, 10000, 7);
-    await state.toggle.click();
-    await advance(state, 60000);
-    assert.equal(state.calls.length, 7, 'Disabling must cancel polling');
-    await state.toggle.click();
-    await until(() => state.calls.length === 8);
-    await advance(state, 5000, 9);
+    await state.toggle.evaluate(element => element.click());
+    await state.page.clock.fastForward(60000);
+    await state.toggle.evaluate(element => element.click());
+    await state.page.clock.fastForward(60000);
+    assert.equal(state.calls.length, 2, 'Off/on must retain the attempted load without an automatic retry');
+    await state.card.getByRole('button', { name: 'Retry', exact: true }).evaluate(element => element.click());
+    await until(() => state.calls.length === 3);
     assert.deepEqual(await state.page.evaluate(() => window.__errors), []);
     await state.context.close();
   });
-  await test('A complete retry keeps the same five-second polling cadence', async () => {
+  await test('Stale MTR data recovers with manual Refresh and remains quiet afterward', async () => {
     const state = await create('mtr', call => call === 1 ? 'stale' : 'complete');
     await state.card.locator('[role="alert"]').waitFor();
-    await advance(state, 5000, 2);
+    await state.page.clock.fastForward(60000);
+    assert.equal(state.calls.length, 1);
+    await state.page.locator('.sidebar-footer > button').evaluate(element => element.click());
+    await until(() => state.calls.length === 2);
     await state.card.locator('[role="alert"]').waitFor({ state: 'hidden' });
-    await advance(state, 3000);
+    await state.page.clock.fastForward(60000);
     assert.equal(state.calls.length, 2);
-    await advance(state, 2000, 3);
     await state.context.close();
   });
-  await test('Disabling cancels an in-flight rail request and ignores a late response', async () => {
+  await test('An in-flight initial rail load finishes into retained data while disabled and reappears without refetching', async () => {
     const state = await create('mtr', call => call === 1 ? 'hold' : 'complete');
-    await state.toggle.click();
-    await advance(state, 60000);
+    await state.toggle.evaluate(element => element.click());
+    await advance(state, 20000);
     assert.equal(state.calls.length, 1);
-    await state.held[0].fulfill({ json: { ok: true, complete: true, observedAt: new Date().toISOString(), trains: [], boards: [] } }).catch(() => {});
+    await state.held[0].route.fulfill({ json: state.held[0].json });
     await advance(state, 5000);
-    assert.equal(state.calls.length, 1, 'The canceled completion must not schedule more retries');
+    assert.equal(state.calls.length, 1, 'The completion must not schedule more requests');
     assert.equal(await state.page.locator('.vehicle-marker.rail-marker').count(), 0);
-    await state.toggle.click();
-    await until(() => state.calls.length === 2);
+    await state.toggle.evaluate(element => element.click());
+    await until(async () => (await state.page.locator('.vehicle-marker.rail-marker').count()) === 1);
+    assert.equal(state.calls.length, 1, 'The initial result is reused when the layer is re-enabled');
     await state.context.close();
   });
   for (const language of ['en', 'zh']) {

@@ -132,21 +132,25 @@ try {
     await page.waitForFunction(() => document.documentElement.lang === 'zh-HK');
     await page.waitForFunction(() => window.__originalVehicles.every(element => element.isConnected));
     await page.waitForTimeout(16000);
-    assert.ok(mtrCalls() > calls, 'Fixture must exercise a real periodic feed refresh');
+    assert.equal(mtrCalls(), calls, 'Language changes and elapsed time must not refresh retained transit feeds');
+    const response = page.waitForResponse(response => response.url().includes('/api/mtr') && response.ok());
+    await page.locator('.sidebar-footer > button').click();
+    await response;
+    assert.equal(mtrCalls(), calls + 1, 'Manual refresh reloads the MTR feed');
     const identity = await page.evaluate(() => window.__originalVehicles.map(element => ({ name: element.title, connected: element.isConnected })));
     assert.ok(identity.every(element => element.connected), `Feed and language changes must preserve marker DOM identity: ${JSON.stringify(identity)}`);
     assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await page.screenshot({ path: path.join(evidence, 'desktop-motion.png') });
     await context.close();
   });
-  await test('Vehicle images: distinct MTR/LRT/ferry artwork, yellow rail stations and keyboard targets', async () => {
+  await test('Vehicle images: distinct MTR/LRT/ferry artwork, black station borders with cream glyphs and keyboard targets', async () => {
     const { page, context } = await create({ reducedMotion: 'reduce', deviceScaleFactor: 3 });
     const stations = await page.locator('.rail-marker.station-marker').evaluateAll(elements => elements.map(element => ({
       border: getComputedStyle(element.querySelector('.marker-inner')).borderColor,
       strokes: [...element.querySelector('svg').children].map(shape => getComputedStyle(shape).stroke),
     })));
     assert.ok(stations.length, 'Fixture includes stationary rail symbols');
-    assert.ok(stations.every(marker => marker.border === 'rgb(255, 243, 176)' && marker.strokes.every(stroke => stroke === marker.border)), 'Rail station outlines stay light yellow');
+    assert.ok(stations.every(marker => marker.border === 'rgb(0, 0, 0)' && marker.strokes.every(stroke => stroke === 'rgb(255, 243, 176)')), 'Rail stations use black borders and preserve cream glyph strokes');
     const vehicles = page.locator('.vehicle-marker');
     await page.waitForFunction(() => [...document.querySelectorAll('.vehicle-art')].every(image => image.complete && image.naturalWidth > 0));
     const artwork = await vehicles.evaluateAll(elements => elements.map(element => ({

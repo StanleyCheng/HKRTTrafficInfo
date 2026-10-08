@@ -82,7 +82,7 @@ async function samples(page, count = 14) {
   return page.evaluate(count => new Promise(resolve => { const frames = []; function frame() { const e = document.querySelector('.bus-route-marker'); frames.push(e?.style.transform); if (frames.length >= count) resolve(frames); else requestAnimationFrame(frame); } requestAnimationFrame(frame); }), count);
 }
 async function refresh(page) {
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.locator('.sidebar-footer > button').click();
 }
 async function test(name, run) {
   if (process.env.BUS_TEST_FILTER && !new RegExp(process.env.BUS_TEST_FILTER).test(name)) return;
@@ -147,7 +147,7 @@ try {
     await f.page.getByText('No current position estimate available.', { exact: true }).waitFor();
     await f.context.close();
   });
-  await test('Reduced motion, hidden documents, request cancellation and layer disable', async () => {
+  await test('Reduced motion, hidden documents, selection cleanup and layer disable', async () => {
     const f = await create({ reducedMotion: 'reduce' }); await select(f, variants[0]); await f.page.locator('.bus-route-marker').waitFor();
     assert.equal(new Set(await samples(f.page)).size, 1, 'Reduced motion keeps a static location');
     await f.page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -183,7 +183,7 @@ try {
 } finally {
   await Promise.all(contexts.map(context => context.close().catch(() => {})));
   await browser.close();
-  await fs.writeFile(path.join(evidence, 'bus-route-results.json'), JSON.stringify({ origin, results, fixture: 'Deterministic local feed and route API responses; production normalization, polling, route projection, Leaflet rendering and interactions.' }, null, 2));
+  await fs.writeFile(path.join(evidence, 'bus-route-results.json'), JSON.stringify({ origin, results, fixture: 'Deterministic local feed and route API responses; production normalization, manual refresh, route projection, Leaflet rendering and interactions.' }, null, 2));
 }
 console.log(JSON.stringify({ total: results.length, passed: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length }));
 if (results.some(r => !r.ok)) process.exitCode = 1;

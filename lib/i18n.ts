@@ -353,7 +353,7 @@ export const tollNames: Record<string, string> = { WHC: '西區海底隧道', CH
 
 export const integrationMessages = {
   en: {
-    refreshCadence: (seconds: number) => `Refresh interval: ${seconds} seconds while visible.`, delayed: 'Delayed', arrival: 'Arrival', departure: 'Departure', busyPoints: (n: number) => `${n} busy control points`, activeWarnings: (n: number) => `${n} active warnings`,
+    refreshCadence: (seconds: number) => seconds > 0 ? `Refresh interval: ${seconds} seconds while visible.` : 'Loads initially; use Refresh or Retry to update.', delayed: 'Delayed', arrival: 'Arrival', departure: 'Departure', busyPoints: (n: number) => `${n} busy control points`, activeWarnings: (n: number) => `${n} active warnings`,
     groups: { roads: 'Roads', conditions: 'Boundary & weather', rail: 'Rail', bus: 'Buses', ferry: 'Ferries' },
     tabs: { ranked: 'Priority', roads: 'Roads', boundary: 'Boundary', weather: 'Weather', systems: 'Systems', notes: 'Notes' },
     intel: 'Traffic intelligence', expand: 'Open traffic intelligence', close: 'Close traffic intelligence', empty: 'No active items in this view.',
@@ -361,7 +361,7 @@ export const integrationMessages = {
     arrivals: 'Next arrivals', nextTrainEta: 'Next train ETA', destination: 'Destination', platform: 'Platform', minutes: 'min', scheduled: 'Scheduled', live: 'Live', noArrivals: 'No upcoming arrivals reported.', stopArrivals: 'Stop arrivals',
     ferryDepartures: 'Ferry departures', firstFerry: 'First ferry', lastFerry: 'Last ferry', nextFerry: 'Next ferry', ferryNextIn: (minutes: number) => `Next in ${minutes} min`, ferryTimes: 'Hong Kong time · scheduled / estimated departures', noFerryDepartures: 'Departure information unavailable.',
     estimated: 'Position estimated from published arrival times; not live GPS.', estimatedFerry: 'Estimated position · timetable / arrival data', gps: 'Operator GPS position', stale: 'Retained data · refresh failed or overdue',
-    showBusRoute: 'Show route', selectedBusRoute: 'Route on map', loadingBusRoute: 'Loading full route…', busRouteError: 'Route could not be loaded.', noBusPosition: 'No current position estimate available.', busRouteStops: 'Route connects published stops; road geometry is unavailable.', busRouteTracking: 'Next bus · estimated position', closeBusRoute: 'Close route',
+    showBusRoute: 'Show route', selectedBusRoute: 'Route on map', loadingBusRoute: 'Loading full route…', busRouteError: 'Route or arrival data could not update.', noBusPosition: 'No current position estimate available.', busRouteStops: 'Route connects published stops; road geometry is unavailable.', busRouteTracking: 'Next bus · estimated position', closeBusRoute: 'Close route',
     age: (n: number) => n === 0 ? 'Updated just now' : `Updated ${n} min ago`, noTimestamp: 'Source time unavailable', notLoaded: 'Not loaded', disabled: 'Off', enabled: 'On',
     viewportBus: 'Zoom to level 13 or closer to load nearby stops.', viewportGmb: 'Zoom to level 17 or closer to load minibus stops.', viewportNlb: 'Move the map to Lantau Island to load stops.',
     route: 'Route', status: 'Status', place: 'Location', road: 'Road', direction: 'Direction', lane: 'Lane', start: 'Start', end: 'End',
@@ -372,7 +372,7 @@ export const integrationMessages = {
     noWarnings: 'No active weather warnings', train: 'Train', vessel: 'Vessel', fault: 'Feed unavailable', clear: 'Normal', prep: 'Preparation', underway: 'In progress',
   },
   zh: {
-    refreshCadence: (seconds: number) => `頁面顯示時每 ${seconds} 秒更新。`, delayed: '延誤', arrival: '到站', departure: '開出', busyPoints: (n: number) => `${n} 個繁忙管制站`, activeWarnings: (n: number) => `${n} 個生效警告`,
+    refreshCadence: (seconds: number) => seconds > 0 ? `頁面顯示時每 ${seconds} 秒更新。` : '首次啟用時讀取；請按重新讀取或重試更新。', delayed: '延誤', arrival: '到站', departure: '開出', busyPoints: (n: number) => `${n} 個繁忙管制站`, activeWarnings: (n: number) => `${n} 個生效警告`,
     groups: { roads: '道路', conditions: '口岸及天氣', rail: '鐵路', bus: '巴士', ferry: '渡輪' },
     tabs: { ranked: '重點', roads: '道路', boundary: '口岸', weather: '天氣', systems: '系統', notes: '說明' },
     intel: '交通情報', expand: '展開交通情報', close: '關閉交通情報', empty: '此分類暫無消息。',
@@ -380,7 +380,7 @@ export const integrationMessages = {
     arrivals: '即將到站', nextTrainEta: '下一班列車預計到站', destination: '目的地', platform: '月台', minutes: '分鐘', scheduled: '時間表', live: '實時', noArrivals: '暫無即將到站資料。', stopArrivals: '車站到站時間',
     ferryDepartures: '渡輪開出時間', firstFerry: '頭班船', lastFerry: '尾班船', nextFerry: '下一班船', ferryNextIn: (minutes: number) => `${minutes} 分鐘後開出`, ferryTimes: '香港時間 · 時間表／預計開出時間', noFerryDepartures: '暫無開出時間資料。',
     estimated: '位置按公布的到站時間推算，並非實時 GPS。', estimatedFerry: '估算位置 · 時間表／到站資料', gps: '營辦商 GPS 位置', stale: '保留上次資料 · 更新失敗或逾時',
-    showBusRoute: '顯示路線', selectedBusRoute: '地圖上的路線', loadingBusRoute: '正在載入完整路線…', busRouteError: '未能載入路線。', noBusPosition: '暫無可用的即時位置估算。', busRouteStops: '路線連接公布的車站，暫無道路路線資料。', busRouteTracking: '下一班車 · 估算位置', closeBusRoute: '關閉路線',
+    showBusRoute: '顯示路線', selectedBusRoute: '地圖上的路線', loadingBusRoute: '正在載入完整路線…', busRouteError: '未能更新路線或到站時間。', noBusPosition: '暫無可用的即時位置估算。', busRouteStops: '路線連接公布的車站，暫無道路路線資料。', busRouteTracking: '下一班車 · 估算位置', closeBusRoute: '關閉路線',
     age: (n: number) => n === 0 ? '剛剛更新' : `${n} 分鐘前更新`, noTimestamp: '來源未提供更新時間', notLoaded: '尚未載入', disabled: '已關閉', enabled: '已開啟',
     viewportBus: '放大至第 13 級或以上以載入附近車站。', viewportGmb: '放大至第 17 級或以上以載入小巴站。', viewportNlb: '把地圖移至大嶼山以載入車站。',
     route: '路線', status: '狀態', place: '位置', road: '道路', direction: '方向', lane: '行車線', start: '開始', end: '結束',
