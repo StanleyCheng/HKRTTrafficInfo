@@ -1,5 +1,5 @@
-import { integrationMessages as labels, boundaryNames, tollNames } from './i18n.ts';
-import { layers, staticExport, type Arrival, type Camera, type CameraData, type DetailRow, type FlowSegment, type IntegrationKind, type Language, type MapPath } from './traffic.ts';
+import { integrationMessages as labels, messages, boundaryNames, tollNames } from './i18n.ts';
+import { hkTime, layers, staticExport, type Arrival, type Camera, type CameraData, type DetailRow, type FlowSegment, type IntegrationKind, type Language, type MapPath } from './traffic.ts';
 import type { ApproachesResponse, ControlPointsResponse, FerryResponse, LrtResponse, MtrResponse, CitybusResponse, WarningsResponse } from './types.ts';
 import { mtrStationCollection, mtrTrackCollection, stationRecord, lineRecord, projectNetworkTrain } from './mtr-network.ts';
 import { lrtStationCollection, lrtTrackCollection, lrtPoint, lrtStation } from './lrt-network.ts';
@@ -18,15 +18,16 @@ export function viewportNote(kind: string, view: MapViewport): 'viewportBus' | '
 }
 const endpoints: Record<IntegrationKind, string> = { crossing: 'approaches', works: 'works', toll: 'tolls', boundary: 'control-points', 'weather-warning': 'warnings', mtr: 'mtr', lrt: 'lrt', kmb: 'kmb', citybus: 'citybus', gmb: 'gmb', nlb: 'nlb', ferry: 'ferry' };
 export const pollingMs: Record<IntegrationKind, number> = { crossing: 120000, works: 300000, toll: 21600000, boundary: 60000, 'weather-warning': 60000, mtr: 15000, lrt: 15000, kmb: 60000, citybus: 60000, gmb: 60000, nlb: 60000, ferry: 60000 };
-type Envelope = { ok: boolean; error?: string; fetchedAt?: string; observedAt?: string | null; capturedAt?: string | null; stale?: boolean };
+type Envelope = { ok: boolean; complete?: boolean; error?: string; fetchedAt?: string; observedAt?: string | null; capturedAt?: string | null; stale?: boolean };
 type FeaturesResponse = Envelope & { works?: GeoJSON.FeatureCollection; tolls?: GeoJSON.FeatureCollection };
 
-async function json(url: string): Promise<unknown> {
-  const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(55000) });
+async function json(url: string, signal?: AbortSignal): Promise<unknown> {
+  const timeout = AbortSignal.timeout(55000);
+  const response = await fetch(url, { cache: 'no-store', signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
   if (!response.ok) throw new Error(`Feed HTTP ${response.status}`);
   return response.json();
 }
-export async function getIntegrationData(kind: IntegrationKind, view: MapViewport, language: Language): Promise<CameraData> {
+export async function getIntegrationData(kind: IntegrationKind, view: MapViewport, language: Language, signal?: AbortSignal): Promise<CameraData> {
   const note = viewportNote(kind, view);
   if (note) return { ...base(kind, { ok: true }), feedNote: note };
   let payload: Envelope;
@@ -42,14 +43,14 @@ export async function getIntegrationData(kind: IntegrationKind, view: MapViewpor
     } else throw new Error('Hosted feed required');
   } else {
     const query = new URLSearchParams({ lng: String(view.lng), lat: String(view.lat), zoom: String(view.zoom), lang: language === 'en' ? 'en' : 'tc' });
-    payload = await json(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/api/${endpoints[kind]}?${query}`) as Envelope;
+    payload = await json(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/api/${endpoints[kind]}?${query}`, signal) as Envelope;
   }
   if (!payload.ok) throw new Error(payload.error || 'Feed unavailable');
   return normalizeIntegration(kind, payload);
 }
 function base(kind: IntegrationKind, payload: Envelope): CameraData {
   const fetchedAt = validDate(payload.fetchedAt) ?? new Date().toISOString();
-  return { cameras: [], count: 0, expectedCount: 0, fetchedAt, observedAt: validDate(payload.observedAt ?? payload.capturedAt), sourceLastModified: null, source: layers[kind].source, complete: !payload.stale, stale: Boolean(payload.stale), feedError: payload.error, payload };
+  return { cameras: [], count: 0, expectedCount: 0, fetchedAt, observedAt: validDate(payload.observedAt ?? payload.capturedAt), sourceLastModified: null, source: layers[kind].source, complete: payload.complete !== false && !payload.stale, stale: Boolean(payload.stale), feedError: payload.error, payload };
 }
 function validDate(value: string | null | undefined) { return value && Number.isFinite(Date.parse(value)) ? value : null; }
 const text = (value: unknown) => typeof value === 'string' || typeof value === 'number' ? String(value) : '';
@@ -101,7 +102,8 @@ export function normalizeIntegration(kind: IntegrationKind, payload: Envelope): 
     data.paths = pathsFromFeatures(kind === 'mtr' ? mtrTrackCollection() : lrtTrackCollection(), kind);
     data.cameras = featureCameras(kind, kind === 'mtr' ? mtrStationCollection() : lrtStationCollection()).map(camera => {
       const arrivals: Arrival[] = kind === 'mtr' ? (payload as MtrResponse).boards.filter(board => board.station === camera.sourceId).flatMap(board => board.trains.map(call => ({ route: board.line, destination: stationRecord(call.dest)?.tc || call.dest, destinationEn: stationRecord(call.dest)?.en || call.dest, minutes: call.ttnt, eta: board.observedAt && Number.isFinite(Date.parse(board.observedAt)) ? new Date(Date.parse(board.observedAt) + call.ttnt * 60000).toISOString() : undefined, observedAt: board.observedAt, timeType: call.timeType, platform: call.plat, remark: call.delay ? labels.zh.delayed : '', remarkEn: call.delay ? labels.en.delayed : '' }))) : (payload as LrtResponse).boards.filter(board => board.station === camera.sourceId).flatMap(board => board.calls.map(call => ({ route: call.route, destination: call.destTc, destinationEn: call.destEn, minutes: call.ttnt, eta: board.observedAt && Number.isFinite(Date.parse(board.observedAt)) ? new Date(Date.parse(board.observedAt) + call.ttnt * 60000).toISOString() : undefined, observedAt: board.observedAt, timeType: call.timeType, platform: call.plat })));
-      return { ...camera, dataUpdated: arrivals.map(call => call.observedAt).filter((time): time is string => Boolean(time)).sort()[0], positionType: 'station', arrivals: arrivals.sort((a, b) => (a.minutes ?? Infinity) - (b.minutes ?? Infinity)).slice(0, 12) };
+      const observed = (payload as MtrResponse | LrtResponse).boards.filter(board => board.station === camera.sourceId).map(board => validDate(board.observedAt)).filter((time): time is string => Boolean(time)).sort();
+      return { ...camera, dataUpdated: observed[0], positionType: 'station', arrivals: arrivals.sort((a, b) => (a.minutes ?? Infinity) - (b.minutes ?? Infinity)).slice(0, 12) };
     });
   } else if (kind === 'kmb' || kind === 'citybus' || kind === 'gmb' || kind === 'nlb') {
     data.cameras = (payload as CitybusResponse).stops.map(stop => ({ id: `${kind}-${stop.id}`, sourceId: stop.id, kind, name: stop.nameTc, nameEn: stop.nameEn, lng: stop.lng, lat: stop.lat, routes: stop.routes, badge: stop.routes.slice(0, 3).join(' · '), arrivals: stop.calls.slice(0, 12).map(call => ({ route: call.route, destination: call.destTc, destinationEn: call.destEn, minutes: call.minutes, eta: call.eta, scheduled: call.scheduled, remark: call.remarkTc, remarkEn: call.remarkEn, tracking: call.tracking })) }));
@@ -109,7 +111,7 @@ export function normalizeIntegration(kind: IntegrationKind, payload: Envelope): 
     data.cameras = (payload as FerryResponse).piers.map(pier => ({ id: `ferry-${pier.id}`, sourceId: pier.id, kind, name: pier.nameTc, nameEn: pier.nameEn, lng: pier.lng, lat: pier.lat, positionType: 'pier', arrivals: pier.calls.slice(0, 12).map(call => ({ route: call.route, destination: call.destTc, destinationEn: call.destEn, eta: call.eta, minutes: call.minutes, scheduled: call.scheduled, remark: call.remarkTc, remarkEn: call.remarkEn })) }));
     data.paths = (payload as FerryResponse).vessels.filter(vessel => vessel.pathLng && vessel.pathLat).map(vessel => ({ id: vessel.id, color: layers.ferry.color, points: vessel.pathLng!.map((lng, i) => [vessel.pathLat![i], lng] as [number, number]) }));
   }
-  data.cameras = data.cameras.map(camera => ({ ...camera, dataUpdated: kind === 'crossing' ? camera.dataUpdated : camera.dataUpdated || data.observedAt || undefined }));
+  data.cameras = data.cameras.map(camera => ({ ...camera, dataUpdated: kind === 'crossing' || kind === 'mtr' || kind === 'lrt' ? camera.dataUpdated : camera.dataUpdated || data.observedAt || undefined }));
   data.count = kind === 'weather-warning' ? (payload as WarningsResponse).warnings.length : data.cameras.length;
   data.expectedCount = data.count;
   return data;
@@ -144,6 +146,17 @@ export function movingCameras(kind: 'mtr' | 'lrt' | 'ferry', data: CameraData, n
     const spot = kind === 'mtr' ? projectNetworkTrain(train, now) : projectTrain({ ...train, observedAt: Date.parse(train.observedAt) }, lrtPoint, now);
     if (!spot) return [];
     const dest = kind === 'mtr' ? stationRecord(train.dest) : lrtStation(train.dest);
-    return [{ id: `${kind}-train-${train.id}`, sourceId: train.id, kind, name: `${train.line} → ${dest?.tc || train.dest}`, nameEn: `${train.line} → ${dest?.en || train.dest}`, lat: spot.lat, lng: spot.lng, color: kind === 'mtr' ? lineRecord(train.line)?.color : layers.lrt.color, estimated: true, positionType: 'vehicle', dataUpdated: data.observedAt ?? undefined, arrivals: [{ route: train.line, destination: dest?.tc || train.dest, destinationEn: dest?.en || train.dest, minutes: spot.minutes, platform: train.plat }] }];
+    const nextCode = spot.clamp !== 'none' && spot.minutes > 0 ? train.anchor : spot.to;
+    const next = kind === 'mtr' ? stationRecord(nextCode) : lrtStation(nextCode);
+    return [{ id: `${kind}-train-${train.id}`, sourceId: train.id, kind, name: `${train.line} → ${dest?.tc || train.dest}`, nameEn: `${train.line} → ${dest?.en || train.dest}`, nextStation: { name: next?.tc || nextCode, nameEn: next?.en || nextCode }, lat: spot.lat, lng: spot.lng, color: kind === 'mtr' ? lineRecord(train.line)?.color : layers.lrt.color, estimated: true, positionType: 'vehicle', dataUpdated: train.observedAt, arrivals: [{ route: train.line, destination: dest?.tc || train.dest, destinationEn: dest?.en || train.dest, minutes: spot.minutes, eta: new Date(now + spot.minutes * 60000).toISOString(), observedAt: train.observedAt, platform: train.plat }] }];
   });
+}
+
+export function railHoverText(camera: Camera, language: Language, now = Date.now()): string {
+  const copy = labels[language];
+  const station = camera.nextStation ?? camera;
+  const name = language === 'en' ? station.nameEn || station.name : station.name;
+  const times = (camera.arrivals ?? []).map(call => call.eta ? Date.parse(call.eta) : NaN).filter(time => Number.isFinite(time) && time >= now).sort((a, b) => a - b);
+  const updated = validDate(camera.dataUpdated);
+  return `${name}\n${copy.nextTrainEta}: ${times.length ? hkTime(times[0], false, language) : copy.queue[4]}\n${messages[language].recordUpdated}: ${updated ? hkTime(updated, true, language) : copy.noTimestamp}`;
 }

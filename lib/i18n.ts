@@ -138,6 +138,7 @@ type AppMessages = {
   showAll: string;
   returnToHongKong: string;
   locateMe: string;
+  stopFollowing: string;
   locating: string;
   locationFound: string;
   locationDenied: string;
@@ -230,7 +231,7 @@ export const messages: Record<Language, AppMessages> = {
     mapLabel: '香港交通互動地圖', mapKeyboardHelp: '使用方向鍵移動地圖，以 Tab 選取個別標記；使用面板搜尋以鍵盤查找道路及位置',
     zoomIn: '放大地圖', zoomOut: '縮小地圖',
     showAll: '顯示全港交通', returnToHongKong: '返回全港',
-    locateMe: '顯示我的位置', locating: '正在取得位置…', locationFound: '已找到你的位置，地圖已移至你的位置。',
+    locateMe: '顯示我的位置', stopFollowing: '停止跟隨我的位置', locating: '正在取得位置…', locationFound: '已找到你的位置，地圖會持續跟隨你的位置。',
     locationDenied: '未獲准使用你的位置。請在瀏覽器設定中允許位置存取，再按定位按鈕。',
     locationUnavailable: '暫時無法取得你的位置。請確認裝置已開啟定位服務，再按定位按鈕重試。',
     locationTimeout: '取得位置逾時。請移至訊號較佳的位置，再按定位按鈕重試。',
@@ -315,7 +316,7 @@ export const messages: Record<Language, AppMessages> = {
     mapLabel: 'Interactive map of Hong Kong traffic', mapKeyboardHelp: 'Use arrow keys to move the map and Tab to select individual markers; use panel search to find roads and locations by keyboard',
     zoomIn: 'Zoom in', zoomOut: 'Zoom out',
     showAll: 'Show all Hong Kong traffic', returnToHongKong: 'Return to all Hong Kong',
-    locateMe: 'Show my location', locating: 'Finding your location…', locationFound: 'Location found. The map is centred on your location.',
+    locateMe: 'Show my location', stopFollowing: 'Stop following my location', locating: 'Finding your location…', locationFound: 'Location found. The map is following your location.',
     locationDenied: 'Location access was denied. Allow location access in your browser settings, then press the location button again.',
     locationUnavailable: 'Your location is unavailable. Check that your device’s location services are on, then press the location button to retry.',
     locationTimeout: 'Finding your location timed out. Move somewhere with a better signal, then press the location button to retry.',
@@ -357,7 +358,7 @@ export const integrationMessages = {
     tabs: { ranked: 'Priority', roads: 'Roads', boundary: 'Boundary', weather: 'Weather', systems: 'Systems', notes: 'Notes' },
     intel: 'Traffic intelligence', expand: 'Open traffic intelligence', close: 'Close traffic intelligence', empty: 'No active items in this view.',
     hostedOnly: 'This layer needs the full hosted version.', hostedLink: 'Open full version',
-    arrivals: 'Next arrivals', destination: 'Destination', platform: 'Platform', minutes: 'min', scheduled: 'Scheduled', live: 'Live', noArrivals: 'No upcoming arrivals reported.', stopArrivals: 'Stop arrivals',
+    arrivals: 'Next arrivals', nextTrainEta: 'Next train ETA', destination: 'Destination', platform: 'Platform', minutes: 'min', scheduled: 'Scheduled', live: 'Live', noArrivals: 'No upcoming arrivals reported.', stopArrivals: 'Stop arrivals',
     estimated: 'Position estimated from published arrival times; not live GPS.', gps: 'Operator GPS position', stale: 'Retained data · refresh failed or overdue',
     showBusRoute: 'Show route', selectedBusRoute: 'Route on map', loadingBusRoute: 'Loading full route…', busRouteError: 'Route could not be loaded.', noBusPosition: 'No current position estimate available.', busRouteStops: 'Route connects published stops; road geometry is unavailable.', busRouteTracking: 'Next bus · estimated position', closeBusRoute: 'Close route',
     age: (n: number) => n === 0 ? 'Updated just now' : `Updated ${n} min ago`, noTimestamp: 'Source time unavailable', notLoaded: 'Not loaded', disabled: 'Off', enabled: 'On',
@@ -375,7 +376,7 @@ export const integrationMessages = {
     tabs: { ranked: '重點', roads: '道路', boundary: '口岸', weather: '天氣', systems: '系統', notes: '說明' },
     intel: '交通情報', expand: '展開交通情報', close: '關閉交通情報', empty: '此分類暫無消息。',
     hostedOnly: '此圖層需使用完整託管版本。', hostedLink: '開啟完整版本',
-    arrivals: '即將到站', destination: '目的地', platform: '月台', minutes: '分鐘', scheduled: '時間表', live: '實時', noArrivals: '暫無即將到站資料。', stopArrivals: '車站到站時間',
+    arrivals: '即將到站', nextTrainEta: '下一班列車預計到站', destination: '目的地', platform: '月台', minutes: '分鐘', scheduled: '時間表', live: '實時', noArrivals: '暫無即將到站資料。', stopArrivals: '車站到站時間',
     estimated: '位置按公布的到站時間推算，並非實時 GPS。', gps: '營辦商 GPS 位置', stale: '保留上次資料 · 更新失敗或逾時',
     showBusRoute: '顯示路線', selectedBusRoute: '地圖上的路線', loadingBusRoute: '正在載入完整路線…', busRouteError: '未能載入路線。', noBusPosition: '暫無可用的即時位置估算。', busRouteStops: '路線連接公布的車站，暫無道路路線資料。', busRouteTracking: '下一班車 · 估算位置', closeBusRoute: '關閉路線',
     age: (n: number) => n === 0 ? '剛剛更新' : `${n} 分鐘前更新`, noTimestamp: '來源未提供更新時間', notLoaded: '尚未載入', disabled: '已關閉', enabled: '已開啟',

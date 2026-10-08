@@ -86,7 +86,8 @@ export async function loadMtrSnapshot(now = Date.now()): Promise<MtrResponse> {
   }))
   const observedAt = Math.max(...[...remembered.values()].map((item) => item.at))
   const error = now < blockedUntil ? "MTR rate limited; retrying after 45 seconds" : missed > 0 ? "Some MTR station boards could not refresh" : undefined
-  return { ok: true, observedAt: new Date(observedAt).toISOString(), trains, boards, ...(error ? { stale: true, error } : {}) }
+  const complete = mtrQueries().every(pair => remembered.has(`${pair.line}-${pair.station}`))
+  return { ok: true, complete, observedAt: new Date(observedAt).toISOString(), trains, boards, ...(error ? { stale: true, error } : {}) }
 }
 
 async function readSharedMemory(now: number): Promise<void> {

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { movingCameras, normalizeIntegration, viewportNote } from "../lib/integration-client.ts"
+import { movingCameras, normalizeIntegration, railHoverText, viewportNote } from "../lib/integration-client.ts"
 import { stationRecord } from "../lib/mtr-network.ts"
-import type { CitybusResponse, FerryResponse, MtrResponse } from "../lib/types.ts"
+import { integrationMessages, messages } from "../lib/i18n.ts"
+import { hkTime } from "../lib/traffic.ts"
+import type { CitybusResponse, FerryResponse, LrtResponse, MtrResponse } from "../lib/types.ts"
 
 const now = Date.parse("2026-10-03T12:00:00+08:00")
 
@@ -35,6 +37,41 @@ test("retained rail countdown uses its station clock instead of the refreshed gl
   const eta = station?.arrivals?.[0]?.eta
   assert.equal(eta, new Date(now + 60000).toISOString())
   assert.equal(Math.ceil((Date.parse(eta!) - now) / 60000), 1)
+})
+
+test("rail sync completeness survives normalization and a missing station clock is not fabricated", () => {
+  const mtr: MtrResponse = { ok: true, complete: false, observedAt: new Date(now).toISOString(), trains: [], boards: [{ line: "TWL", station: "CEN", message: "", trains: [] }] }
+  const lrt: LrtResponse = { ok: true, complete: false, observedAt: new Date(now).toISOString(), trains: [], boards: [{ station: "1", calls: [] }] }
+  for (const [kind, payload] of [["mtr", mtr], ["lrt", lrt]] as const) {
+    assert.equal(normalizeIntegration(kind, payload).complete, false)
+    assert.equal(normalizeIntegration(kind, { ...payload, complete: true }).complete, true)
+    assert.equal(normalizeIntegration(kind, { ...payload, complete: true, stale: true }).complete, false)
+    assert.ok(normalizeIntegration(kind, payload).cameras.every(camera => !camera.dataUpdated))
+  }
+})
+
+test("rail hover gives bilingual station, earliest live ETA and the station source time", () => {
+  const observedAt = new Date(now - 120000).toISOString()
+  const data = normalizeIntegration("mtr", { ok: true, observedAt: new Date(now).toISOString(), trains: [], boards: [{ line: "TWL", station: "CEN", observedAt, message: "", trains: [{ dest: "TSW", plat: "1", ttnt: 3, delay: false, timeType: "A" }] }] } as MtrResponse)
+  const station = data.cameras.find(camera => camera.sourceId === "CEN")!
+  assert.equal(station.dataUpdated, observedAt)
+  for (const language of ["en", "zh"] as const) {
+    const copy = integrationMessages[language]
+    const text = railHoverText(station, language, now)
+    assert.equal(text, `${language === "en" ? station.nameEn : station.name}\n${copy.nextTrainEta}: ${hkTime(now + 60000, false, language)}\n${messages[language].recordUpdated}: ${hkTime(observedAt, true, language)}`)
+    assert.match(railHoverText({ ...station, nextStation: { name: "金鐘", nameEn: "Admiralty" } }, language, now), language === "en" ? /^Admiralty\n/ : /^金鐘\n/)
+    assert.ok(railHoverText(station, language, now + 60001).includes(`${copy.nextTrainEta}: ${copy.queue[4]}`))
+    assert.ok(railHoverText({ ...station, dataUpdated: undefined }, language, now).endsWith(copy.noTimestamp))
+  }
+})
+
+test("a clamped train pairs its ETA with the observed arrival station", () => {
+  const observedAt = new Date(now).toISOString()
+  const data = normalizeIntegration("mtr", { ok: true, observedAt, boards: [], trains: [{ id: "clamped", line: "TWL", dest: "TSW", plat: "1", ttnt: 20, observedAt, delay: false, timeType: "A", anchor: "ADM", path: ["CEN", "ADM", "TST"], hold: ["CEN", "ADM", "TST"] }] } as MtrResponse)
+  const train = movingCameras("mtr", data, now)[0]!
+  assert.equal(train.lng, stationRecord("CEN")?.lng)
+  assert.equal(train.nextStation?.nameEn, stationRecord("ADM")?.en)
+  assert.equal(train.arrivals?.[0]?.eta, new Date(now + 20 * 60000).toISOString())
 })
 
 const ferry: FerryResponse = {

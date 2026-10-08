@@ -180,6 +180,7 @@ export type MtrBoard = {
 
 export type MtrResponse = {
   ok: boolean
+  complete?: boolean
   stale?: boolean
   fetchedAt?: string
   error?: string
@@ -247,6 +248,7 @@ export type LrtBoard = {
 
 export type LrtResponse = {
   ok: boolean
+  complete?: boolean
   stale?: boolean
   fetchedAt?: string
   error?: string

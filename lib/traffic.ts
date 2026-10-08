@@ -19,6 +19,7 @@ export type Camera = {
   rainfallMm?: number;
   text?: string; textEn?: string;
   dataUpdated?: string;
+  nextStation?: { name: string; nameEn: string };
   rows?: DetailRow[]; arrivals?: Arrival[]; routes?: string[]; badge?: string; estimated?: boolean; positionType?: 'station' | 'vehicle' | 'pier';
   intel?: { score: number; urgent: boolean; tone: 'red' | 'amber' | 'green' | 'none' };
 };

@@ -73,7 +73,7 @@ export async function loadLrtSnapshot(now = Date.now()): Promise<LrtResponse> {
     hold: train.hold,
   }))
   const observedAt = Math.max(...[...remembered.values()].map((item) => item.at))
-  return { ok: true, observedAt: new Date(observedAt).toISOString(), trains, boards, ...(missed > 0 ? { stale: true, error: "Some Light Rail station boards could not refresh" } : {}) }
+  return { ok: true, complete: ids.every(id => remembered.has(id)), observedAt: new Date(observedAt).toISOString(), trains, boards, ...(missed > 0 ? { stale: true, error: "Some Light Rail station boards could not refresh" } : {}) }
 }
 
 async function fetchStation(stationId: string, now: number): Promise<Parsed | null> {

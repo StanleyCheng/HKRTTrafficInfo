@@ -11,8 +11,8 @@ const origin = (process.argv[2] || process.env.GPS_TEST_ORIGIN || 'http://localh
 const evidence = path.resolve(process.argv[3] || process.env.GPS_TEST_OUTPUT || '.impeccable/review');
 const filter = process.env.GPS_TEST_FILTER ? new RegExp(process.env.GPS_TEST_FILTER) : null;
 const copy = {
- tc:{name:'顯示我的位置',pending:'正在取得位置…',centre:'顯示全港交通'},
- en:{name:'Show my location',pending:'Finding your location…',centre:'Show all Hong Kong traffic'},
+ tc:{name:'顯示我的位置',following:'停止跟隨我的位置',pending:'正在取得位置…',centre:'顯示全港交通'},
+ en:{name:'Show my location',following:'Stop following my location',pending:'Finding your location…',centre:'Show all Hong Kong traffic'},
 };
 const results = [];
 (async () => {
@@ -25,13 +25,14 @@ const results = [];
   await context.addInitScript(({language,unsupported,native,throws}) => {
    localStorage.setItem('hk-traffic-language-v1',language === 'tc' ? 'zh' : language);
    localStorage.setItem('hk-traffic-basemap-v1','osm');
-   window.__gpsRequests=[]; window.__throwNext=throws;
+   window.__gpsRequests=[]; window.__clearedWatches=[]; window.__throwNext=throws;
    window.__setViews=[];
    window.__errors=[];
    window.addEventListener('error',e=>window.__errors.push(e.message));
    if (unsupported) Object.defineProperty(navigator,'geolocation',{configurable:true,value:undefined});
    else if (!native) Object.defineProperty(navigator,'geolocation',{configurable:true,value:{
-    getCurrentPosition(success,error,options) {window.__gpsRequests.push({success,error,options}); if(window.__throwNext){window.__throwNext=false;throw new Error('Geolocation service failed');}},
+    watchPosition(success,error,options) {const id=window.__gpsRequests.length;window.__gpsRequests.push({success,error,options}); if(window.__throwNext){window.__throwNext=false;throw new Error('Geolocation service failed');}return id;},
+    clearWatch(id) {window.__clearedWatches.push(id);},
    }});
    let leaflet;
    Object.defineProperty(window,'L',{configurable:true,get(){return leaflet},set(value){
@@ -71,34 +72,35 @@ const results = [];
  await fs.mkdir(evidence,{recursive:true});
  try {
   for(const language of ['en','tc']){
-   await test(language+': placement, automatic startup request, pending lock, success, accuracy and retry',async()=>{
+   await test(language+': placement, automatic startup watch, sustained following, accuracy and zoom',async()=>{
     const {page,gps}=await create({language});
     assert.equal(await page.evaluate(()=>window.__gpsRequests.length),1,'Mount must request location exactly once');
-    assert.equal(await gps.getAttribute('title'),copy[language].pending);
+    assert.equal(await gps.getAttribute('title'),copy[language].following);
     assert.equal(await gps.evaluate(el=>el.previousElementSibling?.getAttribute('aria-label')),await page.locator('.map-tools > button').first().getAttribute('aria-label'));
     const box=await gps.boundingBox();
     const centre=await page.locator('.map-tools > button').first().boundingBox();
     assert.equal(box.x,centre.x,'GPS must align with centre button');
     assert.ok(box.y>=centre.y+centre.height,'GPS must be below centre button');
     assert.ok(box.width>=44&&box.height>=44,'GPS minimum44px target');
-    const pending=page.getByRole('button',{name:copy[language].pending,exact:true});
-    assert.equal(await pending.isDisabled(),true);
-    assert.equal(await pending.getAttribute('title'),copy[language].pending);
+    assert.equal(await gps.isDisabled(),false,'Pending watch must remain cancellable');
+    assert.equal(await gps.getAttribute('aria-pressed'),'true');
+    assert.equal(await gps.getAttribute('aria-busy'),'true');
     const options=await page.evaluate(()=>window.__gpsRequests[0].options);
     assert.deepEqual(options,{enableHighAccuracy:true,timeout:10000,maximumAge:30000});
-    await pending.evaluate(el=>{el.click();el.click()});
-    assert.equal(await page.evaluate(()=>window.__gpsRequests.length),1,'Repeat clicks while pending must not add requests');
     await success(page);
     await page.waitForFunction(()=>Math.abs(window.__map.getCenter().lat-22.2819)<0.00001&&Math.abs(window.__map.getCenter().lng-114.1585)<0.00001);
     assert.equal(await gps.isDisabled(),false);
-    assert.equal(await gps.getAttribute('title'),copy[language].name);
+    assert.equal(await gps.getAttribute('title'),copy[language].following);
+    assert.equal(await gps.getAttribute('aria-busy'),'false');
     assert.equal(await page.locator('.user-location-dot').count(),1,'One location dot must display');
     assert.equal(await page.locator('.user-location-accuracy').count(),1,'One accuracy circle must display');
     const radius=await page.evaluate(()=>{let radius;window.__map.eachLayer(layer=>{if(layer.options?.className==='user-location-accuracy')radius=layer.getRadius()});return radius});
     assert.equal(radius,25,'Accuracy radius must use geolocation metres');
     assert.equal(await page.evaluate(()=>window.__map.getZoom()),16,'City zoom must become street zoom');
     await page.evaluate(()=>{window.__map.setZoom(18,{animate:false})});
-    await gps.click();await success(page,1,{latitude:22.2824,longitude:114.1592,accuracy:12});
+    await success(page,0,{latitude:22.2824,longitude:114.1592,accuracy:12});
+    await page.waitForFunction(()=>Math.abs(window.__map.getCenter().lat-22.2824)<0.00001&&Math.abs(window.__map.getCenter().lng-114.1592)<0.00001);
+    assert.equal(await page.evaluate(()=>window.__gpsRequests.length),1,'Position updates must reuse the same watch');
     assert.equal(await page.evaluate(()=>window.__map.getZoom()),18,'Location must preserve closer zoom');
     assert.equal(await page.locator('.user-location-dot').count(),1,'Refreshing must replace old dot');
     assert.equal(await page.locator('.user-location-accuracy').count(),1,'Refreshing must replace old accuracy circle');
@@ -116,6 +118,8 @@ const results = [];
      assert.ok(alert.trim().length>15,'Failure must explain recovery');
      assert.ok(language==='tc'?/[\u3400-\u9fff]/.test(alert):/location|permission|allow|try|timed/i.test(alert),'Failure must be localized');
      assert.equal(await gps.isDisabled(),false,'Error must unlock control');
+     assert.equal(await gps.getAttribute('aria-pressed'),'false');
+     assert.deepEqual(await page.evaluate(()=>window.__clearedWatches),[0],'Error must clear the watch');
      await gps.click();await success(page,1);
      assert.equal(await page.locator('.location-error[role="alert"]').count(),0,'Successful retry must clear alert');
      assert.equal(await page.locator('.user-location-dot').count(),1);
@@ -148,8 +152,8 @@ const results = [];
   await test('Pending request and failure follow a language change immediately',async()=>{
    const {page}=await create();
    await page.getByRole('button',{name:'Chinese',exact:true}).click();
-   const pending=page.getByRole('button',{name:copy.tc.pending,exact:true});
-   await pending.waitFor();assert.equal(await pending.isDisabled(),true);
+   const pending=page.getByRole('button',{name:copy.tc.following,exact:true});
+   await pending.waitFor();assert.equal(await pending.isDisabled(),false);
    assert.equal(await page.locator('.map-area [role="status"]').innerText(),copy.tc.pending);
    assert.equal(await page.evaluate(()=>window.__gpsRequests.length),1,'Language rerender must not create another automatic request');
    await failure(page,1);
@@ -158,13 +162,37 @@ const results = [];
    assert.equal(await page.locator('.location-error[role="alert"]').count(),0);
    await page.context().close();
   });
-  await test('Failed retry removes an earlier location fix instead of displaying stale GPS',async()=>{
+  await test('Watch error removes an earlier location fix instead of displaying stale GPS',async()=>{
    const {page,gps}=await create();
    await success(page);
    assert.equal(await page.locator('.user-location-dot').count(),1);
-   await gps.click();await failure(page,2,1);
+   await failure(page,2);
+   assert.equal(await gps.getAttribute('aria-pressed'),'false');
    assert.equal(await page.locator('.user-location-dot').count(),0,'Failed retry must remove stale location dot');
    assert.equal(await page.locator('.user-location-accuracy').count(),0,'Failed retry must remove stale accuracy circle');
+   await page.context().close();
+  });
+  for(const pending of [true,false]) await test((pending?'Pending':'Active')+' watch can stop, ignores stale callbacks and restarts',async()=>{
+   const {page,gps}=await create();
+   if(!pending)await success(page);
+   await gps.click();
+   assert.equal(await gps.getAttribute('aria-pressed'),'false');
+   assert.equal(await gps.getAttribute('aria-busy'),'false');
+   assert.equal(await gps.getAttribute('title'),copy.en.name);
+   assert.deepEqual(await page.evaluate(()=>window.__clearedWatches),[0]);
+   assert.equal(await page.locator('.user-location-dot').count(),0);
+   const views=await page.evaluate(()=>window.__setViews.length);
+   await page.evaluate(()=>{
+    window.__gpsRequests[0].success({coords:{latitude:22.3,longitude:114.2,accuracy:5}});
+    window.__gpsRequests[0].error({code:1});
+   });
+   assert.equal(await page.evaluate(()=>window.__setViews.length),views,'Stopped watch callbacks must not move the map');
+   assert.equal(await page.locator('.location-error').count(),0,'Stopped watch errors must be ignored');
+   await gps.click();await success(page,1);
+   await page.evaluate(()=>window.__gpsRequests[0].error({code:1}));
+   assert.equal(await gps.getAttribute('aria-pressed'),'true','Old watch must not stop a new watch');
+   assert.equal(await page.locator('.user-location-dot').count(),1);
+   assert.equal(await page.locator('.location-error').count(),0);
    await page.context().close();
   });
   await test('Location dot stays above a colocated traffic marker',async()=>{
@@ -202,11 +230,13 @@ const results = [];
    await page.context().close();
   });
   await test('Native Chromium geolocation grant centers map and creates location dot',async()=>{
-   const {page}=await create({native:true});
+   const {page,context}=await create({native:true});
    await page.locator('.user-location-dot').waitFor();
    const center=await page.evaluate(()=>({lat:window.__map.getCenter().lat,lng:window.__map.getCenter().lng,zoom:window.__map.getZoom()}));
    assert.ok(Math.abs(center.lat-22.2819)<0.00001&&Math.abs(center.lng-114.1585)<0.00001);
    assert.ok(center.zoom>=16);
+   await context.setGeolocation({latitude:22.29,longitude:114.17,accuracy:15});
+   await page.waitForFunction(()=>Math.abs(window.__map.getCenter().lat-22.29)<0.00001&&Math.abs(window.__map.getCenter().lng-114.17)<0.00001);
    await page.context().close();
   });
   for(const [label,viewport,language] of [['desktop',{width:1440,height:1000},'en'],['mobile',{width:390,height:844},'tc'],['narrow-mobile',{width:320,height:568},'en'],['mobile-landscape',{width:844,height:390},'en']]){

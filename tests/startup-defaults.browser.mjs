@@ -36,8 +36,9 @@ async function create({ viewport = { width: 1440, height: 1000 }, native = false
     window.__gpsRequests = [];
     window.__errors = [];
     window.addEventListener('error', event => window.__errors.push(event.message));
-    const nativePosition = native ? navigator.geolocation.getCurrentPosition.bind(navigator.geolocation) : undefined;
-    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition(success, error, options) { window.__gpsRequests.push({ success, error, options }); if (nativePosition) nativePosition(success, error, options); } } });
+    const nativePosition = native ? navigator.geolocation.watchPosition.bind(navigator.geolocation) : undefined;
+    const nativeClear = native ? navigator.geolocation.clearWatch.bind(navigator.geolocation) : undefined;
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition(success, error, options) { window.__gpsRequests.push({ success, error, options }); return nativePosition ? nativePosition(success, error, options) : window.__gpsRequests.length - 1; }, clearWatch(id) { nativeClear?.(id); } } });
     let leaflet;
     Object.defineProperty(window, 'L', { configurable: true, get() { return leaflet; }, set(value) {
       leaflet = value;
@@ -66,7 +67,8 @@ try {
     const { page, context, gps } = await create();
     await page.waitForTimeout(250);
     assert.equal(await page.evaluate(() => window.__gpsRequests.length), 1, 'Map readiness must automatically request the location once');
-    assert.equal(await gps.isDisabled(), true, 'Automatic GPS request must lock its control');
+    assert.equal(await gps.isDisabled(), false, 'Automatic GPS watch must remain cancellable');
+    assert.equal(await gps.getAttribute('aria-pressed'), 'true', 'Automatic GPS watch must show its enabled state');
     await page.evaluate(() => window.__gpsRequests[0].success({ coords: { latitude: 22.2819, longitude: 114.1585, accuracy: 20 }, timestamp: Date.now() }));
     await page.waitForFunction(() => window.__map.getZoom() >= 16);
     assert.equal(await page.locator('.user-location-dot').count(), 1, 'Automatic success must render the user location');

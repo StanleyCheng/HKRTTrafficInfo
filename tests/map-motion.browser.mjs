@@ -54,7 +54,7 @@ async function create({ mobile = false, reducedMotion = 'no-preference', gps = f
     localStorage.setItem('hk-traffic-basemap-v1', 'osm');
     window.__errors = [];
     window.addEventListener('error', event => window.__errors.push(event.message));
-    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition() {} } });
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition() { return 0; }, clearWatch() {} } });
     let leaflet;
     Object.defineProperty(window, 'L', { configurable: true, get() { return leaflet; }, set(value) {
       leaflet = value;
