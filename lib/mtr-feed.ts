@@ -8,7 +8,7 @@ import { mtrQueries, networkRoutes, stationPoint } from "./mtr-network.ts"
 import { readSchedule } from "./mtr-schedule.ts"
 import type { MtrBoard, MtrResponse, MtrTrain } from "./types.ts"
 
-const REMEMBER_MS = 180_000
+const REMEMBER_MS = 300_000
 const REFRESH_SLICE = 16
 const FETCH_LIMIT = 4
 
@@ -48,7 +48,7 @@ export async function loadMtrSnapshot(now = Date.now()): Promise<MtrResponse> {
         if (again && again.observations.length > 0) parsed = again
       }
       if (!parsed) { missed += 1; return }
-      if (parsed.observations.length === 0 && previous && previous.observations.length > 0 && now - previous.at < 180_000) return
+      if (parsed.observations.length === 0 && previous && previous.observations.length > 0 && now - previous.at < REMEMBER_MS) return
       remembered.set(key, {
         at: now,
         board: parsed.board,

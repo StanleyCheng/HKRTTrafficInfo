@@ -121,11 +121,12 @@ try {
     }));
     for (const size of sizes) {
       assert.equal(size.loaded, true, 'Generated vehicle artwork must load');
-      assert.ok(Math.abs(size.target - 32) < .01 && size.tabindex === 0, 'Vehicle retains its 32px pointer bounds and keyboard focus');
+      assert.ok(Math.abs(size.target - 16) < .01 && size.tabindex === 0, 'Vehicle retains its 16px pointer bounds and keyboard focus');
     }
     const samples = await frameSamples(page);
     for (let index = 0; index < 3; index++) assert.ok(new Set(samples.map(sample => sample[index])).size >= 10, `Vehicle ${index} must move visibly on at least 10 of 14 frames`);
-    assert.ok((await vehicleMotion(page)).every(vehicle => vehicle.running && vehicle.animations.includes('running')), 'Moving miniatures run their CSS motion');
+    assert.ok((await vehicleMotion(page)).every(vehicle => !vehicle.running && vehicle.animations.length === 0), 'Vehicle miniatures stay static; only their positions move');
+    assert.ok((await page.locator('.vehicle-marker .vehicle-dest').evaluateAll(elements => elements.map(element => element.textContent.trim()))).every(text => text.length > 0), 'Every vehicle carries a destination label');
     await page.evaluate(() => { window.__originalVehicles = [...document.querySelectorAll('.vehicle-marker')]; });
     const calls = mtrCalls();
     await page.getByRole('button', { name: 'Chinese', exact: true }).click();
@@ -143,14 +144,14 @@ try {
     await page.screenshot({ path: path.join(evidence, 'desktop-motion.png') });
     await context.close();
   });
-  await test('Vehicle images: distinct MTR/LRT/ferry artwork, black station borders with cream glyphs and keyboard targets', async () => {
+  await test('Vehicle images: distinct MTR/LRT/ferry artwork, compact station dots with rounded name pills and keyboard targets', async () => {
     const { page, context } = await create({ reducedMotion: 'reduce', deviceScaleFactor: 3 });
-    const stations = await page.locator('.rail-marker.station-marker').evaluateAll(elements => elements.map(element => ({
-      border: getComputedStyle(element.querySelector('.marker-inner')).borderColor,
-      strokes: [...element.querySelector('svg').children].map(shape => getComputedStyle(shape).stroke),
-    })));
-    assert.ok(stations.length, 'Fixture includes stationary rail symbols');
-    assert.ok(stations.every(marker => marker.border === 'rgb(0, 0, 0)' && marker.strokes.every(stroke => stroke === 'rgb(255, 243, 176)')), 'Rail stations use black borders and preserve cream glyph strokes');
+    const stations = await page.locator('.rail-marker.station-marker').evaluateAll(elements => elements.map(element => {
+      const dot = element.querySelector('.marker-inner'), pill = element.querySelector('.station-label');
+      return { border: getComputedStyle(dot).borderColor, width: getComputedStyle(dot).width, label: pill?.textContent.trim() ?? '', radius: pill ? getComputedStyle(pill).borderRadius : '', background: pill?.style.background ?? '' };
+    }));
+    assert.ok(stations.length, 'Fixture includes rail stations');
+    assert.ok(stations.every(marker => marker.border === 'rgb(255, 255, 255)' && marker.width === '14px' && marker.label.length > 0 && marker.radius === '999px' && marker.background !== ''), 'Rail stations use compact white-ringed dots with rounded line-coloured name pills');
     const vehicles = page.locator('.vehicle-marker');
     await page.waitForFunction(() => [...document.querySelectorAll('.vehicle-art')].every(image => image.complete && image.naturalWidth > 0));
     const artwork = await vehicles.evaluateAll(elements => elements.map(element => ({
@@ -162,7 +163,7 @@ try {
     for (const vehicle of artwork) {
       assert.equal(vehicle.role, 'button'); assert.equal(vehicle.tabindex, 0);
       assert.equal(vehicle.label, vehicle.ferry ? `${vehicle.title} · Estimated position · timetable / arrival data` : vehicle.title); assert.ok(vehicle.label);
-      assert.equal(vehicle.width, 32); assert.equal(vehicle.height, 32);
+      assert.equal(vehicle.width, 16); assert.equal(vehicle.height, 16);
     }
     for (let index = 0; index < 3; index++) {
       await page.evaluate(index => { const target = [...document.querySelectorAll('.vehicle-marker')][index]; window.__map.eachLayer(layer => { if (layer.getElement?.() === target) window.__map.setView(layer.getLatLng(), 16, { animate: false }); }); }, index);

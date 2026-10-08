@@ -6,8 +6,8 @@ import { ETA_FRESH_MS } from "./place-arrivals.ts"
 import { fetchUpstream } from "./upstream.ts"
 import type { LrtBoard, LrtCalling, LrtResponse, MtrTrain } from "./types.ts"
 
-const REMEMBER_MS = 180_000
-const REFRESH_SLICE = 8
+const REMEMBER_MS = 300_000
+const REFRESH_SLICE = 12
 const FETCH_LIMIT = 4
 
 type TrainRow = {

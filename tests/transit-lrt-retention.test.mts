@@ -13,7 +13,7 @@ test("failed LRT refresh preserves each station clock and exposes partial stalen
     : Response.json({ platform_list: [{ platform_id: 1, route_list: [{ route_no: "610", dest_ch: "屯門碼頭", time_en: "3 mins", arrival_departure: "A" }] }] })
   try {
     const fresh = await loadLrtSnapshot(now)
-    assert.equal(fresh.boards.length, 8)
+    assert.equal(fresh.boards.length, 12)
     assert.equal(fresh.boards[0]?.observedAt, new Date(now).toISOString())
     assert.equal(fresh.boards[0]?.calls[0]?.ttnt, 3)
     failing = true

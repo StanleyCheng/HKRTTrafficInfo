@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import { integrationMessages, messages } from '@/lib/i18n';
-import { Camera, CameraData, FlowSegment, Language, MapPath, hkTime, layerText, layers, speedLevelColors } from '@/lib/traffic';
+import { Camera, CameraData, FlowSegment, Language, MapPath, hkTime, layerText, layers, readableInk, speedLevelColors } from '@/lib/traffic';
 import type { TrafficSearchItem } from '@/lib/traffic-view';
 import { ferryDepartures, movingCameras, railHoverText, type MapViewport } from '@/lib/integration-client';
 import { stopPlate } from '@/lib/stop-plate';
@@ -38,13 +38,20 @@ const symbols = {
   ferry: '<path d="M3 14h18l-4 6H7l-4-6zM7 14V8h10v6M12 3v5M2 22l4-1 4 1 4-1 4 1 4-1"/>',
 };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
-const vehicleHtml = (src: string | null, color?: string) => `<span class="marker-leader" aria-hidden="true" hidden></span><div class="marker-displacement"><div class="marker-inner"${color ? ` style="--marker-color:${escapeHtml(color)}"` : ''}><div class="vehicle-heading" style="transform:rotate(${vehicleIconHeadingOffset}deg)"><img class="vehicle-art" src="${escapeHtml(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}${src ?? ''}`)}" alt="" draggable="false"/></div></div></div>`;
+const vehicleHtml = (src: string | null, color: string | undefined, destination: string) => `<span class="marker-leader" aria-hidden="true" hidden></span><div class="marker-displacement"><span class="vehicle-dest" aria-hidden="true">${escapeHtml(destination)}</span><div class="marker-inner"${color ? ` style="--marker-color:${escapeHtml(color)}"` : ''}><div class="vehicle-heading" style="transform:rotate(${vehicleIconHeadingOffset}deg)"><img class="vehicle-art" src="${escapeHtml(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}${src ?? ''}`)}" alt="" draggable="false"/></div></div></div>`;
 const enableMarkerKeyboard = (marker: Leaflet.Marker) => marker.on('keydown', (event: Leaflet.LeafletKeyboardEvent) => {
   if (event.originalEvent.key !== 'Enter' && event.originalEvent.key !== ' ') return;
   event.originalEvent.preventDefault();
   event.originalEvent.stopPropagation();
   marker.fire('click', { originalEvent: event.originalEvent });
 });
+// Trains name themselves "line → terminus"; ferries carry the sailing destination
+// on their first arrival; the vessel name is the last resort.
+const vehicleDestination = (camera: Pick<Camera, 'kind' | 'arrivals'>, language: Language, name: string) => {
+  if (camera.kind === 'mtr' || camera.kind === 'lrt') return name;
+  const arrival = camera.arrivals?.[0];
+  return language === 'en' ? arrival?.destinationEn || arrival?.destination || name : arrival?.destination || name;
+};
 const FLOW_SEGMENT_WEIGHT = 4.8;
 const SELECTED_FLOW_SEGMENT_WEIGHT = 7.2;
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors';
@@ -302,7 +309,15 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       const hover = rail ? railHoverText(camera, language) : name;
       const badge = camera.kind === 'crossing' ? camera.badge : undefined;
       const plate = isBusStop(camera) ? stopPlate(name, camera.routes ?? []) : null;
-      const icon = L.divIcon({ className: `camera-marker${camera.positionType === 'station' ? ' station-marker' : ''}${camera.kind === 'mtr' || camera.kind === 'lrt' ? ' rail-marker' : ''}${isBusStop(camera) ? ' bus-stop-marker' : ''}`, html: `<span class="marker-leader" aria-hidden="true"></span><div class="marker-displacement"><div class="marker-inner" style="--marker-color:${camera.color ?? layers[camera.kind].color}">${camera.kind === 'crossing' ? `<b>${escapeHtml(badge || '—')}</b>` : `<svg viewBox="0 0 24 24"${camera.rotation ? ` style="transform:rotate(${camera.rotation}deg)"` : ''}>${symbols[camera.kind]}</svg>`}</div>${plate ? `<span class="stop-plate live"><b>${escapeHtml(plate.title)}</b>${plate.lines.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</span>` : ''}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
+      // Rail stations swap the generic glyph for a compact line-coloured dot plus a
+      // rounded name pill; interchanges add a dot for every extra serving line.
+      const color = camera.color ?? layers[camera.kind].color;
+      const lineColors = camera.positionType === 'station' ? camera.lineColors ?? [] : [];
+      const attachment = camera.positionType === 'station'
+        ? `<span class="station-label" style="background:${escapeHtml(color)};color:${escapeHtml(readableInk(color))}">${escapeHtml(name)}${lineColors.length > 1 ? `<span class="station-lines">${lineColors.slice(1).map(line => `<i style="background:${escapeHtml(line)}"></i>`).join('')}</span>` : ''}</span>`
+        : plate ? `<span class="stop-plate live"><b>${escapeHtml(plate.title)}</b>${plate.lines.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</span>` : '';
+      const inner = camera.kind === 'crossing' ? `<b>${escapeHtml(badge || '—')}</b>` : camera.positionType === 'station' ? '' : `<svg viewBox="0 0 24 24"${camera.rotation ? ` style="transform:rotate(${camera.rotation}deg)"` : ''}>${symbols[camera.kind]}</svg>`;
+      const icon = L.divIcon({ className: `camera-marker${camera.positionType === 'station' ? ' station-marker' : ''}${rail ? ' rail-marker' : ''}${isBusStop(camera) ? ' bus-stop-marker' : ''}`, html: `<span class="marker-leader" aria-hidden="true" hidden></span><div class="marker-displacement"><div class="marker-inner" style="--marker-color:${color}">${inner}</div>${attachment}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
       const marker = oldMarker ?? enableMarkerKeyboard(L.marker([camera.lat, camera.lng], { icon, keyboard: true, cameraKind: camera.kind } as Leaflet.MarkerOptions).addTo(group));
       if (oldMarker) marker.setIcon(icon).setLatLng([camera.lat, camera.lng]);
       const node = marker.getElement();
@@ -427,14 +442,14 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       if (inactive || document.visibilityState !== 'visible' || m.getContainer().classList.contains('leaflet-zoom-anim')) return;
       const size = m.getSize();
       const viewport = { x: -40, y: -40, w: size.x + 80, h: size.y + 80 };
-      const all = [...markers.current.entries(), ...[...vehicles.current.entries()].map(([id, entry]) => [id, entry.marker] as const)];
-      if (busVehicle.current) all.push([`bus-${busVehicle.current.key}`, busVehicle.current.marker]);
+      // Vehicles stick to their routes: only static markers join the collision layout.
+      const all = [...markers.current.entries()];
       const points: MarkerPoint[] = [];
       all.forEach(([id, marker]) => {
         if (routeFocusRef.current && marker.getElement()?.classList.contains('bus-stop-marker')) return;
         const point = m.latLngToContainerPoint(marker.getLatLng());
         if (point.x < -70 || point.y < -70 || point.x > size.x + 70 || point.y > size.y + 70) return;
-        points.push({ id, ...point, size: marker.getElement()?.classList.contains('vehicle-marker') ? 32 : 30 });
+        points.push({ id, ...point, size: 30 });
       });
       const offsets = markerOffsets(points);
       displayOffsets.current = offsets;
@@ -459,34 +474,44 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
         popup.popup.update();
       }
       const items: StopLabelItem[] = [];
-      const plates: [string, HTMLElement][] = [];
+      const labels: [string, HTMLElement][] = [];
       markers.current.forEach((marker, id) => {
         const data = markerData.current.get(id);
-        if (!data || !isBusStop(data.camera)) return;
-        const plate = marker.getElement()?.querySelector<HTMLElement>('.stop-plate');
-        if (!plate) return;
-        plates.push([id, plate]);
+        if (!data) return;
+        const bus = isBusStop(data.camera), station = data.camera.positionType === 'station';
+        if (!bus && !station) return;
+        const label = marker.getElement()?.querySelector<HTMLElement>(bus ? '.stop-plate' : '.station-label');
+        if (!label) return;
+        labels.push([id, label]);
         const point = m.latLngToContainerPoint(marker.getLatLng());
         const offset = offsets.get(id);
-        items.push({ id, priority: data.camera.routes?.length ?? 0, placements: platePlacements({ x: point.x + (offset?.x ?? 0), y: point.y + (offset?.y ?? 0) }, data.labelLines ?? 0) });
+        const anchor = { x: point.x + (offset?.x ?? 0), y: point.y + (offset?.y ?? 0) };
+        if (bus) items.push({ id, priority: data.camera.routes?.length ?? 0, placements: platePlacements(anchor, data.labelLines ?? 0) });
+        else {
+          // Pill box estimate without measuring the DOM: CJK glyphs ~11.5px at the
+          // 11px pill font, Latin ~6.2px, plus padding and 10px per extra line dot.
+          // Stations outrank every bus plate so interchanges keep their names longest.
+          const name = language === 'en' ? data.camera.nameEn || data.camera.name : data.camera.name;
+          const extraLines = (data.camera.lineColors?.length ?? 1) - 1;
+          const w = Math.min(230, Math.ceil([...name].reduce((width, character) => width + (character.charCodeAt(0) > 0x2e7f ? 11.5 : 6.2), 21 + extraLines * 10)));
+          items.push({ id, priority: 100 + (data.camera.lineColors?.length ?? 1), placements: [{ key: 'right', x: anchor.x + 12, y: anchor.y - 10, w, h: 21 }, { key: 'left', x: anchor.x - 12 - w, y: anchor.y - 10, w, h: 21 }, { key: 'above', x: anchor.x - w / 2, y: anchor.y - 33, w, h: 21 }, { key: 'below', x: anchor.x - w / 2, y: anchor.y + 12, w, h: 21 }] });
+        }
       });
       const shown = declutterLabels(items, viewport);
-      plates.forEach(([id, plate]) => {
+      labels.forEach(([id, label]) => {
         const placement = shown.get(id);
-        plate.classList.toggle('label-hidden', placement === undefined);
-        plate.classList.toggle('pos-left', placement === 'left');
-        plate.classList.toggle('pos-above', placement === 'above');
-        plate.classList.toggle('pos-below', placement === 'below');
+        label.classList.toggle('label-hidden', placement === undefined);
+        label.classList.toggle('pos-left', placement === 'left');
+        label.classList.toggle('pos-above', placement === 'above');
+        label.classList.toggle('pos-below', placement === 'below');
       });
     };
     layoutMarkers.current = run;
     run();
-    // ponytail: bounded offsets leave dense overviews crowded; zoom in for more room.
-    const timer = setInterval(() => { if (vehicles.current.size || busVehicle.current) run(); }, 500);
     m.on('moveend', run);
     m.on('zoomend', run);
     document.addEventListener('visibilitychange', run);
-    return () => { clearInterval(timer); layoutMarkers.current = () => {}; m.off('moveend', run); m.off('zoomend', run); document.removeEventListener('visibilitychange', run); };
+    return () => { layoutMarkers.current = () => {}; m.off('moveend', run); m.off('zoomend', run); document.removeEventListener('visibilitychange', run); };
   }, [cameras, ready, language, mapZoom, inactive, routeFocus]);
   const popupCamera = popupStopId ? cameras.find(camera => camera.id === popupStopId) ?? null : null;
   useEffect(() => {
@@ -559,9 +584,11 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     let timer: ReturnType<typeof setInterval> | undefined;
     let zooming = m.getContainer().classList.contains('leaflet-zoom-anim');
     const name = `${route.route} · ${language === 'en' ? 'Estimated bus position' : '估算巴士位置'}`;
+    const terminus = route.stops[route.stops.length - 1];
+    const destination = `${route.route} → ${language === 'en' ? terminus?.nameEn || terminus?.nameTc || route.route : terminus?.nameTc || route.route}`;
     if (busVehicle.current) {
-      const label = document.createElement('span'); label.textContent = name;
-      busVehicle.current.marker.setTooltipContent(label);
+      const destEl = busVehicle.current.marker.getElement()?.querySelector<HTMLElement>('.vehicle-dest');
+      if (destEl) destEl.textContent = destination;
       const icon = busVehicle.current.marker.getElement();
       if (icon) { icon.title = name; icon.setAttribute('aria-label', name); }
     }
@@ -581,15 +608,11 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       if (!coordinate) { remove(); return; }
       const point = L.latLng(coordinate[1], coordinate[0]);
       if (!entry) {
-        const icon = L.divIcon({ className: 'camera-marker vehicle-marker bus-route-marker', html: vehicleHtml(vehicleIcon({ kind: route.operator, route: route.route, company: route.company })), iconSize: [32, 32], iconAnchor: [16, 16] });
+        const icon = L.divIcon({ className: 'camera-marker vehicle-marker bus-route-marker', html: vehicleHtml(vehicleIcon({ kind: route.operator, route: route.route, company: route.company }), undefined, destination), iconSize: [16, 16], iconAnchor: [8, 8] });
         const marker = enableMarkerKeyboard(L.marker(point, { icon, title: name, alt: name, keyboard: true, zIndexOffset: 500 }).addTo(m));
-        const label = document.createElement('span'); label.textContent = name;
-        marker.bindTooltip(label);
-        marker.on('click', () => marker.openTooltip());
         marker.getElement()?.setAttribute('aria-label', name);
         busVehicle.current = entry = { key: route.key, marker, distance: displayDistance, feed: busRoute, heading: marker.getElement()?.querySelector<HTMLElement>('.vehicle-heading') ?? null };
       }
-      entry.marker.getElement()?.classList.toggle('is-running', Boolean(busRoute.vehicle && now < busRoute.vehicle.arrivalAt && busRoute.vehicle.toDistance > busRoute.vehicle.fromDistance));
       // Rotate inside the marker; Leaflet owns its outer transform.
       const heading = routeHeadingAtDistance(route.coordinates, distances, displayDistance);
       if (heading !== null) {
@@ -641,28 +664,30 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
         const feed = transitFeeds?.[camera.kind as 'mtr' | 'lrt' | 'ferry'];
         const existing = entries.get(camera.id);
         if (existing) {
+          const node = existing.marker.getElement();
           if (existing.feed !== feed && !reducedMotion.matches) {
             const position = existing.marker.getLatLng();
             existing.correction = { lat: position.lat - camera.lat, lng: position.lng - camera.lng, at: now };
           }
+          if (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn) {
+            const destination = vehicleDestination(camera, language, name);
+            const destEl = node?.querySelector<HTMLElement>('.vehicle-dest');
+            if (destEl && destEl.textContent !== destination) destEl.textContent = destination;
+          }
           if (!rail && (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn || existing.camera.estimated !== camera.estimated)) {
-            const label = document.createElement('span'); label.textContent = `${name} · ${camera.estimated ? integrationMessages[language].estimatedFerry : integrationMessages[language].gps}`;
-            existing.marker.setTooltipContent(label);
-            const icon = existing.marker.getElement(); if (icon) { icon.title = name; icon.setAttribute('aria-label', label.textContent); }
+            const icon = existing.marker.getElement(); if (icon) { icon.title = name; icon.setAttribute('aria-label', `${name} · ${camera.estimated ? integrationMessages[language].estimatedFerry : integrationMessages[language].gps}`); }
           }
           const remaining = !reducedMotion.matches && existing.correction ? Math.max(0, 1 - (now - existing.correction.at) / 1000) ** 3 : 0;
           const point = L.latLng(camera.lat + (existing.correction?.lat ?? 0) * remaining, camera.lng + (existing.correction?.lng ?? 0) * remaining);
           const previous = existing.marker.getLatLng();
           const dx = (point.lng - previous.lng) * Math.cos(point.lat * Math.PI / 180), dy = point.lat - previous.lat;
           const running = Math.abs(dx) + Math.abs(dy) > 1e-10;
-          const node = existing.marker.getElement();
           if (rail && node && (existing.feed !== feed || existing.language !== language || existing.camera.nextStation?.name !== camera.nextStation?.name || now - existing.hoverAt >= 1000)) {
             const hover = railHoverText(camera, language, now);
             if (node.title !== hover) { node.title = hover; node.setAttribute('aria-label', hover); }
             existing.hoverAt = now;
           }
           if (existing.camera.color !== camera.color) node?.querySelector<HTMLElement>('.marker-inner')?.style.setProperty('--marker-color', camera.color ?? layers[camera.kind].color);
-          node?.classList.toggle('is-running', running);
           const heading = node?.querySelector<HTMLElement>('.vehicle-heading');
           if (running && heading) heading.style.transform = `rotate(${Math.atan2(dx, dy) * 180 / Math.PI + vehicleIconHeadingOffset}deg)`;
           const art = node?.querySelector<HTMLImageElement>('.vehicle-art');
@@ -677,10 +702,9 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
           return;
         }
         const hover = rail ? railHoverText(camera, language, now) : name;
-        const icon = L.divIcon({ className: `camera-marker vehicle-marker${rail ? ' rail-marker' : ' ferry-marker'}`, html: vehicleHtml(vehicleIcon(camera), camera.color ?? layers[camera.kind].color), iconSize: [32, 32], iconAnchor: [16, 16] });
+        const icon = L.divIcon({ className: `camera-marker vehicle-marker${rail ? ' rail-marker' : ' ferry-marker'}`, html: vehicleHtml(vehicleIcon(camera), camera.color ?? layers[camera.kind].color, vehicleDestination(camera, language, name)), iconSize: [16, 16], iconAnchor: [8, 8] });
         const marker = enableMarkerKeyboard(L.marker([camera.lat, camera.lng], { icon, title: hover, alt: name, keyboard: true }).addTo(group));
         const vehicleLabel = rail ? hover : `${name} · ${camera.estimated ? integrationMessages[language].estimatedFerry : integrationMessages[language].gps}`;
-        if (!rail) { const label = document.createElement('span'); label.textContent = vehicleLabel; marker.bindTooltip(label); }
         marker.getElement()?.setAttribute('aria-label', vehicleLabel);
         marker.on('click', () => { const latest = entries.get(camera.id); if (latest) selectRef.current(latest.camera); });
         entries.set(camera.id, { marker, camera, feed, language, hoverAt: now });

@@ -103,11 +103,13 @@ try {
         src: element.querySelector('.vehicle-art').getAttribute('src'), heading: element.querySelector('.vehicle-heading').style.transform,
         running: element.classList.contains('is-running'), width: element.getBoundingClientRect().width,
         animations: element.getAnimations({ subtree: true }).map(animation => animation.playState),
+        destination: element.querySelector('.vehicle-dest')?.textContent.trim(),
       }));
       assert.match(artwork.src, new RegExp(`bus-${variant.company === 'LWB' ? 'lwb' : variant.operator}`), 'Bus miniature matches its actual operator');
       assert.match(artwork.heading, /^rotate\(-?[\d.]+deg\)$/, 'Bearing rotates the inner wrapper');
-      assert.equal(artwork.width, 32); assert.equal(artwork.running, true);
-      assert.ok(artwork.animations.includes('running'), 'Estimated bus runs its CSS miniature animation');
+      assert.equal(artwork.width, 16); assert.equal(artwork.running, false);
+      assert.equal(artwork.animations.length, 0, 'The estimated bus miniature stays static; only its position moves');
+      assert.equal(artwork.destination, `${variant.route} → Fixture terminus`, 'The bus labels where it is heading');
       const geometry = await f.page.evaluate(() => { let points; window.__map.eachLayer(layer => { if (layer.options?.className === 'bus-route-polyline') points = layer.getLatLngs().map(p => [p.lng, p.lat]); }); return { points, bounds: window.__map.getBounds().toBBoxString() }; });
       assert.deepEqual(geometry.points, coordinates, 'Route includes road bends between the three stops');
       const [west, south, east, north] = geometry.bounds.split(',').map(Number);

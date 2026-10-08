@@ -12,7 +12,7 @@ export type Camera = {
   id: string; sourceId: string; kind: LayerKind; name: string; nameEn?: string;
   lat: number; lng: number; district?: string; districtEn?: string; region?: string; regionEn?: string; remarks?: string;
   sourceUpdated?: string; imageUrl?: string;
-  color?: string; rotation?: number; vehicleIcon?: string;
+  color?: string; lineColors?: string[]; rotation?: number; vehicleIcon?: string;
   level?: SpeedLevel; speedKmh?: number | null;
   speedLimitKmh?: number;
   vacancy?: number | null; capacity?: number | null; heightLimit?: number; openingStatus?: string;
@@ -79,6 +79,7 @@ export const hostedUrl = process.env.NEXT_PUBLIC_HOSTED_URL || 'https://hkrttraf
 export const layerAvailable = (kind: LayerKind) => !staticExport || !layers[kind].serverOnly;
 export function feedMaxAgeMs(kind: LayerKind): number {
   if (kind === 'toll') return 12 * 60 * 60000;
+  if (kind === 'mtr' || kind === 'lrt') return 300000;
   if (kind === 'works' || originalKinds.includes(kind as OriginalLayerKind)) return 10 * 60000;
   if (kind === 'crossing') return 4 * 60000;
   return 3 * 60000;
@@ -101,6 +102,25 @@ export const layerGroups: { id: 'roads' | 'conditions' | 'rail' | 'bus' | 'ferry
   { id: 'ferry', kinds: ['ferry'] },
 ];
 export const speedLevelColors: Record<SpeedLevel, string> = { free: '#1f9d63', moderate: '#d49b25', slow: '#e15d69', unknown: '#8a9aa5' };
+// Relative luminance per WCAG 2.x for a #rrggbb colour, or null when unparsable.
+const luminance = (hex: string): number | null => {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!match) return null;
+  const channel = (shift: number) => {
+    const value = Number.parseInt(match[1]!.slice(shift, shift + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+};
+// Train line colours range from Tsuen Wan red to South Island yellow, so station
+// pills pick whichever ink — white or the app's dark text colour — contrasts more.
+export function readableInk(background: string, dark = '#172c39'): string {
+  const backgroundLuminance = luminance(background);
+  if (backgroundLuminance === null) return '#fff';
+  const ratio = (ink: number) => (Math.max(backgroundLuminance, ink) + 0.05) / (Math.min(backgroundLuminance, ink) + 0.05);
+  const darkInk = luminance(dark) ?? 0;
+  return ratio(1) >= ratio(darkInk) ? '#fff' : dark;
+}
 const trafficSpeedThresholds = {
   urban: { slowAtOrBelow: 15, freeAbove: 30 },
   major: { slowAtOrBelow: 25, freeAbove: 50 },

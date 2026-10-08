@@ -1,8 +1,8 @@
 import { integrationMessages as labels, messages, boundaryNames, tollNames } from './i18n.ts';
 import { hkTime, layers, staticExport, type Arrival, type Camera, type CameraData, type DetailRow, type FlowSegment, type IntegrationKind, type Language, type MapPath } from './traffic.ts';
 import type { ApproachesResponse, ControlPointsResponse, FerryResponse, LrtResponse, MtrResponse, CitybusResponse, WarningsResponse } from './types.ts';
-import { mtrStationCollection, mtrTrackCollection, stationRecord, lineRecord, projectNetworkTrain } from './mtr-network.ts';
-import { lrtStationCollection, lrtTrackCollection, lrtPoint, lrtStation } from './lrt-network.ts';
+import { linesThrough, lineRecord, mtrStationCollection, mtrTrackCollection, projectNetworkTrain, stationRecord } from './mtr-network.ts';
+import { lrtColor, lrtPoint, lrtStation, lrtStationCollection, lrtTrackCollection } from './lrt-network.ts';
 import { projectTrain } from './mtr-estimate.ts';
 import { placeOnPath } from './ferry-run.ts';
 import { ferryInstant } from './ferry-clock.ts';
@@ -18,8 +18,11 @@ export function viewportNote(kind: string, view: MapViewport): 'viewportBus' | '
   if (kind === 'nlb' && (view.lng < 113.8 || view.lng > 114.05 || view.lat < 22.18 || view.lat > 22.34)) return 'viewportNlb';
 }
 const endpoints: Record<IntegrationKind, string> = { crossing: 'approaches', works: 'works', toll: 'tolls', boundary: 'control-points', 'weather-warning': 'warnings', mtr: 'mtr', lrt: 'lrt', kmb: 'kmb', citybus: 'citybus', gmb: 'gmb', nlb: 'nlb', ferry: 'ferry' };
-// Zero means one initial load, followed by manual refreshes.
-export const pollingMs: Record<IntegrationKind, number> = { crossing: 120000, works: 300000, toll: 21600000, boundary: 60000, 'weather-warning': 60000, mtr: 0, lrt: 0, kmb: 0, citybus: 0, gmb: 0, nlb: 0, ferry: 0 };
+// Visible pages keep every transit schedule live on this cadence. Rail slices
+// (16 MTR / 12 LRT station boards per request) need 30-second turns to cycle all
+// 121 MTR and 68 LRT boards inside the feeds' five-minute memory without
+// tripping the upstream rate limit; buses and ferries turn over more slowly.
+export const pollingMs: Record<IntegrationKind, number> = { crossing: 120000, works: 300000, toll: 21600000, boundary: 60000, 'weather-warning': 60000, mtr: 30000, lrt: 30000, kmb: 30000, citybus: 30000, gmb: 30000, nlb: 30000, ferry: 60000 };
 type Envelope = { ok: boolean; complete?: boolean; error?: string; fetchedAt?: string; observedAt?: string | null; capturedAt?: string | null; stale?: boolean };
 type FeaturesResponse = Envelope & { works?: GeoJSON.FeatureCollection; tolls?: GeoJSON.FeatureCollection };
 
@@ -105,7 +108,10 @@ export function normalizeIntegration(kind: IntegrationKind, payload: Envelope): 
     data.cameras = featureCameras(kind, kind === 'mtr' ? mtrStationCollection() : lrtStationCollection()).map(camera => {
       const arrivals: Arrival[] = kind === 'mtr' ? (payload as MtrResponse).boards.filter(board => board.station === camera.sourceId).flatMap(board => board.trains.map(call => ({ route: board.line, destination: stationRecord(call.dest)?.tc || call.dest, destinationEn: stationRecord(call.dest)?.en || call.dest, minutes: call.ttnt, eta: board.observedAt && Number.isFinite(Date.parse(board.observedAt)) ? new Date(Date.parse(board.observedAt) + call.ttnt * 60000).toISOString() : undefined, observedAt: board.observedAt, timeType: call.timeType, platform: call.plat, remark: call.delay ? labels.zh.delayed : '', remarkEn: call.delay ? labels.en.delayed : '' }))) : (payload as LrtResponse).boards.filter(board => board.station === camera.sourceId).flatMap(board => board.calls.map(call => ({ route: call.route, destination: call.destTc, destinationEn: call.destEn, minutes: call.ttnt, eta: board.observedAt && Number.isFinite(Date.parse(board.observedAt)) ? new Date(Date.parse(board.observedAt) + call.ttnt * 60000).toISOString() : undefined, observedAt: board.observedAt, timeType: call.timeType, platform: call.plat })));
       const observed = (payload as MtrResponse | LrtResponse).boards.filter(board => board.station === camera.sourceId).map(board => validDate(board.observedAt)).filter((time): time is string => Boolean(time)).sort();
-      return { ...camera, dataUpdated: observed[0], positionType: 'station', arrivals: arrivals.sort((a, b) => (a.minutes ?? Infinity) - (b.minutes ?? Infinity)).slice(0, 12) };
+      // Station pills paint with the serving line's colour: the first line through
+      // the station, plus every other line for interchange dots. Light rail is one network colour.
+      const lineColors = kind === 'mtr' ? [...new Set(linesThrough(camera.sourceId).flatMap(code => lineRecord(code) ? [lineRecord(code)!.color] : []))] : [];
+      return { ...camera, dataUpdated: observed[0], positionType: 'station', color: lineColors[0] ?? (kind === 'lrt' ? lrtColor() : layers[kind].color), ...(lineColors.length > 1 ? { lineColors } : {}), arrivals: arrivals.sort((a, b) => (a.minutes ?? Infinity) - (b.minutes ?? Infinity)).slice(0, 12) };
     });
   } else if (kind === 'kmb' || kind === 'citybus' || kind === 'gmb' || kind === 'nlb') {
     data.cameras = (payload as CitybusResponse).stops.map(stop => ({ id: `${kind}-${stop.id}`, sourceId: stop.id, kind, name: stop.nameTc, nameEn: stop.nameEn, lng: stop.lng, lat: stop.lat, routes: stop.routes, badge: stop.routes.slice(0, 3).join(' · '), arrivals: stop.calls.slice(0, 12).map(call => ({ route: call.route, destination: call.destTc, destinationEn: call.destEn, minutes: call.minutes, eta: call.eta, scheduled: call.scheduled, remark: call.remarkTc, remarkEn: call.remarkEn, tracking: call.tracking })) }));

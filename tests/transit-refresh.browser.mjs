@@ -84,8 +84,10 @@ async function create({ incomplete = false, gated = false, hold = false } = {}) 
 }
 const counts = state => Object.fromEntries(kinds.map(kind => [kind, state.calls[kind].length]));
 async function tick(state, milliseconds = 60000) {
-  if (milliseconds >= 30000) await state.page.clock.fastForward(milliseconds);
-  else await state.page.clock.runFor(milliseconds);
+  // Stepped runFor: fastForward fires each timer at most once, which would
+  // hide the polling cadence; 5-second steps fire refreshAll once per step.
+  const step = 5000;
+  for (let elapsed = 0; elapsed < milliseconds; elapsed += step) await state.page.clock.runFor(Math.min(step, milliseconds - elapsed));
   await new Promise(resolve => setTimeout(resolve, 150));
 }
 async function changed(state, before) {
@@ -129,82 +131,92 @@ async function test(name, run) {
 
 try {
   await fs.mkdir(evidence, { recursive: true });
-  await test('Transit loads once; timers, visibility, language, switches and panning do not reload; station borders are black', async () => {
+  await test('Transit polls on cadence; language and gated pans reuse data; eligible pans refetch viewport feeds', async () => {
     const state = await create();
-    const before = await requestCounts(state);
+    const initial = await requestCounts(state);
     const once = Object.fromEntries([...kinds.map(kind => [kind, 1]), ['bus-route', 0]]);
-    assert.deepEqual(before, { network: once, invoked: once }, 'Each eligible transit layer loads exactly once initially');
+    assert.deepEqual(initial, { network: once, invoked: once }, 'Each eligible transit layer loads exactly once initially');
     for (const kind of ['mtr', 'lrt']) {
-      const styles = await state.page.locator(`[data-marker-id^="${kind}-"].station-marker.rail-marker .marker-inner`).evaluateAll(elements => elements.map(element => ({ color: getComputedStyle(element).borderColor, width: getComputedStyle(element).borderWidth })));
-      assert.ok(styles.length, `${kind} includes real station markers`);
-      assert.ok(styles.every(style => style.color === 'rgb(0, 0, 0)' && style.width === '2px'), `${kind} station borders must be black and 2px wide`);
+      const pills = await state.page.locator(`[data-marker-id^="${kind}-"].station-marker .station-label`).evaluateAll(elements => elements.map(element => ({ text: element.textContent.trim(), radius: getComputedStyle(element).borderRadius })));
+      assert.ok(pills.length, `${kind} includes station name pills`);
+      assert.ok(pills.every(pill => pill.text.length > 0 && pill.radius === '999px'), 'Station pills carry rounded station names');
     }
     await state.page.locator('.source-button').evaluate(element => element.click());
-    assert.equal(await state.page.locator('.sources-dialog').getByText('Loads initially; use Refresh or Retry to update.', { exact: true }).count(), 7, 'Source descriptions must advertise initial/manual refresh for every transit feed');
+    assert.equal(await state.page.locator('.sources-dialog').getByText('Refresh interval: 30 seconds while visible.', { exact: true }).count(), 6, 'Rail and bus feeds advertise their 30-second cadence');
+    assert.equal(await state.page.locator('.sources-dialog').getByText('Refresh interval: 60 seconds while visible.', { exact: true }).count(), 3, 'Ferries, boundary queues and weather warnings advertise their 60-second cadence');
     await state.page.locator('.sources-dialog .close-button').evaluate(element => element.click());
     await tick(state, 300000);
-    assert.deepEqual(await requestCounts(state), before, 'Long clock advances must not poll any transit feed');
+    const polled = await requestCounts(state);
+    for (const kind of ['mtr', 'lrt']) assert.ok(polled.network[kind] >= 10 && polled.network[kind] <= 11, `${kind} must poll about every 30 seconds while visible (${polled.network[kind]})`);
+    for (const kind of buses) assert.ok(polled.network[kind] >= 10 && polled.network[kind] <= 11, `${kind} must poll about every 30 seconds while visible (${polled.network[kind]})`);
+    assert.ok(polled.network.ferry >= 5 && polled.network.ferry <= 6, `ferry must poll about every 60 seconds while visible (${polled.network.ferry})`);
     await visibility(state.page);
     await languageChanges(state);
-    for (const kind of kinds) await state.page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
-    for (const kind of kinds) await state.page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
+    assert.deepEqual(await requestCounts(state), polled, 'Visibility and language changes reuse the cadence data');
     await state.page.evaluate(() => { window.__map.setView([22.31, 114.18], 12, { animate: false }); });
+    await tick(state, 10000);
+    assert.deepEqual(await requestCounts(state), polled, 'A gated viewport must not fetch bus feeds');
     await state.page.evaluate(() => { window.__map.setView([22.283, 113.952], 17, { animate: false }); });
-    await tick(state);
-    assert.deepEqual(await requestCounts(state), before, 'Visibility, language, off/on and panning reuse the initial data');
+    await until(() => buses.every(kind => state.calls[kind].length === polled.network[kind] + 1), 'An eligible pan must refetch every bus feed for the new viewport');
+    const afterPan = await requestCounts(state);
+    assert.equal(afterPan.network.mtr, polled.network.mtr, 'Network-wide rail feeds do not refetch on pan');
+    assert.equal(afterPan.network.ferry, polled.network.ferry, 'Ferries do not refetch on pan');
     const visible = await labels(state), manualBefore = counts(state);
     await refresh(state); await changed(state, manualBefore); await waitLabels(state, visible);
     assert.deepEqual(await state.page.evaluate(() => window.__errors), []);
     await state.page.screenshot({ path: path.join(evidence, 'all-transit-refresh.png') });
     await state.context.close();
   });
-  await test('Gated bus layers load at the first eligible viewport and never reload automatically afterward', async () => {
+  await test('Gated bus layers load at the first eligible viewport, follow pans and keep polling while visible', async () => {
     const state = await create({ gated: true });
     const before = await requestCounts(state);
     for (const kind of buses) assert.equal(before.network[kind], 0, `${kind} cannot load before its viewport is eligible`);
     await tick(state);
-    assert.deepEqual(await requestCounts(state), before);
+    const gated = await requestCounts(state);
+    for (const kind of buses) assert.equal(gated.network[kind], 0, `${kind} stays gated at an ineligible viewport`);
+    assert.ok(gated.network.mtr >= 2 && gated.network.lrt >= 2, 'Rail keeps polling even while bus feeds are gated');
     await state.page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
     await until(() => buses.every(kind => state.calls[kind].length === 1));
     await until(async () => (await state.page.locator('[data-marker-id="nlb-fixture"]').count()) === 1);
     const loaded = await requestCounts(state);
     await state.page.evaluate(() => { window.__map.setView([22.285, 113.955], 17, { animate: false }); });
-    await tick(state);
-    assert.deepEqual(await requestCounts(state), loaded, 'Panning after the first eligible bus load does not fetch again');
+    await until(() => buses.every(kind => state.calls[kind].length === 2), 'Panning to a new eligible viewport refetches every bus feed');
+    await tick(state, 65000);
+    for (const kind of buses) assert.ok(state.calls[kind].length >= 4, `${kind} keeps polling about every 30 seconds (${state.calls[kind].length})`);
     await state.context.close();
   });
-  await test('Pending initial transit responses survive panning, language changes and off/on without duplicate fetches', async () => {
+  await test('Pending initial responses survive language changes; pans replace only viewport feeds', async () => {
     const state = await create({ hold: true });
     const before = await requestCounts(state), failedBefore = state.failed.length;
-    await state.page.evaluate(() => { window.__map.setView([22.283, 113.952], 17, { animate: false }); });
     await languageChanges(state);
-    for (const kind of kinds) await state.page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
-    for (const kind of kinds) await state.page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
-    await tick(state, 20000);
-    assert.deepEqual(await requestCounts(state), before, 'Initial requests are neither canceled nor replaced by context changes');
-    assert.deepEqual(state.failed.slice(failedBefore), [], 'Every initial request remains alive');
-    for (const item of state.held.splice(0)) await item.route.fulfill({ json: item.json });
+    await tick(state, 10000);
+    assert.deepEqual(await requestCounts(state), before, 'Language changes neither cancel nor replace in-flight requests');
+    assert.deepEqual(state.failed.slice(failedBefore), [], 'Every initial request remains alive across language changes');
+    await state.page.evaluate(() => { window.__map.setView([22.283, 113.952], 17, { animate: false }); });
+    await until(() => buses.every(kind => state.calls[kind].length === 2), 'Panning replaces the held bus requests with new viewport requests');
+    for (const kind of ['mtr', 'lrt', 'ferry']) assert.equal(state.calls[kind].length, 1, `${kind} requests are retained through the pan`);
+    for (const item of state.held.splice(0)) await item.route.fulfill({ json: item.json }).catch(() => {});
     await until(async () => Object.values(await labels(state)).every(Boolean), 'All initial responses must become visible after context changes');
-    await tick(state);
-    assert.deepEqual(await requestCounts(state), before, 'Completing retained initial loads must not schedule more requests');
+    await tick(state, 35000);
+    for (const kind of ['mtr', 'lrt']) assert.ok(state.calls[kind].length >= 2, `${kind} resumes its polling cadence once the retained load completes`);
     assert.deepEqual(await state.page.evaluate(() => window.__errors), []);
     await state.context.close();
   });
-  await test('Failures wait for manual Retry; slow manual refreshes survive time advances without duplicate requests', async () => {
+  await test('Failures auto-retry on cadence; slow manual refreshes survive time advances without duplicate requests', async () => {
     const state = await create();
     let before = counts(state), visible = await labels(state);
     for (const kind of kinds) state.mode[kind] = 'fail';
     await refresh(state); await changed(state, before);
     await until(async () => (await state.page.locator(kinds.map(kind => `.layer-card.${kind} [role="alert"]`).join(',')).count()) === 7);
     assert.deepEqual(await labels(state), visible, 'Failed refresh keeps the last known data visible');
-    const failedCounts = await requestCounts(state);
-    await tick(state);
-    assert.deepEqual(await requestCounts(state), failedCounts, 'Errors must not start automatic retries');
-    before = counts(state);
+    await tick(state, 65000);
+    for (const kind of ['mtr', 'lrt']) assert.ok(state.calls[kind].length >= 4, `${kind} auto-retries about every 30 seconds (${state.calls[kind].length})`);
+    for (const kind of buses) assert.ok(state.calls[kind].length >= 4, `${kind} auto-retries about every 30 seconds (${state.calls[kind].length})`);
+    assert.ok(state.calls.ferry.length >= 3, `ferry auto-retries about every 60 seconds (${state.calls.ferry.length})`);
     for (const kind of kinds) state.mode[kind] = 'complete';
-    for (const kind of kinds) await state.page.locator(`.layer-card.${kind}`).getByRole('button', { name: 'Retry', exact: true }).evaluate(element => element.click());
-    await changed(state, before); await waitLabels(state, visible);
-    await until(async () => (await state.page.locator(kinds.map(kind => `.layer-card.${kind} [role="alert"]`).join(',')).count()) === 0);
+    await tick(state, 65000);
+    await until(async () => (await state.page.locator(kinds.map(kind => `.layer-card.${kind} [role="alert"]`).join(',')).count()) === 0, 'The polling cadence clears feed errors without manual Retry');
+    await waitLabels(state, visible);
     before = counts(state); visible = await labels(state);
     const failedBeforeSlowRequest = state.failed.length;
     for (const kind of kinds) state.mode[kind] = 'hold';
@@ -218,7 +230,7 @@ try {
     assert.deepEqual(await state.page.evaluate(() => window.__errors), []);
     await state.context.close();
   });
-  await test('Selected bus route loads once, retains data across visibility and language changes, and refreshes explicitly', async () => {
+  await test('Selected bus route polls every 30 seconds while visible and recovers automatically from failures', async () => {
     const state = await create();
     await state.page.locator('[data-marker-id="kmb-fixture"] .marker-displacement').evaluate(element => element.click());
     await state.page.locator('.stop-eta-popup .bus-route-button').first().evaluate(element => element.click());
@@ -226,30 +238,24 @@ try {
     await until(async () => (await state.page.locator('.bus-route-marker').count()) === 1);
     await state.page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
     const position = () => state.page.evaluate(() => { let point; window.__map.eachLayer(layer => { if (layer.getElement?.()?.classList.contains('bus-route-marker')) point = layer.getLatLng().lng; }); return point; });
-    const initial = await requestCounts(state);
-    await tick(state);
-    await visibility(state.page);
-    await languageChanges(state);
-    await tick(state);
-    assert.deepEqual(await requestCounts(state), initial, 'An already selected route never refreshes automatically');
+    await tick(state, 65000);
+    assert.ok(state.calls['bus-route'].length >= 3, `A selected route polls about every 30 seconds (${state.calls['bus-route'].length})`);
     const before = await position();
-    await refresh(state);
-    await until(() => state.calls['bus-route'].length === 2);
-    await until(async () => (await position()) !== before, 'Manual refresh updates the route vehicle estimate');
+    await tick(state, 35000);
+    assert.ok(state.calls['bus-route'].length >= 4, 'Cadence polls continue while the route stays selected');
+    assert.notEqual(await position(), before, 'Cadence refreshes update the route vehicle estimate');
     state.mode['bus-route'] = 'api-fail';
-    await refresh(state);
-    await until(() => state.calls['bus-route'].length === 3);
+    await tick(state, 65000);
     await state.page.locator('#panel-tab-details').evaluate(element => element.click());
     await until(async () => (await state.page.locator('.bus-route-status .warning-text').count()) > 0);
     assert.equal(await state.page.locator('.bus-route-polyline').count(), 1, 'An HTTP-200 API failure retains the last route geometry');
     assert.equal(await state.page.locator('.bus-route-marker').count(), 0, 'Failed route data must not show an estimated vehicle');
     assert.match(await state.page.locator('.bus-route-status').innerText(), /Retained data/);
-    const failed = await requestCounts(state);
-    await tick(state);
-    assert.deepEqual(await requestCounts(state), failed, 'A failed selected route waits for an explicit Retry');
+    const failed = state.calls['bus-route'].length;
+    await tick(state, 35000);
+    assert.ok(state.calls['bus-route'].length >= failed + 1, 'A failed selected route keeps auto-retrying');
     state.mode['bus-route'] = 'complete';
-    await state.page.locator('.bus-route-status').getByRole('button', { name: 'Retry', exact: true }).evaluate(element => element.click());
-    await until(() => state.calls['bus-route'].length === 4);
+    await tick(state, 35000);
     await until(async () => (await state.page.locator('.bus-route-status .warning-text').count()) === 0);
     assert.deepEqual(await state.page.evaluate(() => window.__errors), []);
     await state.page.screenshot({ path: path.join(evidence, 'bus-route-refresh.png') });
@@ -258,6 +264,6 @@ try {
 } finally {
   for (const context of contexts) await context.close().catch(() => {});
   await browser.close();
-  await fs.writeFile(path.join(evidence, 'transit-refresh-results.json'), JSON.stringify({ origin, results, fixture: 'Mocked official and transit endpoints; long Playwright clock advances and application interactions verify no automatic transit fetches. Native fetch invocation counts, actual requests, manual updates and rendered station borders are asserted.' }, null, 2));
+  await fs.writeFile(path.join(evidence, 'transit-refresh-results.json'), JSON.stringify({ origin, results, fixture: 'Mocked official and transit endpoints; Playwright clock advances verify the polling cadences (rail 15s, buses 30s, ferries 60s), viewport-keyed refetches, retention across language changes and manual updates. Native fetch invocation counts, actual requests and rendered station pills are asserted.' }, null, 2));
 }
 if (results.some(result => !result.ok)) process.exitCode = 1;

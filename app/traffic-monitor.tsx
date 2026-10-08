@@ -204,7 +204,6 @@ export default function TrafficMonitor() {
   const [busRouteState, setBusRouteState] = useState<BusRouteState | null>(null);
   const [busRouteRetry, setBusRouteRetry] = useState(0);
   const busRouteCache = useRef(new Map<string, { promise: Promise<BusRouteState>; pending: boolean }>());
-  const busRouteLastRetry = useRef(0);
   const [showDetectors, setShowDetectors] = useState(false);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [panelTab, setPanelTab] = useState<PanelTab>('layers');
@@ -334,8 +333,9 @@ export default function TrafficMonitor() {
 
   useEffect(() => () => {
     integrationPending.current.forEach((request, kind) => {
-      // Preserve one-shot loads through React's effect replay.
-      if (pollingMs[kind] === 0) return;
+      // Preserve transit loads through React's effect replay: their pending-key
+      // guard already dedupes repeats, so replaying must not abort them.
+      if (['mtr', 'lrt', 'kmb', 'citybus', 'gmb', 'nlb', 'ferry'].includes(kind)) return;
       request.controller.abort();
       integrationPending.current.delete(kind);
       integrationLastFetch.current.delete(kind);
@@ -354,17 +354,13 @@ export default function TrafficMonitor() {
     });
     const refresh = async (kind: IntegrationKind, force = false) => {
       if (!enabled[kind] || !layerAvailable(kind) || document.visibilityState !== 'visible') return;
-      const manual = pollingMs[kind] === 0;
       const last = integrationLastFetch.current.get(kind);
-      if (!force && manual && last) return;
-      if (manual && viewportNote(kind, viewport)) {
-        setStates(state => state[kind].loading ? { ...state, [kind]: { ...state[kind], loading: false } } : state);
-        return;
-      }
       const spatial = ['kmb', 'citybus', 'gmb', 'nlb'].includes(kind);
-      const key = `${language}:${spatial ? `${viewport.lng}:${viewport.lat}:${viewport.zoom}` : ''}`;
+      // Transit envelopes are bilingual and localized at render time, so the key
+      // tracks only the viewport: language toggles keep in-flight requests alive.
+      const key = spatial ? `${viewport.lng}:${viewport.lat}:${viewport.zoom}` : '';
       const pending = integrationPending.current.get(kind);
-      if (pending && (manual || pending.key === key)) return;
+      if (pending && pending.key === key) return;
       if (!force && last?.key === key && Date.now() - last.at < pollingMs[kind]) return;
       integrationPending.current.get(kind)?.controller.abort();
       const request = { key, controller: new AbortController() };
@@ -372,8 +368,8 @@ export default function TrafficMonitor() {
       const finishActivity = beginActivity();
       const isCurrent = () => {
         const current = integrationContext.current;
-        const currentKey = `${current.language}:${spatial ? `${current.viewport.lng}:${current.viewport.lat}:${current.viewport.zoom}` : ''}`;
-        return integrationPending.current.get(kind) === request && (manual || (current.enabled[kind] && currentKey === key));
+        const currentKey = spatial ? `${current.viewport.lng}:${current.viewport.lat}:${current.viewport.zoom}` : '';
+        return integrationPending.current.get(kind) === request && current.enabled[kind] && currentKey === key;
       };
       integrationLastFetch.current.set(kind, { key, at: Date.now() });
       setStates(state => ({ ...state, [kind]: { ...state[kind], loading: true } }));
@@ -434,15 +430,11 @@ export default function TrafficMonitor() {
     if (!activeBusSelection) return;
     const selection = activeBusSelection;
     const key = JSON.stringify([selection.operator, selection.company, selection.route, selection.stopId, selection.bound, selection.serviceType, selection.routeId, selection.routeSeq, selection.stopSeq]);
-    const manual = busRouteRetry !== busRouteLastRetry.current;
-    busRouteLastRetry.current = busRouteRetry;
     let disposed = false;
-    let loaded = false;
     const refresh = async () => {
-      if (disposed || loaded || document.visibilityState !== 'visible') return;
-      loaded = true;
+      if (disposed || document.visibilityState !== 'visible') return;
       let cached = busRouteCache.current.get(key);
-      if (!cached || (manual && !cached.pending)) {
+      if (!cached || !cached.pending) {
         const previous = cached;
         const promise = getBusRoute(selection).then<BusRouteState>(data => {
           if (!data.ok) throw new Error(data.error || 'Bus route unavailable');
@@ -461,10 +453,12 @@ export default function TrafficMonitor() {
       const state = await cached.promise;
       if (!disposed) setBusRouteState({ ...state, selection });
     };
-    const visible = () => void refresh();
+    // Keep the selected route schedule live alongside the transit layers.
     void refresh();
+    const timer = setInterval(() => void refresh(), 30000);
+    const visible = () => void refresh();
     document.addEventListener('visibilitychange', visible);
-    return () => { disposed = true; document.removeEventListener('visibilitychange', visible); };
+    return () => { disposed = true; clearInterval(timer); document.removeEventListener('visibilitychange', visible); };
   }, [activeBusSelection, busRouteRetry]);
   const searchItems = useMemo<TrafficSearchItem[]>(() => [
     ...segments.map(segment => ({ camera: cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated), segment })),
