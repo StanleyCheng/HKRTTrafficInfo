@@ -1,3 +1,5 @@
+import { keepWorkerRequestAlive } from "./feed-cache.ts"
+
 type OkBody = { ok: boolean; cacheable?: boolean; stale?: boolean; fetchedAt?: string; error?: string }
 
 export function readViewport(request: Request): { lng: number; lat: number; zoom: number } | null {
@@ -40,14 +42,14 @@ export function viewCachedGet<T extends OkBody>(options: {
     if (hit && Date.now() - hit.at < options.freshMs) return Response.json(hit.body)
     let task = pending.get(key)
     if (!task) {
-      task = options.load(lng, lat, Date.now(), zoom).then((body) => {
+      task = keepWorkerRequestAlive(options.load(lng, lat, Date.now(), zoom).then((body) => {
         const result = { ...body, fetchedAt: body.fetchedAt ?? new Date().toISOString() }
         if (body.ok && body.cacheable !== false && !body.stale) {
           if (cached.size >= 300) cached.delete(cached.keys().next().value!)
           cached.set(key, { at: Date.now(), body: result })
         }
         return result
-      }).finally(() => pending.delete(key))
+      }).finally(() => pending.delete(key)))
       pending.set(key, task)
     }
     try {

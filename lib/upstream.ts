@@ -1,4 +1,4 @@
-import { openFeedCache } from "./feed-cache.ts"
+import { keepWorkerRequestAlive, openFeedCache } from "./feed-cache.ts"
 
 type UpstreamBody = { status: number; body: ArrayBuffer; contentType: string; fetchedAt: string }
 
@@ -15,7 +15,7 @@ export async function fetchUpstream(url: string, ttlMs: number, options: Upstrea
   if (fresh && fresh.expires > Date.now()) return fresh.body
   const current = pending.get(url)
   if (current) return current
-  const task = readThrough(url, ttlMs, options).finally(() => pending.delete(url))
+  const task = keepWorkerRequestAlive(readThrough(url, ttlMs, options).finally(() => pending.delete(url)))
   pending.set(url, task)
   return task
 }

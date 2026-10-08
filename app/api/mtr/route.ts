@@ -1,4 +1,5 @@
 import { loadMtrSnapshot } from "@/lib/mtr-feed"
+import { keepWorkerRequestAlive } from "@/lib/feed-cache"
 import type { MtrResponse } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
@@ -11,9 +12,9 @@ let cached: { at: number; body: MtrResponse } | null = null
 export async function GET() {
   const now = Date.now()
   if (cached && now - cached.at < FRESH_MS) return Response.json(cached.body)
-  pending ??= loadMtrSnapshot(now).finally(() => {
+  pending ??= keepWorkerRequestAlive(loadMtrSnapshot(now).finally(() => {
     pending = null
-  })
+  }))
   try {
     const body = await pending
     if (body.ok && !body.stale) cached = { at: Date.now(), body }

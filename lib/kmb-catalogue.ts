@@ -1,6 +1,7 @@
 import { kmbBundledStopCount, replaceKmbCatalogue } from "./kmb-network.ts"
 import { readStopList } from "./stop-list.ts"
 import { fetchUpstream } from "./upstream.ts"
+import { keepWorkerRequestAlive } from "./feed-cache.ts"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const RETRY_MS = 60 * 60 * 1000
@@ -13,9 +14,9 @@ let pending: Promise<void> | null = null
 // A short or failed read leaves the poles already on the map.
 export function refreshKmbCatalogueSoon(now = Date.now()): Promise<void> {
   if (pending || now < nextTryAt) return pending ?? Promise.resolve()
-  const task = run(now).finally(() => {
+  const task = keepWorkerRequestAlive(run(now).finally(() => {
     pending = null
-  })
+  }))
   pending = task
   return task
 }

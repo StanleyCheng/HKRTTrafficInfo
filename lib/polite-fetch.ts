@@ -1,3 +1,5 @@
+import { keepWorkerRequestAlive } from "./feed-cache.ts"
+
 function pause(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -7,11 +9,9 @@ export function politeQueue(limit: number) {
   return async function run<T>(task: () => Promise<T>): Promise<T> {
     while (active >= limit) await pause(20)
     active += 1
-    try {
-      return await task()
-    } finally {
+    return keepWorkerRequestAlive(Promise.resolve().then(task).finally(() => {
       active -= 1
-    }
+    }))
   }
 }
 
@@ -23,11 +23,9 @@ export async function takeEtaTurn<T>(task: () => Promise<T>): Promise<T | null> 
   while (refreshing && Date.now() - started < 200) await pause(40)
   if (refreshing) return null
   refreshing = true
-  try {
-    return await task()
-  } finally {
+  return keepWorkerRequestAlive(Promise.resolve().then(task).finally(() => {
     refreshing = false
-  }
+  }))
 }
 
 // One isolate shares this queue, so several map views cannot open a burst of ETA calls together.

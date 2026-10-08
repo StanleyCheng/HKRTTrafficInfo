@@ -3,6 +3,49 @@ import assert from 'node:assert/strict'
 import { fetchUpstream } from '../lib/upstream.ts'
 import { cachedFeed } from '../lib/route-cache.ts'
 import { viewCachedGet, viewportAllowed } from '../lib/view-cache.ts'
+import { keepWorkerRequestAlive } from '../lib/feed-cache.ts'
+
+test('Worker producer survives a disconnected consumer and clears shared state', async () => {
+  const symbol = Symbol.for('__cloudflare-context__')
+  const globals = globalThis as unknown as Record<symbol, unknown>
+  const previous = globals[symbol]
+  const retained: Promise<unknown>[] = []
+  try {
+    globals[symbol] = { ctx: { waitUntil: (promise: Promise<unknown>) => retained.push(promise) } }
+    let finish!: (value: { ok: boolean; observedAt: string }) => void
+    let calls = 0
+    const get = cachedFeed(60000, () => {
+      calls++
+      return new Promise<{ ok: boolean; observedAt: string }>(resolve => { finish = resolve })
+    }, () => ({ ok: false, observedAt: 'failed' }))
+    const controller = new AbortController()
+    const first = get()
+    const disconnected = Promise.race([first, new Promise<never>((_, reject) => {
+      controller.signal.addEventListener('abort', () => reject(new Error('client disconnected')), { once: true })
+    })])
+    controller.abort()
+    await assert.rejects(disconnected, /client disconnected/)
+    assert.equal(retained.length, 1, 'Keep the producer alive, not a canceled consumer')
+    const second = get()
+    assert.equal(calls, 1, 'A later request must still coalesce with retained work')
+    finish({ ok: true, observedAt: 'official clock' })
+    await Promise.all(retained)
+    assert.equal((await (await second).json() as { observedAt: string }).observedAt, 'official clock')
+    assert.equal((await (await get()).json() as { observedAt: string }).observedAt, 'official clock')
+    assert.equal(calls, 1)
+    const failure = Promise.reject(new Error('upstream failed'))
+    assert.equal(keepWorkerRequestAlive(failure), failure, 'Retention must preserve the original result/error')
+    await assert.rejects(failure, /upstream failed/)
+    await Promise.all(retained)
+    delete globals[symbol]
+    const nodeTask = Promise.resolve('node')
+    assert.equal(keepWorkerRequestAlive(nodeTask), nodeTask)
+    assert.equal(retained.length, 2, 'Node must not register Worker background work')
+  } finally {
+    if (previous === undefined) delete globals[symbol]
+    else globals[symbol] = previous
+  }
+})
 
 test('upstream bypasses Vinext wrapper, coalesces fetches, respects shared expiry and memory TTL', async () => {
   const oldFetch = globalThis.fetch, oldCaches = globalThis.caches

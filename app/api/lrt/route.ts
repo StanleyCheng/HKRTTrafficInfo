@@ -1,4 +1,5 @@
 import { loadLrtSnapshot } from "@/lib/lrt-feed"
+import { keepWorkerRequestAlive } from "@/lib/feed-cache"
 import type { LrtResponse } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
@@ -11,9 +12,9 @@ let cached: { at: number; body: LrtResponse } | null = null
 export async function GET() {
   const now = Date.now()
   if (cached && now - cached.at < FRESH_MS) return Response.json(cached.body)
-  const current = pending ?? loadLrtSnapshot(now).finally(() => {
+  const current = pending ?? keepWorkerRequestAlive(loadLrtSnapshot(now).finally(() => {
     pending = null
-  })
+  }))
   pending = current
   try {
     const body = await current
