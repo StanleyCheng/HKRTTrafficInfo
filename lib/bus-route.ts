@@ -9,6 +9,8 @@ import { ETA_FRESH_MS } from './place-arrivals.ts'
 import { pool } from './pool.ts'
 import { routeDistances } from './bus-route-motion.ts'
 import { busRoadGeometry } from './bus-route-geometry.ts'
+import { busCompany } from './bus-company.ts'
+import type { Arrival } from './traffic.ts'
 
 export type BusRouteSelection = {
   operator: 'kmb' | 'citybus' | 'gmb' | 'nlb'
@@ -30,6 +32,7 @@ export type BusRouteResponse = {
   observedAt: string | null
   stale: boolean
 }
+export type BusStopArrivalsResponse = { ok: boolean; arrivals: Arrival[]; observedAt: string | null; stale: boolean; error?: string }
 export type BusEta = { seq: number; at: number; observed: number; scheduled: boolean }
 type Row = Record<string, unknown>
 const DAY = 86_400_000
@@ -43,8 +46,9 @@ const record = (value: unknown): Row => value && typeof value === 'object' ? val
 const text = (value: unknown): string => typeof value === 'string' || typeof value === 'number' ? String(value) : ''
 const scheduled = (row: Row) => /scheduled|未開出|原定班次/i.test(`${row.rmk_en ?? ''} ${row.rmk_tc ?? ''} ${row.remarks_en ?? ''} ${row.remarks_tc ?? ''}`)
 
-export function validBusSelection(value: BusRouteSelection): boolean {
+export function validBusSelection(value: BusRouteSelection, requireStopSeq = false): boolean {
   if (!value || !['kmb', 'citybus', 'gmb', 'nlb'].includes(value.operator) || !/^[A-Za-z0-9-]{1,12}$/.test(value.route) || !/^[A-Za-z0-9]{1,20}$/.test(value.stopId)) return false
+  if (requireStopSeq && value.stopSeq == null) return false
   if (value.stopSeq != null && (!Number.isInteger(value.stopSeq) || value.stopSeq < 1 || value.stopSeq > 200)) return false
   if (value.operator === 'kmb') return (value.bound === 'I' || value.bound === 'O') && /^\d{1,3}$/.test(value.serviceType ?? '') && (!value.company || ['KMB', 'LWB'].includes(value.company))
   if (value.operator === 'citybus') return value.bound === 'I' || value.bound === 'O'
@@ -55,6 +59,53 @@ async function json(url: string, ttl = DAY): Promise<{ body: Row; fetched: numbe
   const response = await etaQueue(() => fetchUpstream(url, ttl, { timeoutMs: 8_000, headers: { Accept: 'application/json' } }))
   if (response.status !== 200) throw new Error('Bus route feed unavailable')
   return { body: record(JSON.parse(new TextDecoder().decode(response.body))), fetched: Date.parse(response.fetchedAt) }
+}
+
+export async function loadBusStopArrivals(selection: BusRouteSelection, now = Date.now()): Promise<BusStopArrivalsResponse> {
+  if (!validBusSelection(selection, selection?.operator === 'gmb')) return { ok: false, error: 'Invalid bus stop selection', arrivals: [], observedAt: null, stale: false }
+  try {
+    const { operator, stopId, route, routeId, routeSeq, stopSeq } = selection
+    const url = operator === 'kmb' ? `${KMB}/stop-eta/${stopId}`
+      : operator === 'citybus' ? `${CTB}/eta/CTB/${stopId}/${route}`
+        : operator === 'gmb' ? `${GMB}/eta/route-stop/${routeId}/${routeSeq}/${stopSeq}`
+          : `${NLB}?action=estimatedArrivals&routeId=${routeId}&stopId=${stopId}&lang=en`
+    const { body, fetched } = await json(url, ETA_FRESH_MS)
+    const data = operator === 'gmb' ? record(body.data) : body
+    const published = operator === 'nlb' ? data.estimatedArrivals : operator === 'gmb' ? data.eta : body.data
+    if (!Array.isArray(published) || published.some((item) => !item || typeof item !== 'object' || Array.isArray(item))) throw new Error('Stop arrival data unavailable')
+    if ((operator === 'kmb' || operator === 'citybus') && array(published).some((row) => !text(row.route) || !['I', 'O'].includes(text(row.dir)) || (operator === 'kmb' && !/^\d{1,3}$/.test(text(row.service_type))))) throw new Error('Stop arrival data unavailable')
+    if (operator === 'gmb' && ((data.route_id != null && String(data.route_id) !== routeId) || (data.route_seq != null && Number(data.route_seq) !== routeSeq) || (data.stop_seq != null && Number(data.stop_seq) !== stopSeq))) throw new Error('Stop arrival data does not match selection')
+    const rows = array(published).filter((row) => {
+      if (operator === 'gmb') return data.enabled !== false
+      if (operator === 'nlb') return true
+      return text(row.route) === route && row.dir === selection.bound && (stopSeq == null || Number(row.seq) === stopSeq)
+        && (operator !== 'kmb' || String(row.service_type) === selection.serviceType && (!selection.company || busCompany(route, text(row.co)) === selection.company))
+    })
+    const clocks: number[] = []
+    const arrivals = rows.map((row): Arrival => {
+      const eta = operator === 'nlb' ? nlbArrivalMs(text(row.estimatedArrivalTime)) : Date.parse(text(operator === 'gmb' ? row.timestamp : row.eta))
+      const sourceTime = operator === 'nlb' ? row.generateTime ?? body.generateTime : row.data_timestamp ?? body.generated_timestamp
+      const observed = sourceTime == null || sourceTime === '' ? fetched : operator === 'nlb' ? nlbArrivalMs(text(sourceTime)) : Date.parse(text(sourceTime))
+      clocks.push(observed)
+      return {
+        route, tracking: selection,
+        destination: text(row.dest_tc ?? data.dest_tc), destinationEn: text(row.dest_en ?? data.dest_en),
+        eta: Number.isFinite(eta) ? new Date(eta).toISOString() : undefined,
+        minutes: Number.isFinite(eta) ? Math.max(0, Math.ceil((eta - now) / 60_000)) : operator === 'gmb' && typeof row.diff === 'number' && Number.isFinite(row.diff) ? Math.max(0, row.diff) : null,
+        observedAt: Number.isFinite(observed) ? new Date(observed).toISOString() : undefined,
+        scheduled: operator === 'nlb' ? String(row.departed) !== '1' || String(row.noGPS) !== '0' : scheduled(row),
+        remark: text(row.rmk_tc ?? row.remarks_tc), remarkEn: text(row.rmk_en ?? row.remarks_en),
+      }
+    }).sort((a, b) => (a.minutes ?? Infinity) - (b.minutes ?? Infinity))
+    if (!clocks.length) {
+      const sourceTime = operator === 'nlb' ? body.generateTime : body.generated_timestamp
+      clocks.push(sourceTime == null || sourceTime === '' ? fetched : operator === 'nlb' ? nlbArrivalMs(text(sourceTime)) : Date.parse(text(sourceTime)))
+    }
+    const observed = Math.min(...clocks)
+    return { ok: true, arrivals, observedAt: Number.isFinite(observed) ? new Date(observed).toISOString() : null, stale: clocks.some((clock) => !Number.isFinite(clock) || now - clock >= FRESH || clock > now + 30_000) }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Stop arrivals unavailable', arrivals: [], observedAt: null, stale: true }
+  }
 }
 
 async function routeStops(selection: BusRouteSelection): Promise<BusRouteStop[]> {

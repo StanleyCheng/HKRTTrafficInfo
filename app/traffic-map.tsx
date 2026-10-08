@@ -9,7 +9,8 @@ import type { TrafficSearchItem } from '@/lib/traffic-view';
 import { ferryDepartures, movingCameras, railHoverText, type MapViewport } from '@/lib/integration-client';
 import { stopPlate } from '@/lib/stop-plate';
 import { STOP_LABEL_WIDTH, declutterLabels, stopLabelHeight, type StopLabelItem, type StopLabelPlacement } from '@/lib/stop-labels';
-import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
+import type { BusRouteResponse, BusRouteSelection, BusRouteStop } from '@/lib/bus-route';
+import { getBusStopArrivals } from '@/lib/bus-route-client';
 import { busDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '@/lib/bus-route-motion';
 import { markerOffsets, type MarkerPoint } from '@/lib/marker-layout';
 import { vehicleIcon, vehicleIconHeadingOffset } from '@/lib/vehicle-icons';
@@ -75,23 +76,23 @@ const platePlacements = (point: { x: number; y: number }, lines: number): StopLa
   ];
 };
 
-function StopEtaPopup({ camera, language, now, activeTracking, onShowRoute, onShowDetails }: { camera: Camera; language: Language; now: number; activeTracking: BusRouteSelection | null; onShowRoute: (tracking: BusRouteSelection) => void; onShowDetails: () => void }) {
+function StopEtaPopup({ camera, language, now, activeTracking, onShowRoute, onShowDetails, status = 'ready', onRetry }: { camera: Camera; language: Language; now: number; activeTracking: BusRouteSelection | null; onShowRoute?: (tracking: BusRouteSelection) => void; onShowDetails?: () => void; status?: 'loading' | 'error' | 'ready'; onRetry?: () => void }) {
   const copy = messages[language];
   const extra = integrationMessages[language];
   const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
   const calls = camera.arrivals ?? [];
   return <div className="stop-eta">
     <strong className="stop-eta-name">{name}</strong>
-    {calls.length ? <ul aria-label={extra.stopArrivals}>{calls.map((call, index) => {
+    {status !== 'ready' ? <p className="stop-eta-status" role={status === 'error' ? 'alert' : 'status'}>{status === 'loading' ? copy.loadingOfficialData : extra.busRouteError}{status === 'error' && onRetry && <> <button type="button" className="text-button" onClick={onRetry}>{copy.retry}</button></>}</p> : calls.length ? <ul aria-label={extra.stopArrivals}>{calls.map((call, index) => {
       const eta = call.eta ? Date.parse(call.eta) : NaN;
       const minutes = Number.isFinite(eta) ? Math.max(0, Math.ceil((eta - now) / 60000)) : call.minutes;
       return <li key={`${call.route}-${index}`}>
-        <span className="arrival-route-choice"><strong className="arrival-route">{call.route}</strong>{call.tracking && <button type="button" className="bus-route-button" aria-pressed={Boolean(activeTracking && JSON.stringify(activeTracking) === JSON.stringify(call.tracking))} aria-label={`${extra.showBusRoute} ${call.route} · ${language === 'en' ? call.destinationEn || call.destination : call.destination}`} onClick={() => onShowRoute(call.tracking!)}>{extra.showBusRoute}</button>}</span>
+        <span className="arrival-route-choice"><strong className="arrival-route">{call.route}</strong>{call.tracking && onShowRoute && <button type="button" className="bus-route-button" aria-pressed={Boolean(activeTracking && JSON.stringify(activeTracking) === JSON.stringify(call.tracking))} aria-label={`${extra.showBusRoute} ${call.route} · ${language === 'en' ? call.destinationEn || call.destination : call.destination}`} onClick={() => onShowRoute(call.tracking!)}>{extra.showBusRoute}</button>}</span>
         <span className="arrival-destination">{language === 'en' ? call.destinationEn || call.destination : call.destination}<small>{call.scheduled ? extra.scheduled : extra.live}{(language === 'en' ? call.remarkEn : call.remark) ? ` · ${language === 'en' ? call.remarkEn : call.remark}` : ''}</small></span>
         <strong className="arrival-minutes">{minutes ?? '—'}<small>{extra.minutes}</small></strong>
       </li>;
     })}</ul> : <p>{extra.noArrivals}</p>}
-    <button type="button" className="text-button stop-eta-details" onClick={onShowDetails}>{copy.cameraDetails}</button>
+    {onShowDetails && <button type="button" className="text-button stop-eta-details" onClick={onShowDetails}>{copy.cameraDetails}</button>}
   </div>;
 }
 
@@ -121,6 +122,8 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const markers = useRef(new Map<string, Leaflet.Marker>());
   const markerData = useRef(new Map<string, { camera: Camera; style: string; labelLines?: number }>());
   const [popupStopId, setPopupStopId] = useState<string | null>(null);
+  const [routePopupStop, setRoutePopupStop] = useState<{ key: string; stop: BusRouteStop } | null>(null);
+  const [routePopupData, setRoutePopupData] = useState<{ stop: BusRouteStop; language: Language; camera?: Camera; status: 'loading' | 'error' | 'ready' } | null>(null);
   const [popupElement, setPopupElement] = useState<HTMLDivElement | null>(null);
   const [snapshotHover, setSnapshotHover] = useState<{ camera: Camera; element: HTMLDivElement } | null>(null);
   const snapshotPopupRef = useRef<Leaflet.Popup | null>(null);
@@ -332,7 +335,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       if (rail || camera.kind === 'ferry') marker.unbindTooltip();
       else if (marker.getTooltip()) marker.setTooltipContent(label);
       else marker.bindTooltip(label, { direction: 'top', offset: [0, -12] });
-      if (!oldMarker) marker.on('click', () => { const latest = markerData.current.get(camera.id)?.camera; if (!latest) return; if (isBusStop(latest)) { if (!routeFocusRef.current) setPopupStopId(camera.id); } else selectRef.current(latest); });
+      if (!oldMarker) marker.on('click', () => { const latest = markerData.current.get(camera.id)?.camera; if (!latest) return; if (isBusStop(latest)) { if (!routeFocusRef.current) { setRoutePopupStop(null); setPopupStopId(camera.id); } } else selectRef.current(latest); });
       markers.current.set(camera.id, marker);
       markerData.current.set(camera.id, { camera, style, labelLines: plate?.lines.length });
     });
@@ -519,22 +522,48 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     document.addEventListener('visibilitychange', run);
     return () => { layoutMarkers.current = () => {}; m.off('moveend', run); m.off('zoomend', run); document.removeEventListener('visibilitychange', run); };
   }, [cameras, ready, language, mapZoom, inactive, routeFocus]);
-  const popupCamera = popupStopId ? cameras.find(camera => camera.id === popupStopId) ?? null : null;
+  const routePopupCamera: Camera | null = routePopupStop?.key === busRouteKey && busRoute?.route ? {
+    ...(routePopupData && routePopupData.stop === routePopupStop.stop && routePopupData.language === language ? routePopupData.camera : undefined),
+    id: `${busRoute.route.operator}-${routePopupStop.stop.id}`, sourceId: routePopupStop.stop.id, kind: busRoute.route.operator,
+    name: routePopupStop.stop.nameTc, nameEn: routePopupStop.stop.nameEn, lat: routePopupStop.stop.lat, lng: routePopupStop.stop.lng,
+  } : null;
+  const popupCamera = routePopupCamera ?? (popupStopId ? cameras.find(camera => camera.id === popupStopId) ?? null : null);
+  useEffect(() => {
+    if (!routePopupStop) return;
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return;
+      if (routePopupStop.key !== busRouteKey || !busSelection) { setRoutePopupStop(current => current === routePopupStop ? null : current); return; }
+      const stop = routePopupStop.stop;
+      const terminus = busRoute?.route?.stops.at(-1);
+      setRoutePopupData({ stop, language, status: 'loading' });
+      void getBusStopArrivals({ ...busSelection, stopId: stop.id, stopSeq: stop.seq }, controller.signal).then(data => {
+        if (controller.signal.aborted) return;
+        if (!data.ok || data.stale || data.error || !data.observedAt) throw new Error('Stop arrivals unavailable');
+        const camera: Camera = { id: `${busSelection.operator}-${stop.id}`, sourceId: stop.id, kind: busSelection.operator, name: stop.nameTc, nameEn: stop.nameEn, lat: stop.lat, lng: stop.lng, dataUpdated: data.observedAt, arrivals: data.arrivals.map(call => ({ ...call, destination: call.destination || terminus?.nameTc || '', destinationEn: call.destinationEn || terminus?.nameEn || terminus?.nameTc || '' })) };
+        setRoutePopupData({ stop, language, camera, status: 'ready' });
+      }).catch(() => { if (!controller.signal.aborted) setRoutePopupData({ stop, language, status: 'error' }); });
+    });
+    return () => { controller.abort(); };
+  }, [routePopupStop, busRouteKey, busSelection, busRoute, language]);
   useEffect(() => {
     const L = library.current, m = map.current;
-    if (!ready || !L || !m || !popupElement || !popupStopId) return;
-    const data = markerData.current.get(popupStopId);
-    if (!data) return;
-    const offset = displayOffsets.current.get(popupStopId);
+    if (!ready || !L || !m || !popupElement) return;
+    const routeStop = routePopupStop?.key === busRouteKey ? routePopupStop.stop : undefined;
+    const camera = routeStop ?? (popupStopId ? markerData.current.get(popupStopId)?.camera : undefined);
+    if (!camera) return;
+    const stopId = routeStop ? `route:${busRouteKey}:${routeStop.seq}` : popupStopId!;
+    const offset = routeStop ? undefined : displayOffsets.current.get(stopId);
     const popup = L.popup({ offset: L.point(24 + (offset?.x ?? 0), -14 + (offset?.y ?? 0)), closeButton: true, autoPan: true, maxWidth: 320, className: 'stop-eta-popup' })
-      .setLatLng([data.camera.lat, data.camera.lng])
+      .setLatLng([camera.lat, camera.lng])
       .setContent(popupElement)
       .openOn(m);
-    popupRef.current = { popup, stopId: popupStopId };
-    const onRemove = () => setPopupStopId(current => current === popupStopId ? null : current);
+    popupRef.current = { popup, stopId };
+    const onRemove = () => { setPopupStopId(current => current === popupStopId ? null : current); setRoutePopupStop(current => current === routePopupStop ? null : current); };
     popup.on('remove', onRemove);
     return () => { popup.off('remove', onRemove); if (popupRef.current?.popup === popup) popupRef.current = null; popup.remove(); };
-  }, [ready, popupStopId, popupElement]);
+  }, [ready, popupStopId, popupElement, routePopupStop, busRouteKey]);
+  useEffect(() => { popupRef.current?.popup.update(); }, [routePopupData, language]);
   useEffect(() => {
     const L = library.current, m = map.current;
     if (!ready || !L || !m) return;
@@ -558,16 +587,41 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     const color = layers[route.operator].color;
     L.polyline(points, { color: '#fff', weight: 8, opacity: .95, interactive: false }).addTo(group);
     L.polyline(points, { color, weight: 4, opacity: 1, interactive: false, dashArray: route.geometry === 'stops' ? '7 7' : undefined, className: 'bus-route-polyline' }).addTo(group);
+    const compact = window.matchMedia('(max-width:700px),(max-height:520px) and (orientation:landscape)').matches;
+    const sidebarInset = () => {
+      const sidebar = element.current?.closest('.app-shell')?.querySelector<HTMLElement>('.sidebar');
+      return !compact && sidebar && getComputedStyle(sidebar).display !== 'none' ? Math.max(0, sidebar.getBoundingClientRect().right - m.getContainer().getBoundingClientRect().left) : 0;
+    };
+    const labels: { button: HTMLButtonElement; marker: Leaflet.CircleMarker }[] = [];
     route.stops.forEach((stop, index) => {
       const endpoint = index === 0 || index === route.stops.length - 1;
-      L.circleMarker([stop.lat, stop.lng], { radius: endpoint ? 5 : 3, color, weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false, className: 'bus-route-stop' }).addTo(group);
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'bus-route-stop-label'; button.textContent = language === 'en' ? stop.nameEn || stop.nameTc : stop.nameTc || stop.nameEn;
+      button.dataset.stopId = stop.id; button.dataset.stopSeq = String(stop.seq); button.style.setProperty('--route-color', color);
+      button.setAttribute('aria-label', `${button.textContent} · ${integrationMessages[language].stopArrivals}`); button.setAttribute('aria-haspopup', 'dialog');
+      L.DomEvent.disableClickPropagation(button);
+      button.addEventListener('click', event => { L.DomEvent.stopPropagation(event); setPopupStopId(null); setRoutePopupStop({ key: route.key, stop }); });
+      const marker = L.circleMarker([stop.lat, stop.lng], { radius: endpoint ? 5 : 3, color, weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false, className: 'bus-route-stop' }).addTo(group)
+        .bindTooltip(button, { permanent: true, direction: 'auto', offset: [8, 0], interactive: true, opacity: 1, className: 'bus-route-stop-tooltip' });
+      marker.getTooltip()?.getElement()?.removeAttribute('role');
+      labels.push({ button, marker });
     });
+    const positionLabels = () => {
+      const left = sidebarInset(), width = m.getSize().x;
+      labels.forEach(({ button, marker }) => {
+        button.style.maxWidth = `${Math.max(100, Math.min(220, (width - left) / 2 - 30))}px`;
+        const tooltip = marker.getTooltip();
+        if (tooltip) { tooltip.options.direction = m.latLngToContainerPoint(marker.getLatLng()).x < (width + left) / 2 ? 'right' : 'left'; tooltip.update(); }
+      });
+    };
+    positionLabels(); m.on('moveend resize', positionLabels);
     if (!inactive && fittedBusRoute.current !== route.key && points.length > 1) {
       fittedBusRoute.current = route.key;
-      m.fitBounds(points, { paddingTopLeft: [45, 55], paddingBottomRight: [45, 125], maxZoom: 16, animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
+      const labelHalfHeight = Math.max(0, ...labels.map(({ button }) => button.offsetHeight / 2));
+      m.fitBounds(points, { paddingTopLeft: [sidebarInset() + (compact ? 60 : 90), 80 + labelHalfHeight], paddingBottomRight: [compact ? 70 : 85, (compact ? 170 : 125) + labelHalfHeight], maxZoom: 16, animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
     }
-    return () => { group.remove(); };
-  }, [busRoute, ready, inactive]);
+    return () => { m.off('moveend resize', positionLabels); group.remove(); };
+  }, [busRoute, ready, inactive, language]);
   // Route-focus hides every bus stop (CSS on the container — markers stay
   // mounted) until the rider clicks blank map space; the route, stop circles
   // and vehicle are unaffected. Clearing the route re-shows stops for free.
@@ -830,7 +884,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     {mapError && <div className="map-error" role="alert">{copy.mapLoadFailed}<button type="button" className="map-retry" onClick={() => ready ? setBasemapRetry(value => value + 1) : window.location.reload()}><RefreshCw size={14}/>{copy.retry}</button></div>}
     {!ready && !mapError && <div className="map-loading"><LoaderCircle className="spin" size={20}/> {copy.mapLoading}</div>}
     {ready && !loading && cameras.length === 0 && !segments?.length && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
-    {popupElement && popupCamera && createPortal(<StopEtaPopup camera={popupCamera} language={language} now={now} activeTracking={busSelection ?? null} onShowRoute={tracking => { onShowBusRoute?.(popupCamera, tracking); setPopupStopId(null); }} onShowDetails={() => { selectRef.current(popupCamera); setPopupStopId(null); }}/>, popupElement)}
+    {popupElement && popupCamera && createPortal(<StopEtaPopup camera={popupCamera} language={language} now={now} activeTracking={busSelection ?? null} status={routePopupCamera ? routePopupData && routePopupData.stop === routePopupStop?.stop && routePopupData.language === language ? routePopupData.status : 'loading' : 'ready'} onRetry={routePopupCamera ? () => setRoutePopupStop(current => current ? { ...current } : null) : undefined} onShowRoute={routePopupCamera ? undefined : tracking => { onShowBusRoute?.(popupCamera, tracking); setPopupStopId(null); }} onShowDetails={routePopupCamera ? undefined : () => { selectRef.current(popupCamera); setPopupStopId(null); }}/>, popupElement)}
     {snapshotHover && createPortal(snapshotHover.camera.kind === 'ferry' ? <FerryPierPopup camera={snapshotHover.camera} language={language} now={now}/> : <><strong className="snapshot-hover-name">{language === 'en' ? snapshotHover.camera.nameEn || snapshotHover.camera.name : snapshotHover.camera.name}</strong><SnapshotImage camera={snapshotHover.camera} language={language} onActivity={onActivity}/></>, snapshotHover.element)}
   </section>;
 }
