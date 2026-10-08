@@ -17,11 +17,11 @@ import { getIntegrationData, initialViewport, pollingMs, viewportNote, withBound
 import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
 import { getBusRoute } from '@/lib/bus-route-client';
 import { busDistanceAtTime } from '@/lib/bus-route-motion';
+import { ETA_FRESH_MS } from '@/lib/place-arrivals';
 
 type LayerState = { data?: CameraData; loading: boolean; error: boolean };
 type PanelTab = 'layers' | 'search' | 'details';
 const panelTabs: PanelTab[] = ['layers', 'search', 'details'];
-const railKinds = ['mtr', 'lrt'] as const;
 
 const icons = { redlight: TrafficCone, speed: Gauge, snapshot: Video, flow: Navigation, incident: TriangleAlert, parking: SquareParking, rainfall: CloudRain, crossing: Clock3, works: TrafficCone, toll: MapPin, boundary: ShieldCheck, 'weather-warning': CloudRain, mtr: Navigation, lrt: Navigation, kmb: MapPin, citybus: MapPin, gmb: MapPin, nlb: MapPin, ferry: Navigation };
 const languageStorageKey = 'hk-traffic-language-v1';
@@ -215,11 +215,10 @@ export default function TrafficMonitor() {
   const panelReopenButton = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const inflight = useRef(new Set<LayerKind>());
-  const refreshIntegration = useRef<(kind: IntegrationKind, retry?: boolean) => Promise<void>>(async () => {});
+  const refreshIntegration = useRef<(kind: IntegrationKind) => Promise<void>>(async () => {});
   const integrationContext = useRef({ enabled, viewport, language });
   const integrationPending = useRef(new Map<IntegrationKind, { key: string; controller: AbortController }>());
   const integrationLastFetch = useRef(new Map<IntegrationKind, { key: string; at: number }>());
-  const railSync = useRef(new Map<IntegrationKind, { attempts: number; done: boolean; timer?: ReturnType<typeof setTimeout> }>());
   const panelScroll = useRef<HTMLDivElement>(null);
 
   const closeMobilePanel = useCallback(() => {
@@ -333,23 +332,13 @@ export default function TrafficMonitor() {
   useEffect(() => () => {
     integrationPending.current.forEach(request => request.controller.abort());
     integrationPending.current.clear();
-    railSync.current.forEach(sync => clearTimeout(sync.timer));
-    railSync.current.clear();
     refreshIntegration.current = async () => {};
   }, []);
 
   useEffect(() => {
     integrationContext.current = { enabled, viewport, language };
-    railKinds.forEach(kind => {
-      const sync = railSync.current.get(kind);
-      if (enabled[kind] && layerAvailable(kind)) {
-        if (!sync) {
-          railSync.current.set(kind, { attempts: 0, done: false });
-          integrationLastFetch.current.delete(kind);
-        }
-      } else if (sync) {
-        clearTimeout(sync.timer);
-        railSync.current.delete(kind);
+    integrationKinds.forEach(kind => {
+      if (!enabled[kind] || !layerAvailable(kind)) {
         integrationPending.current.get(kind)?.controller.abort();
         integrationPending.current.delete(kind);
         integrationLastFetch.current.delete(kind);
@@ -357,8 +346,6 @@ export default function TrafficMonitor() {
     });
     const refresh = async (kind: IntegrationKind, force = false) => {
       if (!enabled[kind] || !layerAvailable(kind) || document.visibilityState !== 'visible') return;
-      const sync = railSync.current.get(kind);
-      if (sync && !force && sync.timer) return;
       const spatial = ['kmb', 'citybus', 'gmb', 'nlb'].includes(kind);
       const key = `${language}:${spatial ? `${viewport.lng}:${viewport.lat}:${viewport.zoom}` : ''}`;
       if (integrationPending.current.get(kind)?.key === key) return;
@@ -367,41 +354,30 @@ export default function TrafficMonitor() {
       integrationPending.current.get(kind)?.controller.abort();
       const request = { key, controller: new AbortController() };
       integrationPending.current.set(kind, request);
-      if (sync) {
-        clearTimeout(sync.timer);
-        sync.timer = undefined;
-        if (force) { sync.attempts = 0; sync.done = false; }
-        if (!sync.done) sync.attempts++;
-      }
       const finishActivity = beginActivity();
       const isCurrent = () => {
         const current = integrationContext.current;
         const currentKey = `${current.language}:${spatial ? `${current.viewport.lng}:${current.viewport.lat}:${current.viewport.zoom}` : ''}`;
-        return current.enabled[kind] && currentKey === key && integrationPending.current.get(kind) === request && (!sync || railSync.current.get(kind) === sync);
+        return current.enabled[kind] && currentKey === key && integrationPending.current.get(kind) === request;
       };
       integrationLastFetch.current.set(kind, { key, at: Date.now() });
       setStates(state => ({ ...state, [kind]: { ...state[kind], loading: true } }));
       try {
         const data = await getIntegrationData(kind, viewport, language, request.controller.signal);
         if (!isCurrent()) return;
-        const error = Boolean(data.stale || data.feedError || (sync && !data.complete));
-        if (sync && !error) sync.done = true;
+        const error = Boolean(data.stale || data.feedError || ((kind === 'mtr' || kind === 'lrt') && !data.complete));
         setStates(state => ({ ...state, [kind]: { data, loading: false, error } }));
       } catch {
         if (isCurrent()) setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false, error: true } }));
       } finally {
         finishActivity();
-        if (sync && !sync.done && isCurrent()) {
-          if (sync.attempts < 4) sync.timer = setTimeout(() => { sync.timer = undefined; void refreshIntegration.current(kind, true); }, 16000);
-          else sync.done = true;
-        }
         if (integrationPending.current.get(kind) === request) integrationPending.current.delete(kind);
       }
     };
-    refreshIntegration.current = (kind, retry = false) => refresh(kind, !retry);
+    refreshIntegration.current = kind => refresh(kind, true);
     const refreshAll = () => integrationKinds.forEach(kind => void refresh(kind));
     refreshAll();
-    const timer = setInterval(refreshAll, 15000);
+    const timer = setInterval(refreshAll, ETA_FRESH_MS);
     document.addEventListener('visibilitychange', refreshAll);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refreshAll); };
   }, [enabled, language, viewport, beginActivity]);
@@ -463,7 +439,7 @@ export default function TrafficMonitor() {
       else void refresh();
     };
     void refresh();
-    const interval = setInterval(() => void refresh(), 60000);
+    const interval = setInterval(() => void refresh(), ETA_FRESH_MS);
     document.addEventListener('visibilitychange', visible);
     return () => { disposed = true; request?.abort(); clearInterval(interval); document.removeEventListener('visibilitychange', visible); };
   }, [activeBusSelection, busRouteRetry]);

@@ -2,11 +2,11 @@ import { carryArrivalClock, estimateTrains, type TrainObservation } from "./mtr-
 import { lrtPoint, lrtRoutes, lrtStation, lrtStationId } from "./lrt-network.ts"
 import { pool } from "./pool.ts"
 import { oldestDue } from "./refresh-slice.ts"
+import { ETA_FRESH_MS } from "./place-arrivals.ts"
 import { fetchUpstream } from "./upstream.ts"
 import type { LrtBoard, LrtCalling, LrtResponse, MtrTrain } from "./types.ts"
 
 const REMEMBER_MS = 180_000
-const STALE_MS = 20_000
 const REFRESH_SLICE = 8
 const FETCH_LIMIT = 4
 
@@ -32,7 +32,7 @@ export async function loadLrtSnapshot(now = Date.now()): Promise<LrtResponse> {
   let missed = 0
   const stations = lrtRoutes().flatMap((route) => route.stations)
   const ids = [...new Set(stations)]
-  const due = oldestDue(ids, (stationId) => remembered.get(stationId)?.at ?? null, now, STALE_MS, REFRESH_SLICE)
+  const due = oldestDue(ids, (stationId) => remembered.get(stationId)?.at ?? null, now, ETA_FRESH_MS, REFRESH_SLICE)
   await pool(due, FETCH_LIMIT, async (stationId) => {
     const parsed = await fetchStation(stationId, now)
     if (!parsed) { missed += 1; return }
@@ -79,7 +79,7 @@ export async function loadLrtSnapshot(now = Date.now()): Promise<LrtResponse> {
 async function fetchStation(stationId: string, now: number): Promise<Parsed | null> {
   const url = `https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=${encodeURIComponent(stationId)}&with_special=1`
   try {
-    const response = await fetchUpstream(url, 15_000, {
+    const response = await fetchUpstream(url, ETA_FRESH_MS, {
       timeoutMs: 5_000,
       headers: {
         Accept: "application/json",

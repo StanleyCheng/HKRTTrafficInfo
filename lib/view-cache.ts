@@ -38,15 +38,16 @@ export function viewCachedGet<T extends OkBody>(options: {
       return Response.json({ ...options.missing(), ok: true, error: undefined, gated: true })
     }
     const key = options.cacheKey?.(lng, lat, zoom) ?? `${lng.toFixed(3)},${lat.toFixed(3)},${Math.floor(zoom)}`
+    const now = Date.now()
     const hit = cached.get(key)
-    if (hit && Date.now() - hit.at < options.freshMs) return Response.json(hit.body)
+    if (hit && now - hit.at < options.freshMs) return Response.json(hit.body)
     let task = pending.get(key)
     if (!task) {
-      task = keepWorkerRequestAlive(options.load(lng, lat, Date.now(), zoom).then((body) => {
+      task = keepWorkerRequestAlive(options.load(lng, lat, now, zoom).then((body) => {
         const result = { ...body, fetchedAt: body.fetchedAt ?? new Date().toISOString() }
         if (body.ok && body.cacheable !== false && !body.stale) {
           if (cached.size >= 300) cached.delete(cached.keys().next().value!)
-          cached.set(key, { at: Date.now(), body: result })
+          cached.set(key, { at: now, body: result })
         }
         return result
       }).finally(() => pending.delete(key)))

@@ -139,7 +139,14 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .refresh-image { padding: 4px; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 8px; background: #f0f4f6; color: #116c79; flex-shrink: 0; }
 .subtle { font-size: 12px; line-height: 1.8; color: var(--muted); }
 .snapshot-note { white-space: pre-line; }
-.snapshot-hover { width: min(292px, calc(100vw - 80px)); overflow-y: auto; }
+.snapshot-hover, .ferry-hover { width: min(292px, calc(100vw - 80px)); overflow-y: auto; }
+.ferry-departures { margin: 0; padding: 0; list-style: none; }
+.ferry-departures li { padding: 10px 0; border-top: 1px solid #dce5e9; }
+.ferry-departures dl { margin: 8px 0; font-size: 12px; }
+.ferry-departures dl div { display: flex; justify-content: space-between; gap: 12px; margin: 4px 0; }
+.ferry-departures dd { margin: 0; font-variant-numeric: tabular-nums; }
+.ferry-route, .ferry-times { display: block; margin-top: 4px; color: #4a6471; font-size: 11px; }
+.ferry-departures .ferry-countdown { margin: 6px 0 0; color: #14625e; font-weight: 700; }
 .snapshot-hover-popup .leaflet-popup-tip-container { display: none; }
 .snapshot-hover-name { display: block; margin-bottom: 8px; }
 .snapshot-hover .snapshot-note { margin-bottom: 0; font-size: 11px; }

@@ -108,6 +108,29 @@ test('viewport cache returns stale without changing original timestamps and resp
   assert.equal(partialCalls, 2)
 })
 
+test('a slow coalesced transit snapshot expires from its producer start', async () => {
+  const oldNow = Date.now
+  let now = 1_000_000, calls = 0
+  let finish!: (body: { ok: boolean }) => void
+  Date.now = () => now
+  try {
+    const get = viewCachedGet({
+      freshMs: 5_000,
+      load: async () => { calls++; if (calls === 1) return new Promise<{ ok: boolean }>(resolve => { finish = resolve }); return { ok: true } },
+      missing: () => ({ ok: false }), failed: () => ({ ok: false }),
+    })
+    const request = new Request('https://local/api/kmb?lng=114.1&lat=22.3&zoom=13')
+    const first = get(request)
+    now += 5_001
+    const second = get(request)
+    assert.equal(calls, 1, 'An expired snapshot must keep its active producer')
+    finish({ ok: true })
+    await Promise.all([first, second])
+    await get(request)
+    assert.equal(calls, 2, 'A slow response must not gain another five seconds of cache lifetime')
+  } finally { Date.now = oldNow }
+})
+
 test('parsed feed failure preserves observation/fetch timestamps and marks stale', async () => {
   let fail = false, calls = 0
   const get = cachedFeed<{ ok: boolean; observedAt: string | null; fetchedAt?: string }>(0, async () => { calls++; if (fail) throw Error('offline'); return { ok: true, observedAt: '2026-01-01', fetchedAt: '2026-01-02' } }, () => ({ ok: false, observedAt: null, fetchedAt: undefined }))

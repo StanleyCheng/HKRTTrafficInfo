@@ -52,7 +52,7 @@ export async function loadGmbNear(lng: number, lat: number, now = Date.now(), zo
   if (!viewportAllowed("gmb", lng, lat, zoom)) return { ok: true, observedAt: null, stops: [] }
   forgetStale(remembered, now)
   const nearest = gmbStopsWithin(lng, lat, kmbReachMetres(zoom, lat), GMB_CAP)
-  const turn = await takeEtaTurn(async () => {
+  const turn = await takeEtaTurn("gmb", async () => {
     let missed = 0
     await pool(nearest.map((stop) => stop.id), FETCH_LIMIT, async (stopId) => {
       const cached = remembered.get(stopId)

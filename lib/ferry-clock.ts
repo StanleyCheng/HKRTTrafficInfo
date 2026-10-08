@@ -10,6 +10,8 @@ export type FerryClockCall = {
   remarkTc: string
   remarkEn: string
   scheduled: boolean
+  firstFerry?: string
+  lastFerry?: string
 }
 
 export function ferryInstant(eta: string, now: number): number | null {
@@ -48,6 +50,8 @@ export function ferryCalls(rows: {
   remarkTc?: string
   remarkEn?: string
   scheduled?: boolean
+  firstFerry?: string
+  lastFerry?: string
 }[], now: number): FerryClockCall[] {
   const calls: FerryClockCall[] = []
   for (const row of rows) {
@@ -65,6 +69,8 @@ export function ferryCalls(rows: {
       remarkTc: row.remarkTc ?? "",
       remarkEn: row.remarkEn ?? "",
       scheduled: row.scheduled === true,
+      firstFerry: row.firstFerry,
+      lastFerry: row.lastFerry,
     })
   }
   calls.sort((a, b) => a.minutes - b.minutes || a.route.localeCompare(b.route))
@@ -82,14 +88,19 @@ export type StarClock = {
   pierId: string
   remarkTc: string
   remarkEn: string
+  scheduled: boolean
+  firstFerry: string
+  lastFerry: string
 }
 
-export function starSailings(sheets: { from: string; csv: string }[], now: number): StarClock[] {
+export function starSailings(sheets: { from: string; csv: string }[], now: number, holiday = false, previousHoliday = false): StarClock[] {
   const hongKong = new Date(now + 8 * 60 * 60 * 1000)
   const day = hongKong.getUTCDay()
   const minuteOfDay = hongKong.getUTCHours() * 60 + hongKong.getUTCMinutes()
+  const midnight = Date.UTC(hongKong.getUTCFullYear(), hongKong.getUTCMonth(), hongKong.getUTCDate()) - 8 * 60 * 60 * 1000
   const clocksForNow: StarClock[] = []
   for (const sheet of sheets) {
+    const directions = new Map<string, { start: number; end: number; frequency: string }[]>()
     for (const line of sheet.csv.split(/\r?\n/)) {
       const cells = splitCsv(line)
       const direction = cells[0] ?? ""
@@ -97,13 +108,25 @@ export function starSailings(sheets: { from: string; csv: string }[], now: numbe
       const hours = cells[2] ?? ""
       const frequency = cells[3] ?? ""
       if (!direction.includes(" to ")) continue
-      if (!timetableApplies(when, day)) continue
       const span = hourSpan(hours)
-      if (!span || !inHourSpan(minuteOfDay, span)) continue
-      const remark = starFerryRemark(frequency)
+      if (!span) continue
+      const previousDay = span.end < span.start && minuteOfDay <= span.end
+      if (!timetableApplies(when, previousDay ? (day + 6) % 7 : day, previousDay ? previousHoliday : holiday)) continue
+      const start = span.start - (previousDay ? 1440 : 0)
+      const end = span.end + (span.end < span.start && !previousDay ? 1440 : 0)
+      const bands = directions.get(direction) ?? []
+      bands.push({ start, end, frequency })
+      directions.set(direction, bands)
+    }
+    for (const [direction, bands] of directions) {
+      bands.sort((a, b) => a.start - b.start)
+      const first = Math.min(...bands.map((band) => band.start))
+      const last = Math.max(...bands.map((band) => band.end))
+      const band = bands.find((item) => minuteOfDay >= item.start && minuteOfDay <= item.end) ?? bands[0]!
+      const remark = starFerryRemark(band.frequency)
       const destEn = direction.split(" to ").pop()?.trim() ?? ""
       const place = starPlace(destEn)
-      clocksForNow.push({
+      const base: StarClock = {
         route: "天星",
         destTc: place.tc,
         destEn: place.en,
@@ -112,16 +135,33 @@ export function starSailings(sheets: { from: string; csv: string }[], now: numbe
         arriving: false,
         eta: "",
         pierId: direction.startsWith("Tsim") ? "star-tst" : direction.startsWith("Wan") ? "star-wanchai" : sheet.from,
-        remarkTc: remark.remarkTc,
-        remarkEn: remark.remarkEn,
-      })
+        remarkTc: `按班次間距估算 · ${remark.remarkTc}`,
+        remarkEn: `Headway estimate · ${remark.remarkEn}`,
+        scheduled: true,
+        firstFerry: displayMinutes(first),
+        lastFerry: displayMinutes(last),
+      }
+      const departures = new Set<number>()
+      for (const item of bands) {
+        const values = [...item.frequency.matchAll(/\d+/g)].map((match) => Number(match[0])).filter((value) => value > 0)
+        if (!values.length) continue
+        // ponytail: midpoint headway estimates; replace with actual departures if Star publishes them.
+        const headway = values.reduce((total, value) => total + value, 0) / values.length
+        for (let minute = item.start; minute <= item.end; minute += headway) departures.add(minute)
+        departures.add(item.end)
+      }
+      for (const minute of [...departures].sort((a, b) => a - b)) {
+        clocksForNow.push({ ...base, eta: new Date(midnight + minute * 60_000).toISOString() })
+      }
+      if (![...departures].some((minute) => midnight + minute * 60_000 >= now)) clocksForNow.push(base)
     }
   }
   return clocksForNow
 }
 
-// A public-holiday band is not applied on its own. The timetable has no holiday calendar.
-function timetableApplies(when: string, day: number): boolean {
+export function timetableApplies(when: string, day: number, holiday = false): boolean {
+  if (/daily/i.test(when)) return true
+  if (holiday) return /public holidays/i.test(when) && !/except public holidays/i.test(when)
   const mon = /\bmon/i.test(when)
   const fri = /\bfri/i.test(when)
   const sat = /\bsat/i.test(when)
@@ -133,9 +173,9 @@ function timetableApplies(when: string, day: number): boolean {
   return coversWeekdays
 }
 
-function inHourSpan(minuteOfDay: number, span: { start: number; end: number }): boolean {
-  if (span.end >= span.start) return minuteOfDay >= span.start && minuteOfDay <= span.end
-  return minuteOfDay >= span.start || minuteOfDay <= span.end
+function displayMinutes(value: number): string {
+  const minute = (value + 1440) % 1440
+  return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`
 }
 
 function hourSpan(value: string): { start: number; end: number } | null {

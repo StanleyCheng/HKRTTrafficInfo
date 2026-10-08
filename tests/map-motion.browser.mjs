@@ -150,14 +150,14 @@ try {
     const vehicles = page.locator('.vehicle-marker');
     await page.waitForFunction(() => [...document.querySelectorAll('.vehicle-art')].every(image => image.complete && image.naturalWidth > 0));
     const artwork = await vehicles.evaluateAll(elements => elements.map(element => ({
-      src: element.querySelector('.vehicle-art').getAttribute('src'), role: element.getAttribute('role'),
+      src: element.querySelector('.vehicle-art').getAttribute('src'), ferry: element.classList.contains('ferry-marker'), role: element.getAttribute('role'),
       tabindex: element.tabIndex, label: element.getAttribute('aria-label'), title: element.title,
       width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height,
     })));
     assert.equal(new Set(artwork.map(vehicle => vehicle.src)).size, 3, 'MTR, LRT and ferry use distinct generated miniatures');
     for (const vehicle of artwork) {
       assert.equal(vehicle.role, 'button'); assert.equal(vehicle.tabindex, 0);
-      assert.equal(vehicle.label, vehicle.title); assert.ok(vehicle.label);
+      assert.equal(vehicle.label, vehicle.ferry ? `${vehicle.title} · Estimated position · timetable / arrival data` : vehicle.title); assert.ok(vehicle.label);
       assert.equal(vehicle.width, 32); assert.equal(vehicle.height, 32);
     }
     for (let index = 0; index < 3; index++) {

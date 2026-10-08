@@ -17,6 +17,7 @@ export type FerryTrack = {
   toTc: string
   toEn: string
   destTc: string
+  crossingMinutes?: number
 }
 
 export type FerryMark = {
@@ -115,22 +116,25 @@ export function estimateFerryVessels(
     const to = track.toId ? locate(track.toId) : null
     const departures = instants(marks.filter((mark) => isDeparture(mark, track)), now)
     const arrivals = instants(marks.filter((mark) => isArrival(mark, track)), now)
+    const path = to ? ferryFairway(track.fromId, track.toId, from, to) : [from]
+    const duration = track.crossingMinutes ? track.crossingMinutes * 60_000 : path.length >= 2 ? ferryCrossingMs(pathMetres(path)) : null
     const arriveAt = arrivals.find((time) => time >= now - 2 * 60_000) ?? null
     const departAt = arriveAt == null
-      ? departures.find((time) => time >= now - 2 * 60_000) ?? departures[departures.length - 1] ?? null
+      ? [...departures].reverse().find((time) => time <= now && duration != null && time + duration >= now)
+        ?? departures.find((time) => time >= now) ?? null
       : [...departures].reverse().find((time) => time < arriveAt) ?? null
-    const path = to ? ferryFairway(track.fromId, track.toId, from, to) : [from]
-    const place = placeOnPath(path, departAt, arriveAt, now)
+    const window = sailingWindow(departAt, arriveAt, duration)
+    if (!window) continue
+    const place = placeOnPath(path, window.start, window.end, now)
     if (!place) continue
-    const end = sailingWindow(departAt, arriveAt, path.length >= 2 ? ferryCrossingMs(pathMetres(path)) : null)?.end
     vessels.push({
-      id: `run-${track.route}-${track.fromId}`,
+      id: `run-${track.route}-${track.fromId}-${track.toId || track.toEn}`,
       nameTc: `${track.fromTc} – ${track.toTc}`,
       nameEn: `${track.fromEn} – ${track.toEn}`,
       lng: place.lng,
       lat: place.lat,
       route: track.route,
-      eta: end ? new Date(end).toISOString() : "",
+      eta: new Date(window.end).toISOString(),
       minutes: place.minutes,
       destTc: track.toTc,
       destEn: track.toEn,
@@ -139,8 +143,8 @@ export function estimateFerryVessels(
       fromLat: from.lat,
       toLng: to?.lng ?? from.lng,
       toLat: to?.lat ?? from.lat,
-      departAt,
-      arriveAt,
+      departAt: window.start,
+      arriveAt: window.end,
       pathLng: path.map((point) => point.lng),
       pathLat: path.map((point) => point.lat),
     })
@@ -149,7 +153,7 @@ export function estimateFerryVessels(
 }
 
 function sailingWindow(departAt: number | null, arriveAt: number | null, model: number | null): { start: number; end: number } | null {
-  if (departAt != null && arriveAt != null && arriveAt > departAt) return { start: departAt, end: arriveAt }
+  if (departAt != null && arriveAt != null && arriveAt >= departAt) return { start: departAt, end: arriveAt }
   if (arriveAt != null && model != null) return { start: arriveAt - model, end: arriveAt }
   if (departAt != null && model != null) return { start: departAt, end: departAt + model }
   if (departAt != null && arriveAt == null && model == null) return { start: departAt, end: departAt }

@@ -46,6 +46,16 @@ assert.ok(Math.abs((sailing[0]?.lng ?? 0) - 114.05) < 0.001)
 const kept = estimateFerryVessels([track], [], new Set(["1"]), locate, now)
 assert.equal(kept.length, 0)
 
+const scheduled = estimateFerryVessels([{ ...track, crossingMinutes: 9 }], [
+  { route: "1", pierId: "a", arriving: false, eta: "2026-10-03T09:55:00+08:00", destTc: "乙" },
+  { route: "1", pierId: "a", arriving: false, eta: "2026-10-03T10:02:00+08:00", destTc: "乙" },
+], new Set(), locate, now)
+assert.equal(scheduled[0]?.departAt, now - 5 * 60_000)
+assert.equal(scheduled[0]?.arriveAt, now + 4 * 60_000)
+assert.ok((scheduled[0]?.lng ?? 0) > from.lng)
+const scheduledMotion = syncFerryMotion([], scheduled, now)[0]!
+assert.ok(ferryMotionPoint(scheduledMotion, now + 60_000)!.lng > ferryMotionPoint(scheduledMotion, now)!.lng)
+
 const nextOnly = estimateFerryVessels(
   [{ ...track, route: "富裕", toId: "", toTc: "啟德", toEn: "Kai Tak", destTc: "啟德" }],
   [

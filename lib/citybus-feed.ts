@@ -51,7 +51,7 @@ export async function loadCitybusNear(lng: number, lat: number, now = Date.now()
   forgetStale(remembered, now)
   const nearest = nearestCitybusStops(lng, lat, STOP_LIMIT)
   const pairs = arrivalPairs(nearest, PAIR_BUDGET)
-  const turn = await takeEtaTurn(async () => {
+  const turn = await takeEtaTurn("citybus", async () => {
     let missed = 0
     await pool(pairs, FETCH_LIMIT, async (pair) => {
       const key = `${pair.stopId}/${pair.route}`

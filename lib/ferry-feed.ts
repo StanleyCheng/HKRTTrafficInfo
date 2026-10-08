@@ -1,6 +1,8 @@
-import { ferryCalls, ferryMinutes, starSailings } from "./ferry-clock.ts"
+import { ferryCalls, ferryInstant, ferryMinutes, starSailings } from "./ferry-clock.ts"
 import { estimateFerryVessels, type FerryMark, type FerryTrack } from "./ferry-run.ts"
-import { fortuneDepartureTimes, nextFortuneDepartures } from "./fortune-timetable.ts"
+import { fortuneDepartureTimes } from "./fortune-timetable.ts"
+import { ferryFairway } from "./ferry-fairway.ts"
+import { parseSunTimetable, parseHkkfTimetable } from "./ferry-timetable.ts"
 import { SUN_ROUTES } from "./ferry-routes.ts"
 import { etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
 import { etaQueue, takeEtaTurn } from "./polite-fetch.ts"
@@ -39,6 +41,8 @@ type Clock = {
   remarkTc: string
   remarkEn: string
   scheduled?: boolean
+  firstFerry?: string
+  lastFerry?: string
 }
 type SunFix = { vessel: FerryVessel | null; clocks: Clock[] }
 
@@ -47,6 +51,13 @@ const vessels = new Map<string, HeldRows<FerryVessel | null>>()
 const feedFaults = new Map<string, string>()
 let starText: { at: number; sheets: { from: string; csv: string }[] } | null = null
 let fortunePages: { at: number; pages: { pierId: string; destTc: string; destEn: string; html: string }[] } | null = null
+let holidays: { at: number; dates: string[] } | null = null
+const timetableText = new Map<string, { at: number; csv: string }>()
+const TIMETABLE_URLS = [
+  ...["central_cheungchau", "central_muiwo", "interislands", "northpoint_hunghom", "northpoint_kowlooncity"]
+    .map((route) => `https://www.sunferry.com.hk/eta/timetable/SunFerry_${route}_timetable_eng.csv`),
+  ...["pc", "ysw", "skw"].map((route) => `https://www.td.gov.hk/datagovhk_td/ferry-tt-ft/resources/en/ferry_central_${route}_timetable_eng.csv`),
+]
 
 const FORTUNE_LEGS = [
   { origin: "16", destination: "17", pierId: "sun-north-point", destTc: "觀塘", destEn: "Kwun Tong" },
@@ -57,7 +68,7 @@ const FORTUNE_LEGS = [
 export async function loadFerrySnapshot(now = Date.now()): Promise<FerryResponse> {
   forgetStale(clocks, now)
   forgetStale(vessels, now)
-  const turn = await takeEtaTurn(() => refreshFerryClock(now))
+  const turn = await takeEtaTurn("ferry", () => refreshFerryClock(now))
   return ferryBoard(now, turn !== null)
 }
 
@@ -70,7 +81,7 @@ async function refreshFerryClock(now: number): Promise<true> {
     }))),
   ]
   const due = jobs.filter((job) => etaDue(clocks.get(job.key), now))
-  await pool(due, FETCH_LIMIT, async (job) => {
+  const live = pool(due, FETCH_LIMIT, async (job) => {
     const result = await job.run()
     if (!result) {
       feedFaults.set(job.key, `${job.key.startsWith("sun:") ? "Sun Ferry" : "HKKF"} arrivals unavailable`)
@@ -80,18 +91,30 @@ async function refreshFerryClock(now: number): Promise<true> {
     clocks.set(job.key, { at: now, rows: result.clocks })
     if (job.key.startsWith("sun:")) vessels.set(job.key, { at: now, rows: result.vessel ? [result.vessel] : [] })
   })
-  await rememberStar(now)
-  await rememberFortune(now)
+  await Promise.all([
+    live,
+    rememberFortune(now),
+    rememberHolidays(now).then(() => Promise.all([rememberStar(now), rememberTimetables(now)])),
+  ])
   return true
 }
 
 function ferryBoard(now: number, fresh: boolean): FerryResponse {
   const byPier = new Map<string, FerryCall[]>()
-  for (const item of clocks.values()) {
-    const rows = heldRows(item, now) ?? []
-    for (const row of rows) {
+  const rows = [...clocks.values()].flatMap((item) => heldRows(item, now) ?? [])
+  const key = (row: Clock) => `${row.route}:${row.pierId}:${row.destTc}`
+  const bounds = new Map(rows.filter((row) => row.firstFerry).map((row) => [key(row), row]))
+  const live = new Set(rows.filter((row) => !row.scheduled && !row.arriving && (ferryInstant(row.eta, now) ?? 0) >= now).map(key))
+  const activeRows = rows.filter((row) => !row.scheduled || !live.has(key(row)))
+  for (const row of activeRows) {
+      if (!row.arriving && row.eta && (ferryInstant(row.eta, now) ?? 0) < now) continue
+      const schedule = bounds.get(key(row))
+      if (schedule && !row.arriving) {
+        row.firstFerry = schedule.firstFerry
+        row.lastFerry = schedule.lastFerry
+      }
       const timed = row.eta ? ferryCalls([row], now)[0] : null
-      const call = timed ?? (row.remarkTc || row.remarkEn
+      const call = timed ?? (!row.eta && (row.remarkTc || row.remarkEn || row.firstFerry || row.lastFerry)
         ? {
             route: row.route,
             destTc: row.destTc,
@@ -104,13 +127,14 @@ function ferryBoard(now: number, fresh: boolean): FerryResponse {
             remarkTc: row.remarkTc,
             remarkEn: row.remarkEn,
             scheduled: row.scheduled === true,
+            firstFerry: row.firstFerry,
+            lastFerry: row.lastFerry,
           }
         : null)
       if (!call) continue
       const list = byPier.get(row.pierId) ?? []
       list.push(call)
       byPier.set(row.pierId, list)
-    }
   }
   const boards = piers.map((pier) => ({
     id: pier.id,
@@ -118,7 +142,8 @@ function ferryBoard(now: number, fresh: boolean): FerryResponse {
     nameEn: pier.nameEn,
     lng: pier.lng,
     lat: pier.lat,
-    calls: (byPier.get(pier.id) ?? []).sort((a, b) => (a.minutes ?? 999) - (b.minutes ?? 999)).slice(0, 6),
+    calls: (byPier.get(pier.id) ?? []).sort((a, b) => (a.minutes ?? Infinity) - (b.minutes ?? Infinity))
+      .filter((call, index, all) => all.findIndex((other) => other.route === call.route && other.destTc === call.destTc && other.arriving === call.arriving && other.originTc === call.originTc) === index),
   }))
   const moving: FerryVessel[] = []
   const gpsRoutes = new Set<string>()
@@ -130,9 +155,7 @@ function ferryBoard(now: number, fresh: boolean): FerryResponse {
     }
   }
   const marks: FerryMark[] = []
-  for (const item of clocks.values()) {
-    for (const row of heldRows(item, now) ?? []) marks.push(row)
-  }
+  marks.push(...activeRows)
   moving.push(...estimateFerryVessels(ferryTracks(), marks, gpsRoutes, pierPoint, now))
   const error = [...new Set(feedFaults.values())].join("; ")
   const latest = Math.max(0, ...[...clocks.values()].map((item) => item.at))
@@ -171,6 +194,18 @@ function ferryTracks(): FerryTrack[] {
       toEn: route.fromEn,
       destTc: route.fromTc,
     })
+  }
+  for (const sheet of STAR_SHEETS) {
+    for (const [fromId, toId] of [[sheet.from, sheet.to], [sheet.to, sheet.from]]) {
+      const from = piers.find((pier) => pier.id === fromId)!
+      const to = piers.find((pier) => pier.id === toId)!
+      tracks.push({ route: "天星", fromId: from.id, toId: to.id, fromTc: from.nameTc, fromEn: from.nameEn,
+        toTc: to.id === "star-tst" ? "尖沙咀" : to.id === "star-central" ? "中環" : "灣仔",
+        toEn: to.id === "star-tst" ? "Tsim Sha Tsui" : to.id === "star-central" ? "Central" : "Wan Chai",
+        destTc: to.id === "star-tst" ? "尖沙咀" : to.id === "star-central" ? "中環" : "灣仔",
+        // Journey times printed in the official Star Ferry CSV headers.
+        crossingMinutes: sheet.from === "star-central" ? 9 : 8 })
+    }
   }
   for (const leg of FORTUNE_LEGS) {
     const toId = leg.destination === "17" ? "fortune-kwun-tong" : leg.destination === "16" ? "sun-north-point" : ""
@@ -246,6 +281,9 @@ async function fetchSun(route: (typeof SUN_ROUTES)[number]): Promise<SunFix | nu
     }
     const lng = Number(row.lng)
     const lat = Number(row.lat)
+    const from = pierPoint(route.from)
+    const to = pierPoint(route.to)
+    const path = from && to ? ferryFairway(route.from, route.to, from, to) : []
     const vessel: FerryVessel | null = Number.isFinite(lng) && Number.isFinite(lat) && lat > 22 && lat < 23 && lng > 113 && lng < 115
       ? {
           id: `${route.code}-${text(row.vesselcode) || "boat"}`,
@@ -257,6 +295,10 @@ async function fetchSun(route: (typeof SUN_ROUTES)[number]): Promise<SunFix | nu
           eta: arrive || depart,
           minutes: null,
           fix: "gps",
+          destTc: route.destTc,
+          destEn: route.destEn,
+          pathLng: path.map((point) => point.lng),
+          pathLat: path.map((point) => point.lat),
         }
       : null
     return { vessel, clocks: next }
@@ -320,30 +362,32 @@ async function fetchHkkf(route: (typeof HKKF_ROUTES)[number], direction: "inboun
 async function rememberStar(now: number): Promise<void> {
   if (!starText || now - starText.at > 24 * 60 * 60 * 1000) {
     const sheets: { from: string; csv: string }[] = []
-    for (const sheet of STAR_SHEETS) {
+    await pool(STAR_SHEETS, FETCH_LIMIT, async (sheet) => {
       try {
         const response = await fetchUpstream(sheet.url, 24 * 60 * 60 * 1000, { timeoutMs: 15_000, headers: { Accept: "text/csv" } })
-        if (response.status !== 200) continue
+        if (response.status !== 200) return
         sheets.push({ from: sheet.from, csv: new TextDecoder().decode(response.body) })
       } catch {
         // The previous day's table stays in starText when a sheet fails.
       }
-    }
-    if (sheets.length > 0) starText = { at: now, sheets }
+    })
+    if (sheets.length) starText = { at: now, sheets: [...sheets, ...(starText?.sheets ?? []).filter((old) => !sheets.some((sheet) => sheet.from === old.from))] }
     if (sheets.length === STAR_SHEETS.length) feedFaults.delete("star")
     else feedFaults.set("star", "Star Ferry timetable unavailable")
   }
   if (!starText) return
-  const rows = starSailings(starText.sheets, now)
+  const holiday = isHoliday(now)
+  if (holiday == null) { clocks.delete("star"); return }
+  const rows = starSailings(starText.sheets, now, holiday, isHoliday(now - 24 * 60 * 60 * 1000) ?? false)
   clocks.set("star", { at: now, rows })
 }
 
 async function rememberFortune(now: number): Promise<void> {
-  if (!fortunePages || now - fortunePages.at > 60 * 60 * 1000) {
+  if (!fortunePages || now - fortunePages.at > 60 * 60 * 1000 || hongKongDate(fortunePages.at) !== hongKongDate(now)) {
     const date = hongKongDate(now)
     const pages: { pierId: string; destTc: string; destEn: string; html: string }[] = []
     let fault: string | null = null
-    for (const leg of FORTUNE_LEGS) {
+    await pool(FORTUNE_LEGS, FETCH_LIMIT, async (leg) => {
       try {
         const url = `https://www.fortuneferry.com.hk/zh/route-and-fare?route=3&origin=${leg.origin}&destination=${leg.destination}&departure_date=${date}`
         const response = await etaQueue(() => fetchUpstream(url, 60 * 60 * 1000, {
@@ -358,16 +402,25 @@ async function rememberFortune(now: number): Promise<void> {
         fault = error instanceof Error ? error.message : "Fortune Ferry timetable unavailable"
         // Keep the previous hour's page when one direction fails.
       }
-    }
+    })
     if (fault) feedFaults.set("fortune", fault)
     else feedFaults.delete("fortune")
-    // Replace a full timetable atomically, preserving good directions on partial failure.
-    if (pages.length === FORTUNE_LEGS.length) fortunePages = { at: now, pages }
+    // A failed leg must not hide the other directions. Keep its last same-day table.
+    if (pages.length) {
+      const previous = fortunePages && hongKongDate(fortunePages.at) === date ? fortunePages.pages : []
+      fortunePages = { at: now, pages: [...pages, ...previous.filter((old) => !pages.some((page) => page.pierId === old.pierId && page.destEn === old.destEn))] }
+    }
   }
-  if (!fortunePages) return
+  if (!fortunePages || hongKongDate(fortunePages.at) !== hongKongDate(now)) {
+    clocks.delete("fortune")
+    return
+  }
   const rows: Clock[] = []
   for (const page of fortunePages.pages) {
-    for (const eta of nextFortuneDepartures(fortuneDepartureTimes(page.html), now)) {
+    const times = fortuneDepartureTimes(page.html).sort()
+    const departures = times.map((time) => `${hongKongDate(now)}T${time}:00+08:00`)
+    if (!departures.some((eta) => Date.parse(eta) >= now)) departures.push("")
+    for (const eta of departures) {
       rows.push({
         route: "富裕",
         destTc: page.destTc,
@@ -380,6 +433,8 @@ async function rememberFortune(now: number): Promise<void> {
         remarkTc: "船期",
         remarkEn: "Timetable",
         scheduled: true,
+        firstFerry: times[0],
+        lastFerry: times[times.length - 1],
       })
     }
   }
@@ -391,6 +446,60 @@ function hongKongDate(now: number): string {
   const month = String(hongKong.getUTCMonth() + 1).padStart(2, "0")
   const day = String(hongKong.getUTCDate()).padStart(2, "0")
   return `${hongKong.getUTCFullYear()}-${month}-${day}`
+}
+
+async function rememberHolidays(now: number): Promise<void> {
+  if (holidays && now - holidays.at < 24 * 60 * 60 * 1000) return
+  try {
+    const response = await fetchUpstream("https://www.1823.gov.hk/common/ical/en.json", 24 * 60 * 60 * 1000, { timeoutMs: 8_000 })
+    if (response.status !== 200) throw new Error("Holiday calendar unavailable")
+    const body = JSON.parse(new TextDecoder().decode(response.body).replace(/^\uFEFF/, "")) as { vcalendar?: { vevent?: { dtstart?: unknown[] }[] }[] }
+    const dates = (body.vcalendar?.[0]?.vevent ?? []).map((event) => event.dtstart?.[0])
+      .filter((date): date is string => typeof date === "string" && /^\d{8}$/.test(date))
+    if (!dates.some((date) => date.startsWith(hongKongDate(now).slice(0, 4)))) throw new Error("Holiday calendar unavailable")
+    holidays = { at: now, dates }
+    feedFaults.delete("holidays")
+  } catch { feedFaults.set("holidays", "Holiday calendar unavailable") }
+}
+
+function isHoliday(now: number): boolean | null {
+  const date = hongKongDate(now).replaceAll("-", "")
+  if (!holidays?.dates.some((day) => day.startsWith(date.slice(0, 4)))) return null
+  return holidays.dates.includes(date)
+}
+
+async function rememberTimetables(now: number): Promise<void> {
+  const holiday = isHoliday(now)
+  if (holiday == null) { clocks.delete("timetables"); return }
+  await pool(TIMETABLE_URLS, FETCH_LIMIT, async (url) => {
+    if (now - (timetableText.get(url)?.at ?? 0) < 24 * 60 * 60 * 1000) return
+    try {
+      const response = await fetchUpstream(url, 24 * 60 * 60 * 1000, { timeoutMs: 8_000, headers: { Accept: "text/csv" } })
+      if (response.status !== 200) throw new Error("Timetable unavailable")
+      const csv = new TextDecoder().decode(response.body)
+      const parsed = url.includes("sunferry") ? parseSunTimetable(csv, now, holiday) : parseHkkfTimetable(csv, now, holiday, HKKF_ROUTES)
+      if (!parsed.length) throw new Error("Timetable unavailable")
+      timetableText.set(url, { at: now, csv })
+      feedFaults.delete(url)
+    } catch { feedFaults.set(url, `${url.includes("sunferry") ? "Sun Ferry" : "HKKF"} timetable unavailable`) }
+  })
+  const rows: Clock[] = []
+  for (const [url, table] of timetableText) {
+    for (const day of [now - 24 * 60 * 60 * 1000, now]) {
+      const dayHoliday = isHoliday(day)
+      if (dayHoliday == null) continue
+      const schedules = url.includes("sunferry") ? parseSunTimetable(table.csv, day, dayHoliday) : parseHkkfTimetable(table.csv, day, dayHoliday, HKKF_ROUTES)
+      for (const schedule of schedules) {
+        const today = hongKongDate(day) === hongKongDate(now)
+        const departures = schedule.times.filter((time) => today || schedule.nextDayTimes.includes(time)).map((time) =>
+          `${hongKongDate(day + (schedule.nextDayTimes.includes(time) ? 24 * 60 * 60 * 1000 : 0))}T${time}:00+08:00`)
+        if (today && !departures.some((eta) => Date.parse(eta) >= now)) departures.push("")
+        for (const eta of departures) rows.push({ ...schedule, originTc: "", originEn: "", arriving: false, eta,
+          scheduled: true, remarkTc: "船期", remarkEn: "Timetable" })
+      }
+    }
+  }
+  clocks.set("timetables", { at: now, rows })
 }
 
 function text(value: unknown): string {

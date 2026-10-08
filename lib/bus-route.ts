@@ -5,6 +5,7 @@ import { nlbStop } from './nlb-network.ts'
 import { nlbArrivalMs } from './nlb-clock.ts'
 import { fetchUpstream } from './upstream.ts'
 import { etaQueue } from './polite-fetch.ts'
+import { ETA_FRESH_MS } from './place-arrivals.ts'
 import { pool } from './pool.ts'
 import { routeDistances } from './bus-route-motion.ts'
 import { busRoadGeometry } from './bus-route-geometry.ts'
@@ -89,7 +90,7 @@ async function routeStops(selection: BusRouteSelection): Promise<BusRouteStop[]>
 
 async function routeEtas(selection: BusRouteSelection, stops: BusRouteStop[]): Promise<BusEta[]> {
   if (selection.operator === 'kmb') {
-    const { body, fetched } = await json(`${KMB}/route-eta/${selection.route}/${selection.serviceType}`, 60_000)
+    const { body, fetched } = await json(`${KMB}/route-eta/${selection.route}/${selection.serviceType}`, ETA_FRESH_MS)
     return array(body.data).filter((row) => row.dir === selection.bound && String(row.service_type) === selection.serviceType && row.eta_seq === 1).map((row) => ({ seq: Number(row.seq), at: Date.parse(text(row.eta)), observed: Date.parse(text(row.data_timestamp)) || fetched, scheduled: scheduled(row) }))
   }
   const selectedIndex = stops.findIndex((stop) => stop.id === selection.stopId && (selection.stopSeq == null || selection.stopSeq === stop.seq))
@@ -102,7 +103,7 @@ async function routeEtas(selection: BusRouteSelection, stops: BusRouteStop[]): P
     const url = selection.operator === 'citybus' ? `${CTB}/eta/CTB/${stop.id}/${selection.route}`
       : selection.operator === 'gmb' ? `${GMB}/eta/route-stop/${selection.routeId}/${selection.routeSeq}/${stop.seq}`
         : `${NLB}?action=estimatedArrivals&routeId=${selection.routeId}&stopId=${stop.id}&lang=en`
-    const { body, fetched } = await json(url, 60_000)
+    const { body, fetched } = await json(url, ETA_FRESH_MS)
     if (selection.operator === 'nlb') {
       const row = array(body.estimatedArrivals)[0]
       if (row) etas.push({ seq: stop.seq, at: nlbArrivalMs(text(row.estimatedArrivalTime)), observed: nlbArrivalMs(text(row.generateTime)), scheduled: String(row.departed) !== '1' || String(row.noGPS) !== '0' })

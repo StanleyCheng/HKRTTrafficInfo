@@ -4,15 +4,16 @@ import { createPortal } from 'react-dom';
 import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import { integrationMessages, messages } from '@/lib/i18n';
-import { Camera, CameraData, FlowSegment, Language, MapPath, layerText, layers, speedLevelColors } from '@/lib/traffic';
+import { Camera, CameraData, FlowSegment, Language, MapPath, hkTime, layerText, layers, speedLevelColors } from '@/lib/traffic';
 import type { TrafficSearchItem } from '@/lib/traffic-view';
-import { movingCameras, railHoverText, type MapViewport } from '@/lib/integration-client';
+import { ferryDepartures, movingCameras, railHoverText, type MapViewport } from '@/lib/integration-client';
 import { stopPlate } from '@/lib/stop-plate';
 import { STOP_LABEL_WIDTH, declutterLabels, stopLabelHeight, type StopLabelItem, type StopLabelPlacement } from '@/lib/stop-labels';
 import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
 import { busDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '@/lib/bus-route-motion';
 import { markerOffsets, type MarkerPoint } from '@/lib/marker-layout';
 import { vehicleIcon, vehicleIconHeadingOffset } from '@/lib/vehicle-icons';
+import { ferryBadge } from '@/lib/ferry-routes';
 import SnapshotImage from './snapshot-image';
 
 const symbols = {
@@ -51,6 +52,7 @@ const OPENFREEMAP_ATTRIBUTION = '<a href="https://openfreemap.org/" target="_bla
 
 const busStopKinds: readonly string[] = ['kmb', 'citybus', 'gmb', 'nlb'];
 const isBusStop = (camera: Camera) => busStopKinds.includes(camera.kind);
+const hasDelayedHover = (camera: Camera) => camera.kind === 'snapshot' || camera.kind === 'ferry' && camera.positionType === 'pier';
 
 // Plate anchor candidates in preference order, matching .stop-plate and its
 // .pos-* modifiers in globals.css. Offsets are container pixels from the stop
@@ -84,6 +86,20 @@ function StopEtaPopup({ camera, language, now, activeTracking, onShowRoute, onSh
     })}</ul> : <p>{extra.noArrivals}</p>}
     <button type="button" className="text-button stop-eta-details" onClick={onShowDetails}>{copy.cameraDetails}</button>
   </div>;
+}
+
+function FerryPierPopup({ camera, language, now }: { camera: Camera; language: Language; now: number }) {
+  const copy = integrationMessages[language];
+  const departures = ferryDepartures(camera, now);
+  return <><strong className="snapshot-hover-name">{language === 'en' ? camera.nameEn || camera.name : camera.name}</strong>
+    {departures.length ? <ul className="ferry-departures" aria-label={copy.ferryDepartures}>{departures.map(call => <li key={JSON.stringify([call.route, call.destination || call.destinationEn])}>
+      <strong>{language === 'en' ? call.destinationEn || call.destination : call.destination}</strong>
+      <small className="ferry-route">{ferryBadge(call.route)[language === 'en' ? 'en' : 'tc']}{(language === 'en' ? call.remarkEn : call.remark) ? ` · ${language === 'en' ? call.remarkEn : call.remark}` : ''}</small>
+      <dl><div><dt>{copy.firstFerry}</dt><dd>{call.firstFerry || copy.queue[4]}</dd></div><div><dt>{copy.lastFerry}</dt><dd>{call.lastFerry || copy.queue[4]}</dd></div><div><dt>{copy.nextFerry}</dt><dd>{call.eta ? hkTime(call.eta, false, language) : copy.queue[4]}</dd></div></dl>
+      {call.minutes !== null && <p className="ferry-countdown">{copy.ferryNextIn(call.minutes)}</p>}
+    </li>)}</ul> : <p>{copy.noFerryDepartures}</p>}
+    <small className="ferry-times">{copy.ferryTimes}</small>
+  </>;
 }
 
 export type Basemap = 'osm' | 'positron';
@@ -290,9 +306,9 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       const marker = oldMarker ?? enableMarkerKeyboard(L.marker([camera.lat, camera.lng], { icon, keyboard: true, cameraKind: camera.kind } as Leaflet.MarkerOptions).addTo(group));
       if (oldMarker) marker.setIcon(icon).setLatLng([camera.lat, camera.lng]);
       const node = marker.getElement();
-      if (node) { if (camera.kind === 'snapshot') node.removeAttribute('title'); else node.title = rail ? hover : camera.kind === 'parking' ? copy.parkingAvailability(camera.vacancy?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—', camera.capacity?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—') : `${layerText(camera.kind, language).name}: ${name}`; node.setAttribute('aria-label', hover); node.dataset.markerId = camera.id; }
+      if (node) { if (hasDelayedHover(camera)) node.removeAttribute('title'); else node.title = rail ? hover : camera.kind === 'parking' ? copy.parkingAvailability(camera.vacancy?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—', camera.capacity?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—') : `${layerText(camera.kind, language).name}: ${name}`; node.setAttribute('aria-label', hover); node.dataset.markerId = camera.id; }
       const label = document.createElement('span'); label.textContent = name;
-      if (rail) marker.unbindTooltip();
+      if (rail || camera.kind === 'ferry') marker.unbindTooltip();
       else if (marker.getTooltip()) marker.setTooltipContent(label);
       else marker.bindTooltip(label, { direction: 'top', offset: [0, -12] });
       if (!oldMarker) marker.on('click', () => { const latest = markerData.current.get(camera.id)?.camera; if (!latest) return; if (isBusStop(latest)) { if (!routeFocusRef.current) setPopupStopId(camera.id); } else selectRef.current(latest); });
@@ -301,7 +317,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     });
     layoutMarkers.current();
   }, [cameras, ready, language, copy, mapZoom]);
-  const snapshotMarkerKey = JSON.stringify(cameras.filter(camera => camera.kind === 'snapshot'));
+  const snapshotMarkerKey = JSON.stringify(cameras.filter(hasDelayedHover));
   useEffect(() => {
     const L = library.current, m = map.current;
     if (!ready || !L || !m || inactive) return;
@@ -327,7 +343,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     };
     const listeners: (() => void)[] = [];
     markerData.current.forEach(({ camera }) => {
-      if (camera.kind !== 'snapshot') return;
+      if (!hasDelayedHover(camera)) return;
       const marker = markers.current.get(camera.id), node = marker?.getElement();
       if (!marker || !node) return;
       node.setAttribute('aria-haspopup', 'dialog');
@@ -337,7 +353,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
         delay = setTimeout(() => {
           delay = undefined;
           const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
-          content = document.createElement('div'); content.id = 'snapshot-hover'; content.className = 'snapshot-hover';
+          content = document.createElement('div'); content.id = camera.kind === 'ferry' ? 'ferry-hover' : 'snapshot-hover'; content.className = `marker-hover ${content.id}`;
           const topbar = document.querySelector('.topbar')?.getBoundingClientRect();
           const status = m.getContainer().closest('.map-workspace')?.querySelector('.traffic-status')?.getBoundingClientRect();
           content.style.maxHeight = `${Math.max(80, m.getContainer().getBoundingClientRect().bottom - Math.max(topbar?.bottom ?? 0, status?.bottom ?? 0) - 48)}px`;
@@ -386,7 +402,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       const sidebarBounds = sidebar?.getBoundingClientRect();
       const left = sidebar && sidebarBounds?.width && getComputedStyle(sidebar).visibility !== 'hidden' ? Math.max(area.left, sidebarBounds.right) : area.left;
       const right = Math.min(area.right, container.parentElement?.querySelector('.map-tools')?.getBoundingClientRect().left ?? area.right);
-      const content = popup.getElement()?.querySelector<HTMLElement>('.snapshot-hover');
+      const content = popup.getElement()?.querySelector<HTMLElement>('.marker-hover');
       if (content) { content.style.maxWidth = `${Math.max(80, right - left - 16 - (bounds.width - content.getBoundingClientRect().width))}px`; popup.update(); bounds = popup.getElement()!.getBoundingClientRect(); }
       const x = Math.max(left + 8 - bounds.left, Math.min(0, right - 8 - bounds.right));
       const y = Math.max(top + 8 - bounds.top, Math.min(0, area.bottom - 8 - bounds.bottom));
@@ -629,10 +645,10 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
             const position = existing.marker.getLatLng();
             existing.correction = { lat: position.lat - camera.lat, lng: position.lng - camera.lng, at: now };
           }
-          if (!rail && (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn)) {
-            const label = document.createElement('span'); label.textContent = name;
+          if (!rail && (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn || existing.camera.estimated !== camera.estimated)) {
+            const label = document.createElement('span'); label.textContent = `${name} · ${camera.estimated ? integrationMessages[language].estimatedFerry : integrationMessages[language].gps}`;
             existing.marker.setTooltipContent(label);
-            const icon = existing.marker.getElement(); if (icon) { icon.title = name; icon.setAttribute('aria-label', name); }
+            const icon = existing.marker.getElement(); if (icon) { icon.title = name; icon.setAttribute('aria-label', label.textContent); }
           }
           const remaining = !reducedMotion.matches && existing.correction ? Math.max(0, 1 - (now - existing.correction.at) / 1000) ** 3 : 0;
           const point = L.latLng(camera.lat + (existing.correction?.lat ?? 0) * remaining, camera.lng + (existing.correction?.lng ?? 0) * remaining);
@@ -663,8 +679,9 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
         const hover = rail ? railHoverText(camera, language, now) : name;
         const icon = L.divIcon({ className: `camera-marker vehicle-marker${rail ? ' rail-marker' : ' ferry-marker'}`, html: vehicleHtml(vehicleIcon(camera), camera.color ?? layers[camera.kind].color), iconSize: [32, 32], iconAnchor: [16, 16] });
         const marker = enableMarkerKeyboard(L.marker([camera.lat, camera.lng], { icon, title: hover, alt: name, keyboard: true }).addTo(group));
-        if (!rail) { const label = document.createElement('span'); label.textContent = name; marker.bindTooltip(label); }
-        marker.getElement()?.setAttribute('aria-label', hover);
+        const vehicleLabel = rail ? hover : `${name} · ${camera.estimated ? integrationMessages[language].estimatedFerry : integrationMessages[language].gps}`;
+        if (!rail) { const label = document.createElement('span'); label.textContent = vehicleLabel; marker.bindTooltip(label); }
+        marker.getElement()?.setAttribute('aria-label', vehicleLabel);
         marker.on('click', () => { const latest = entries.get(camera.id); if (latest) selectRef.current(latest.camera); });
         entries.set(camera.id, { marker, camera, feed, language, hoverAt: now });
       });
@@ -769,6 +786,6 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     {!ready && !mapError && <div className="map-loading"><LoaderCircle className="spin" size={20}/> {copy.mapLoading}</div>}
     {ready && !loading && cameras.length === 0 && !segments?.length && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
     {popupElement && popupCamera && createPortal(<StopEtaPopup camera={popupCamera} language={language} now={now} activeTracking={busSelection ?? null} onShowRoute={tracking => { onShowBusRoute?.(popupCamera, tracking); setPopupStopId(null); }} onShowDetails={() => { selectRef.current(popupCamera); setPopupStopId(null); }}/>, popupElement)}
-    {snapshotHover && createPortal(<><strong className="snapshot-hover-name">{language === 'en' ? snapshotHover.camera.nameEn || snapshotHover.camera.name : snapshotHover.camera.name}</strong><SnapshotImage camera={snapshotHover.camera} language={language} onActivity={onActivity}/></>, snapshotHover.element)}
+    {snapshotHover && createPortal(snapshotHover.camera.kind === 'ferry' ? <FerryPierPopup camera={snapshotHover.camera} language={language} now={now}/> : <><strong className="snapshot-hover-name">{language === 'en' ? snapshotHover.camera.nameEn || snapshotHover.camera.name : snapshotHover.camera.name}</strong><SnapshotImage camera={snapshotHover.camera} language={language} onActivity={onActivity}/></>, snapshotHover.element)}
   </section>;
 }

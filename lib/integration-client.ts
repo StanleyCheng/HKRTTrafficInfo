@@ -5,8 +5,10 @@ import { mtrStationCollection, mtrTrackCollection, stationRecord, lineRecord, pr
 import { lrtStationCollection, lrtTrackCollection, lrtPoint, lrtStation } from './lrt-network.ts';
 import { projectTrain } from './mtr-estimate.ts';
 import { placeOnPath } from './ferry-run.ts';
+import { ferryInstant } from './ferry-clock.ts';
 import { ferryVehicleIcon } from './vehicle-icons.ts';
 import { decorateControlPoints } from './control-points.ts';
+import { ETA_FRESH_MS } from './place-arrivals.ts';
 
 export type MapViewport = { lng: number; lat: number; zoom: number };
 export const initialViewport: MapViewport = { lng: 114.13, lat: 22.355, zoom: 11 };
@@ -17,7 +19,7 @@ export function viewportNote(kind: string, view: MapViewport): 'viewportBus' | '
   if (kind === 'nlb' && (view.lng < 113.8 || view.lng > 114.05 || view.lat < 22.18 || view.lat > 22.34)) return 'viewportNlb';
 }
 const endpoints: Record<IntegrationKind, string> = { crossing: 'approaches', works: 'works', toll: 'tolls', boundary: 'control-points', 'weather-warning': 'warnings', mtr: 'mtr', lrt: 'lrt', kmb: 'kmb', citybus: 'citybus', gmb: 'gmb', nlb: 'nlb', ferry: 'ferry' };
-export const pollingMs: Record<IntegrationKind, number> = { crossing: 120000, works: 300000, toll: 21600000, boundary: 60000, 'weather-warning': 60000, mtr: 15000, lrt: 15000, kmb: 60000, citybus: 60000, gmb: 60000, nlb: 60000, ferry: 60000 };
+export const pollingMs: Record<IntegrationKind, number> = { crossing: 120000, works: 300000, toll: 21600000, boundary: 60000, 'weather-warning': 60000, mtr: ETA_FRESH_MS, lrt: ETA_FRESH_MS, kmb: ETA_FRESH_MS, citybus: ETA_FRESH_MS, gmb: ETA_FRESH_MS, nlb: ETA_FRESH_MS, ferry: ETA_FRESH_MS };
 type Envelope = { ok: boolean; complete?: boolean; error?: string; fetchedAt?: string; observedAt?: string | null; capturedAt?: string | null; stale?: boolean };
 type FeaturesResponse = Envelope & { works?: GeoJSON.FeatureCollection; tolls?: GeoJSON.FeatureCollection };
 
@@ -108,7 +110,10 @@ export function normalizeIntegration(kind: IntegrationKind, payload: Envelope): 
   } else if (kind === 'kmb' || kind === 'citybus' || kind === 'gmb' || kind === 'nlb') {
     data.cameras = (payload as CitybusResponse).stops.map(stop => ({ id: `${kind}-${stop.id}`, sourceId: stop.id, kind, name: stop.nameTc, nameEn: stop.nameEn, lng: stop.lng, lat: stop.lat, routes: stop.routes, badge: stop.routes.slice(0, 3).join(' · '), arrivals: stop.calls.slice(0, 12).map(call => ({ route: call.route, destination: call.destTc, destinationEn: call.destEn, minutes: call.minutes, eta: call.eta, scheduled: call.scheduled, remark: call.remarkTc, remarkEn: call.remarkEn, tracking: call.tracking })) }));
   } else if (kind === 'ferry') {
-    data.cameras = (payload as FerryResponse).piers.map(pier => ({ id: `ferry-${pier.id}`, sourceId: pier.id, kind, name: pier.nameTc, nameEn: pier.nameEn, lng: pier.lng, lat: pier.lat, positionType: 'pier', arrivals: pier.calls.slice(0, 12).map(call => ({ route: call.route, destination: call.destTc, destinationEn: call.destEn, eta: call.eta, minutes: call.minutes, scheduled: call.scheduled, remark: call.remarkTc, remarkEn: call.remarkEn })) }));
+    data.cameras = (payload as FerryResponse).piers.map(pier => ({ id: `ferry-${pier.id}`, sourceId: pier.id, kind, name: pier.nameTc, nameEn: pier.nameEn, lng: pier.lng, lat: pier.lat, positionType: 'pier', arrivals: pier.calls.filter(call => !call.arriving).map(call => {
+      const eta = ferryInstant(call.eta, Date.parse(data.observedAt ?? data.fetchedAt));
+      return { route: call.route, destination: call.destTc, destinationEn: call.destEn, eta: eta === null ? undefined : new Date(eta).toISOString(), firstFerry: call.firstFerry, lastFerry: call.lastFerry, minutes: call.minutes, scheduled: call.scheduled, remark: call.remarkTc, remarkEn: call.remarkEn };
+    }) }));
     data.paths = (payload as FerryResponse).vessels.filter(vessel => vessel.pathLng && vessel.pathLat).map(vessel => ({ id: vessel.id, color: layers.ferry.color, points: vessel.pathLng!.map((lng, i) => [vessel.pathLat![i], lng] as [number, number]) }));
   }
   data.cameras = data.cameras.map(camera => ({ ...camera, dataUpdated: kind === 'crossing' || kind === 'mtr' || kind === 'lrt' ? camera.dataUpdated : camera.dataUpdated || data.observedAt || undefined }));
@@ -159,4 +164,17 @@ export function railHoverText(camera: Camera, language: Language, now = Date.now
   const times = (camera.arrivals ?? []).map(call => call.eta ? Date.parse(call.eta) : NaN).filter(time => Number.isFinite(time) && time >= now).sort((a, b) => a - b);
   const updated = validDate(camera.dataUpdated);
   return `${name}\n${copy.nextTrainEta}: ${times.length ? hkTime(times[0], false, language) : copy.queue[4]}\n${messages[language].recordUpdated}: ${updated ? hkTime(updated, true, language) : copy.noTimestamp}`;
+}
+
+export function ferryDepartures(camera: Camera, now: number): Arrival[] {
+  const destinations = new Map<string, Arrival>();
+  for (const call of camera.arrivals ?? []) {
+    const key = JSON.stringify([call.route, call.destination || call.destinationEn]);
+    const previous = destinations.get(key);
+    const eta = call.eta ? Date.parse(call.eta) : NaN;
+    const upcoming = Number.isFinite(eta) && eta >= now;
+    const next = upcoming && (!previous?.eta || eta < Date.parse(previous.eta)) ? call : previous;
+    destinations.set(key, { ...(next ?? call), firstFerry: previous?.firstFerry || call.firstFerry, lastFerry: previous?.lastFerry || call.lastFerry, eta: next?.eta, minutes: next?.eta ? Math.ceil((Date.parse(next.eta) - now) / 60000) : null });
+  }
+  return [...destinations.values()];
 }

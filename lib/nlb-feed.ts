@@ -44,7 +44,7 @@ export async function loadNlbNear(lng: number, lat: number, now = Date.now(), zo
     const record = nlbStop(stop.id)
     return { id: stop.id, routes: record?.services.map((service) => service.id) ?? [] }
   }), PAIR_BUDGET)
-  const turn = await takeEtaTurn(async () => {
+  const turn = await takeEtaTurn("nlb", async () => {
     let missed = 0
     await pool(pairs, FETCH_LIMIT, async (pair) => {
       const key = `${pair.stopId}/${pair.route}`

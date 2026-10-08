@@ -21,12 +21,15 @@ test("direct transit makes no upstream calls outside zoom and Lantau gates", asy
   } finally { globalThis.fetch = originalFetch }
 })
 
-test("browser viewport panning cannot exceed one Citybus refresh per minute", async () => {
+test("direct transit shares a five-second budget across pans and retries failed refreshes", async () => {
   const originalFetch = globalThis.fetch
+  const originalNow = Date.now
+  let now = Date.now()
   let calls = 0
-  globalThis.fetch = async () => { calls += 1; return Response.json({ data: [] }) }
+  let fail = false
+  Date.now = () => now
+  globalThis.fetch = async () => { calls += 1; return fail ? new Response("Unavailable", { status: 503 }) : Response.json({ data: [] }) }
   try {
-    const now = Date.now()
     const first = await loadDirectTransit("citybus", 114.18, 22.3, now, 16)
     assert.ok(calls > 0 && calls <= 24)
     const spent = calls
@@ -35,5 +38,19 @@ test("browser viewport panning cannot exceed one Citybus refresh per minute", as
     assert.equal(second.observedAt, first.observedAt)
     assert.deepEqual(second.stops.map((stop) => stop.id), loadCitybusPlaces(114.2, 22.38, now, 16).stops.map((stop) => stop.id))
     assert.notDeepEqual(second.stops.map((stop) => stop.id), first.stops.map((stop) => stop.id))
-  } finally { globalThis.fetch = originalFetch }
+    now += 5_000
+    const refreshed = await loadDirectTransit("citybus", 114.18, 22.3, now, 16)
+    assert.ok(calls > spent, "Both retained arrivals and upstream cache must expire at five seconds")
+    assert.notEqual(refreshed.observedAt, first.observedAt)
+    fail = true
+    now += 5_000
+    const failed = await loadDirectTransit("citybus", 114.18, 22.3, now, 16)
+    assert.equal(failed.stale, true)
+    const spentFailed = calls
+    fail = false
+    now += 1
+    const recovered = await loadDirectTransit("citybus", 114.18, 22.3, now, 16)
+    assert.ok(calls > spentFailed, "A failed result must not occupy the refresh budget")
+    assert.equal(recovered.stale, false)
+  } finally { globalThis.fetch = originalFetch; Date.now = originalNow }
 })

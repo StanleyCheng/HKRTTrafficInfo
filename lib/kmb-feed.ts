@@ -57,7 +57,7 @@ export async function loadKmbNear(lng: number, lat: number, now = Date.now(), zo
   const catalogueRefresh = Promise.all([refreshKmbCatalogueSoon(now), refreshKmbRoutesSoon(now)])
   forgetStale(remembered, now)
   const nearest = kmbStopsWithin(lng, lat, kmbReachMetres(zoom, lat), STOP_CAP)
-  const turn = await takeEtaTurn(async () => {
+  const turn = await takeEtaTurn("kmb", async () => {
     let missed = 0
     await pool(nearest.map((stop) => stop.id), FETCH_LIMIT, async (stopId) => {
       const cached = remembered.get(stopId)

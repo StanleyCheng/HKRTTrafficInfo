@@ -2,13 +2,13 @@ import { openFeedCache } from "./feed-cache.ts"
 import { carryArrivalClock, estimateTrains, type TrainObservation } from "./mtr-estimate.ts"
 import { pool } from "./pool.ts"
 import { fairLineReads } from "./refresh-slice.ts"
+import { ETA_FRESH_MS } from "./place-arrivals.ts"
 import { fetchUpstream } from "./upstream.ts"
 import { mtrQueries, networkRoutes, stationPoint } from "./mtr-network.ts"
 import { readSchedule } from "./mtr-schedule.ts"
 import type { MtrBoard, MtrResponse, MtrTrain } from "./types.ts"
 
 const REMEMBER_MS = 180_000
-const STALE_MS = 20_000
 const REFRESH_SLICE = 16
 const FETCH_LIMIT = 4
 
@@ -36,7 +36,7 @@ export async function loadMtrSnapshot(now = Date.now()): Promise<MtrResponse> {
       mtrQueries(),
       (pair) => remembered.get(`${pair.line}-${pair.station}`)?.at ?? null,
       now,
-      STALE_MS,
+      ETA_FRESH_MS,
       REFRESH_SLICE,
     )
     await pool(due, FETCH_LIMIT, async (pair) => {
@@ -131,7 +131,7 @@ async function fetchPair(line: string, station: string) {
   if (Date.now() < blockedUntil || failures >= 8) return null
   const url = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${encodeURIComponent(line)}&sta=${encodeURIComponent(station)}&lang=tc`
   try {
-    const response = await fetchUpstream(url, 15_000, {
+    const response = await fetchUpstream(url, ETA_FRESH_MS, {
       timeoutMs: 5_000,
       headers: {
         Accept: "application/json",

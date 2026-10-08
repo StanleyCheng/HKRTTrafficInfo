@@ -1,4 +1,4 @@
-export const ETA_FRESH_MS = 60_000
+export const ETA_FRESH_MS = 5_000
 export const ETA_KEEP_MS = 3 * 60_000
 
 export type HeldRows<T> = { at: number; rows: T[] }

@@ -319,6 +319,8 @@ export type FerryCall = {
   remarkTc: string
   remarkEn: string
   scheduled?: boolean
+  firstFerry?: string
+  lastFerry?: string
 }
 
 export type FerryPier = {

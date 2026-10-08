@@ -18,7 +18,7 @@ assert.equal(peak, 2)
 let refreshing = 0
 let refreshPeak = 0
 const turns = Array.from({ length: 3 }, () =>
-  takeEtaTurn(async () => {
+  takeEtaTurn("kmb", async () => {
     refreshing += 1
     refreshPeak = Math.max(refreshPeak, refreshing)
     await new Promise((resolve) => setTimeout(resolve, 30))
@@ -31,13 +31,15 @@ assert.equal(refreshPeak, 1)
 assert.deepEqual(finished, [true, true, true])
 
 let ran = 0
-const held = takeEtaTurn(async () => {
+const held = takeEtaTurn("kmb", async () => {
   ran += 1
   await new Promise((resolve) => setTimeout(resolve, 400))
   return "held"
 })
 await new Promise((resolve) => setTimeout(resolve, 30))
-const skipped = await takeEtaTurn(async () => {
+const sibling = await takeEtaTurn("ferry", async () => "ferry")
+assert.equal(sibling, "ferry", "A slow bus refresh must not starve ferry or other operators")
+const skipped = await takeEtaTurn("kmb", async () => {
   ran += 1
   return "second"
 })

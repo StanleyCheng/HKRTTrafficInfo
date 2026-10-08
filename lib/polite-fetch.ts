@@ -15,16 +15,16 @@ export function politeQueue(limit: number) {
   }
 }
 
-let refreshing = false
+const refreshing = new Set<string>()
 
-// One arrival refresh in an isolate. A second view answers from memory instead of opening another burst.
-export async function takeEtaTurn<T>(task: () => Promise<T>): Promise<T | null> {
+// One refresh per operator. Other operators still progress through the shared ETA queue.
+export async function takeEtaTurn<T>(key: string, task: () => Promise<T>): Promise<T | null> {
   const started = Date.now()
-  while (refreshing && Date.now() - started < 200) await pause(40)
-  if (refreshing) return null
-  refreshing = true
+  while (refreshing.has(key) && Date.now() - started < 200) await pause(40)
+  if (refreshing.has(key)) return null
+  refreshing.add(key)
   return keepWorkerRequestAlive(Promise.resolve().then(task).finally(() => {
-    refreshing = false
+    refreshing.delete(key)
   }))
 }
 

@@ -4,6 +4,7 @@ import { readStopList } from "../lib/stop-list.ts"
 
 const now = 1_700_000_000_000
 
+assert.equal(ETA_FRESH_MS, 5_000)
 assert.equal(etaDue(undefined, now), true)
 assert.equal(etaDue({ at: now - ETA_FRESH_MS + 1, rows: [] }, now), false)
 assert.equal(etaDue({ at: now - ETA_FRESH_MS, rows: [] }, now), true)
