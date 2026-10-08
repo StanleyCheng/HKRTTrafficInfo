@@ -9,7 +9,7 @@ const evidence = path.resolve(process.argv[3] || 'outputs/transit-refresh');
 const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL ?? 'chrome', headless: true });
 const kinds = ['mtr', 'lrt', 'kmb', 'citybus', 'gmb', 'nlb', 'ferry'];
 const buses = ['kmb', 'citybus', 'gmb', 'nlb'];
-const contexts = [], results = [];
+const contexts = [], results = [], cadence = {};
 const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgQIAI7mY6QAAAABJRU5ErkJggg==', 'base64');
 const selection = { operator: 'kmb', company: 'KMB', route: '1', bound: 'O', serviceType: '1', stopId: 'fixture', stopSeq: 1 };
 
@@ -42,6 +42,15 @@ async function create({ incomplete = false } = {}) {
   await context.addInitScript(() => {
     localStorage.setItem('hk-traffic-language-v1', 'en'); localStorage.setItem('hk-traffic-basemap-v1', 'osm');
     window.__errors = []; window.addEventListener('error', event => window.__errors.push(event.message));
+    // Record at invocation; asynchronous route-handler clock reads include fixture latency.
+    window.__transitFetchTimes = {};
+    const nativeFetch = window.fetch;
+    window.fetch = function(...args) {
+      const input = args[0] instanceof Request ? args[0].url : String(args[0]);
+      const kind = new URL(input, location.href).pathname.match(/\/api\/(mtr|lrt|kmb|citybus|gmb|nlb|ferry|bus-route)$/)?.[1];
+      if (kind) (window.__transitFetchTimes[kind] ??= []).push(Date.now());
+      return nativeFetch.apply(this, args);
+    };
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition() { return 0; }, clearWatch() {} } });
     let leaflet;
     Object.defineProperty(window, 'L', { configurable: true, get() { return leaflet; }, set(value) { leaflet = value; value.Map.addInitHook(function() { window.__map = this; }); } });
@@ -82,6 +91,11 @@ async function labels(state) {
 async function waitLabels(state, before) {
   await until(async () => Object.entries(await labels(state)).every(([id, value]) => value && value !== before[id]), 'New endpoint responses must visibly update every transit marker label or arrival board');
 }
+async function assertCadence(state, kind) {
+  const times = await state.page.evaluate(kind => window.__transitFetchTimes[kind], kind);
+  cadence[kind] = times.at(-1) - times.at(-2);
+  assert.equal(cadence[kind], 5000, `${kind} browser fetch invocations are exactly 5 seconds apart`);
+}
 async function test(name, run) {
   try { await run(); results.push({ name, ok: true }); console.log('PASS ' + name); }
   catch (error) { results.push({ name, ok: false, error: error.stack }); console.error('FAIL ' + name + '\n' + error.stack); }
@@ -98,7 +112,7 @@ try {
     for (const kind of ['mtr', 'lrt']) assert.equal(await state.page.locator(`.layer-card.${kind} [role="alert"]`).count(), 0);
     before = counts(state); visible = await labels(state);
     await tick(state); await changed(state, before); await waitLabels(state, visible);
-    for (const kind of kinds) assert.equal(state.calls[kind].at(-1).at - state.calls[kind].at(-2).at, 5000, `${kind} actual network requests are 5 seconds apart`);
+    for (const kind of kinds) await assertCadence(state, kind);
     assert.deepEqual(await state.page.evaluate(() => window.__errors), []);
     await state.page.screenshot({ path: path.join(evidence, 'all-transit-refresh.png') });
     await state.context.close();
@@ -152,7 +166,7 @@ try {
       await tick(state);
       await until(() => state.calls['bus-route'].length === expected);
       await until(async () => (await position()) !== before, 'The route marker consumes the refreshed vehicle estimate');
-      assert.equal(state.calls['bus-route'].at(-1).at - state.calls['bus-route'].at(-2).at, 5000);
+      await assertCadence(state, 'bus-route');
     }
     assert.deepEqual(await state.page.evaluate(() => window.__errors), []);
     await state.page.screenshot({ path: path.join(evidence, 'bus-route-refresh.png') });
@@ -161,6 +175,6 @@ try {
 } finally {
   for (const context of contexts) await context.close().catch(() => {});
   await browser.close();
-  await fs.writeFile(path.join(evidence, 'transit-refresh-results.json'), JSON.stringify({ origin, results, fixture: 'Mocked official and transit endpoints; Playwright clock advances the real application timers; actual fetch requests and visible Leaflet data updates are asserted.' }, null, 2));
+  await fs.writeFile(path.join(evidence, 'transit-refresh-results.json'), JSON.stringify({ origin, results, cadenceMs: cadence, fixture: 'Mocked official and transit endpoints; Playwright clock advances the real application timers; synchronous browser fetch timestamps, actual request counts and visible Leaflet data updates are asserted.' }, null, 2));
 }
 if (results.some(result => !result.ok)) process.exitCode = 1;
