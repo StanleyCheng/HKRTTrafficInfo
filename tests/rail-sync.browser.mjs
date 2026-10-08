@@ -102,6 +102,7 @@ try {
     assert.equal(state.calls.length, 4);
     await state.card.getByRole('button', { name: 'Retry', exact: true }).click();
     await until(() => state.calls.length === 5);
+    await until(() => state.page.locator('.sidebar-footer > button').isEnabled());
     for (const expected of [6, 7, 8]) await advance(state, 16000, expected);
     await advance(state, 16000);
     assert.equal(state.calls.length, 8, 'Manual retry must permit three new extra retries');
