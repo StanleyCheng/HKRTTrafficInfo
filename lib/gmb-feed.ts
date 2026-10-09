@@ -7,8 +7,12 @@ import { pool } from "./pool.ts"
 import { fetchUpstreamResilient } from "./upstream-resilient.ts"
 import type { GmbCall, GmbPlacesResponse, GmbResponse, GmbStopBoard } from "./types.ts"
 
+// Wall-clock budget: 24 stops × (5s + 2.5s retry) ÷ 8 in-flight = 22.5s worst
+// case, leaving headroom inside Cloudflare's 30s paid wall clock.
 const GMB_CAP = 24
-const FETCH_LIMIT = 4
+const FETCH_LIMIT = 8
+const ETA_TIMEOUT_MS = 5_000
+const ETA_RETRY_TIMEOUT_MS = 2_500
 const ETA_ROOT = "https://data.etagmb.gov.hk/eta/stop"
 
 type EtaEntry = {
@@ -140,7 +144,8 @@ function text(value: unknown): string {
 async function fetchStop(stopId: string): Promise<EtaRoute[] | null> {
   try {
     const response = await etaQueue(() => fetchUpstreamResilient(`${ETA_ROOT}/${encodeURIComponent(stopId)}`, ETA_FRESH_MS, {
-      timeoutMs: 5_000,
+      timeoutMs: ETA_TIMEOUT_MS,
+      retryTimeoutMs: ETA_RETRY_TIMEOUT_MS,
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",

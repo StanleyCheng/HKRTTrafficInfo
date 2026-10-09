@@ -7,9 +7,15 @@ import { pool } from "./pool.ts"
 import { fetchUpstreamResilient } from "./upstream-resilient.ts"
 import type { CitybusCall, CitybusPlacesResponse, CitybusResponse, CitybusStopBoard } from "./types.ts"
 
+// Wall-clock budget: at 24 pairs × (5s attempt + 2.5s retry) ÷ 8 in-flight
+// callers = 22.5s worst case, which keeps a degraded-upstream refresh inside
+// Cloudflare's 30s paid plan wall clock. Normal-case requests complete well
+// under this bound.
 const STOP_LIMIT = 6
 const PAIR_BUDGET = 24
-const FETCH_LIMIT = 4
+const FETCH_LIMIT = 8
+const ETA_TIMEOUT_MS = 5_000
+const ETA_RETRY_TIMEOUT_MS = 2_500
 const ETA_ROOT = "https://rt.data.gov.hk/v2/transport/citybus/eta/CTB"
 
 type EtaRow = {
@@ -139,7 +145,8 @@ function text(value: unknown): string {
 async function fetchEta(stopId: string, route: string): Promise<EtaRow[] | null> {
   try {
     const response = await etaQueue(() => fetchUpstreamResilient(`${ETA_ROOT}/${encodeURIComponent(stopId)}/${encodeURIComponent(route)}`, ETA_FRESH_MS, {
-      timeoutMs: 5_000,
+      timeoutMs: ETA_TIMEOUT_MS,
+      retryTimeoutMs: ETA_RETRY_TIMEOUT_MS,
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",

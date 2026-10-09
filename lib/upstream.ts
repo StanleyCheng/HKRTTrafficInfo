@@ -1,6 +1,13 @@
 import { keepWorkerRequestAlive, openFeedCache } from "./feed-cache.ts"
 
-export type UpstreamBody = { status: number; body: ArrayBuffer; contentType: string; fetchedAt: string }
+export type UpstreamBody = {
+  status: number
+  body: ArrayBuffer
+  contentType: string
+  fetchedAt: string
+  etag?: string
+  lastModified?: string
+}
 
 type UpstreamOptions = {
   headers?: HeadersInit
@@ -32,16 +39,45 @@ async function readThrough(url: string, ttlMs: number, options: UpstreamOptions)
   const shared = await readShared(url, ttlMs)
   if (shared) return shared
 
+  // Send conditional headers on the wire when the cache has previous validators.
+  // Servers that return 304 let us reuse the cached body — bandwidth and CPU win
+  // on every periodic refresh of an unchanged endpoint.
+  const headers = safeHeaders(options.headers)
+  const cached = memory.get(url)?.body
+  if (cached?.etag) headers.set("If-None-Match", cached.etag)
+  if (cached?.lastModified) headers.set("If-Modified-Since", cached.lastModified)
+
   // One cache only. fetch() with cacheTtl and cache.put of the same URL wait on
   // each other, and the request never produces a response.
   const response = await rawFetch()(url, {
     signal: AbortSignal.timeout(options.timeoutMs ?? 25_000),
-    headers: safeHeaders(options.headers),
+    headers,
   })
 
   const contentType = response.headers.get("content-type") ?? ""
+  const fetchedAt = new Date(Date.now()).toISOString()
+  // 304 means upstream confirms our cached body is still current — reuse it.
+  if (response.status === 304 && cached) {
+    const refreshed: UpstreamBody = {
+      ...cached,
+      status: 200,
+      fetchedAt,
+      etag: response.headers.get("etag") ?? cached.etag,
+      lastModified: response.headers.get("last-modified") ?? cached.lastModified,
+    }
+    memory.set(url, { expires: Date.now() + ttlMs, body: refreshed })
+    await writeShared(url, ttlMs, refreshed)
+    return refreshed
+  }
   const bytes = await response.arrayBuffer()
-  const body: UpstreamBody = { status: response.status, body: bytes, contentType, fetchedAt: new Date(Date.now()).toISOString() }
+  const body: UpstreamBody = {
+    status: response.status,
+    body: bytes,
+    contentType,
+    fetchedAt,
+    etag: response.headers.get("etag") ?? undefined,
+    lastModified: response.headers.get("last-modified") ?? undefined,
+  }
   if (response.ok) {
     memory.set(url, { expires: Date.now() + ttlMs, body })
     await writeShared(url, ttlMs, body)

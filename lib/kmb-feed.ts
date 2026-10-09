@@ -10,7 +10,11 @@ import { pool } from "./pool.ts"
 import { fetchUpstreamResilient } from "./upstream-resilient.ts"
 import type { KmbCall, KmbPlacesResponse, KmbResponse, KmbStopBoard } from "./types.ts"
 
-const FETCH_LIMIT = 6
+// Wall-clock budget: at up to 24 stops × (5s + 2.5s retry) ÷ 8 in-flight
+// callers = 22.5s worst case, well under Cloudflare's 30s paid wall clock.
+const FETCH_LIMIT = 8
+const ETA_TIMEOUT_MS = 5_000
+const ETA_RETRY_TIMEOUT_MS = 2_500
 const ETA_ROOT = "https://data.etabus.gov.hk/v1/transport/kmb/stop-eta"
 
 type EtaRow = {
@@ -144,7 +148,8 @@ function text(value: unknown): string {
 async function fetchStop(stopId: string): Promise<EtaRow[] | null> {
   try {
     const response = await etaQueue(() => fetchUpstreamResilient(`${ETA_ROOT}/${encodeURIComponent(stopId)}`, ETA_FRESH_MS, {
-      timeoutMs: 5_000,
+      timeoutMs: ETA_TIMEOUT_MS,
+      retryTimeoutMs: ETA_RETRY_TIMEOUT_MS,
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",

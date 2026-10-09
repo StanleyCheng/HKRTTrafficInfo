@@ -21,6 +21,10 @@ export type ResilientUpstream = UpstreamBody & {
 export type ResilientOptions = {
   /** Per-attempt timeout forwarded to fetchUpstream. Default 5_000. */
   timeoutMs?: number
+  /** Timeout used for any retry attempts; defaults to `timeoutMs`. Useful when
+   *  the first attempt is generous but a retry must be quick to keep total wall
+   *  time inside the Worker budget. */
+  retryTimeoutMs?: number
   /** Extra attempts after the first. Default 1 (two attempts total). */
   retries?: number
   /** Base backoff in ms; multiplied by attempt index and jittered. Default 250. */
@@ -34,6 +38,17 @@ export type ResilientOptions = {
 }
 
 const DEFAULT_RETRY_ON = new Set<number>([408, 425, 429, 500, 502, 503, 504])
+
+function logResilient(event: "attempt" | "stale" | "throw" | "ok", fields: Record<string, unknown>): void {
+  // wrangler's observability.enabled picks up console.error and pipes it into
+  // Logpush; keep one log call per event so the dashboards can plot retries vs
+  // success vs servedFromCache without combinatorial logs.
+  try {
+    console.error(JSON.stringify({ source: "fetchUpstreamResilient", event, ...fields }))
+  } catch {
+    // Logging must never throw into the request path.
+  }
+}
 
 /**
  * Fetch a URL with bounded retries, exponential backoff, and stale-while-error.
@@ -55,11 +70,21 @@ export async function fetchUpstreamResilient(
   options: ResilientOptions = {},
 ): Promise<ResilientUpstream> {
   const timeoutMs = options.timeoutMs ?? 5_000
+  const retryTimeoutMs = options.retryTimeoutMs ?? timeoutMs
   const retries = Math.max(0, options.retries ?? 1)
   const backoffMs = options.backoffMs ?? 250
   const retryOn = options.retryOn ?? DEFAULT_RETRY_ON
   const signal = options.signal
   const headers = options.headers
+
+  const startedAt = Date.now()
+  const host = (() => {
+    try {
+      return new URL(url).host
+    } catch {
+      return ""
+    }
+  })()
 
   let lastError: ResilientError | undefined
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -67,16 +92,42 @@ export async function fetchUpstreamResilient(
       lastError = { kind: "abort", message: "aborted before attempt" }
       break
     }
+    const attemptStartedAt = Date.now()
     let body: UpstreamBody
     try {
-      body = await fetchUpstream(url, ttlMs, { timeoutMs, headers })
+      body = await fetchUpstream(url, ttlMs, {
+        timeoutMs: attempt === 0 ? timeoutMs : retryTimeoutMs,
+        headers,
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
+      logResilient("attempt", {
+        host,
+        url,
+        attempt: attempt + 1,
+        retries,
+        outcome: "throw",
+        kind: signal?.aborted ? "abort" : "timeout",
+        message,
+        elapsedMs: Date.now() - attemptStartedAt,
+      })
       if (signal?.aborted) lastError = { kind: "abort", message }
       else lastError = { kind: "timeout", message }
       break
     }
+    logResilient("attempt", {
+      host,
+      url,
+      attempt: attempt + 1,
+      retries,
+      outcome: body.status >= 200 && body.status < 300 ? "ok" : `http-${body.status}`,
+      status: body.status,
+      bytes: body.body.byteLength,
+      servedFromCache: body.status === 304,
+      elapsedMs: Date.now() - attemptStartedAt,
+    })
     if (body.status >= 200 && body.status < 300) {
+      logResilient("ok", { host, url, attempts: attempt + 1, totalElapsedMs: Date.now() - startedAt })
       return { ...body, attempts: attempt + 1 }
     }
     lastError = { kind: "http", status: body.status, message: `HTTP ${body.status}` }
@@ -89,12 +140,28 @@ export async function fetchUpstreamResilient(
 
   const stale = lastGoodUpstream(url)
   if (stale) {
+    logResilient("stale", {
+      host,
+      url,
+      attempts: retries + 1,
+      kind: lastError?.kind,
+      status: lastError?.kind === "http" ? lastError.status : undefined,
+      totalElapsedMs: Date.now() - startedAt,
+    })
     return { ...stale, attempts: retries + 1, servedFromCache: true, error: lastError }
   }
   // No cache to fall back to: surface the failure as a thrown error so callers
   // that wrap in try/catch (the bus feeds do) can keep their existing "missed"
   // accounting intact.
   const detail = lastError?.kind === "http" ? `HTTP ${lastError.status}` : (lastError?.message ?? "unknown")
+  logResilient("throw", {
+    host,
+    url,
+    attempts: retries + 1,
+    kind: lastError?.kind,
+    status: lastError?.kind === "http" ? lastError.status : undefined,
+    totalElapsedMs: Date.now() - startedAt,
+  })
   throw new Error(`Upstream failed: ${detail}`)
 }
 

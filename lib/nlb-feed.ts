@@ -8,9 +8,13 @@ import { pool } from "./pool.ts"
 import { fetchUpstreamResilient } from "./upstream-resilient.ts"
 import type { NlbCall, NlbPlacesResponse, NlbResponse, NlbStopBoard } from "./types.ts"
 
+// Wall-clock budget: 24 pairs × (5s + 2.5s retry) ÷ 8 in-flight = 22.5s worst
+// case, well inside Cloudflare's 30s paid wall clock.
 const STOP_LIMIT = 6
 const PAIR_BUDGET = 24
-const FETCH_LIMIT = 4
+const FETCH_LIMIT = 8
+const ETA_TIMEOUT_MS = 5_000
+const ETA_RETRY_TIMEOUT_MS = 2_500
 const ETA_ROOT = "https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=estimatedArrivals"
 
 type Arrival = { estimatedArrivalTime?: string; departed?: string | number; noGPS?: string | number }
@@ -114,7 +118,8 @@ async function fetchEta(routeId: string, stopId: string): Promise<Arrival[] | nu
   const url = `${ETA_ROOT}&routeId=${encodeURIComponent(routeId)}&stopId=${encodeURIComponent(stopId)}&lang=en`
   try {
     const response = await etaQueue(() => fetchUpstreamResilient(url, ETA_FRESH_MS, {
-      timeoutMs: 5_000,
+      timeoutMs: ETA_TIMEOUT_MS,
+      retryTimeoutMs: ETA_RETRY_TIMEOUT_MS,
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",
