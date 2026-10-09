@@ -1,0 +1,49 @@
+name: Cloudflare Worker deploy
+
+# Trigger after `Verify` succeeds on `main`. The Verify workflow already runs
+# `npm run build`; the deploy workflow re-runs the build here so the Worker
+# bundle is regenerated on the runner before wrangler uploads it. The action
+# reads its API token/account from secrets and uploads the bundle returned by
+# `npm run build` via `wrangler deploy --config dist/server/wrangler.json`.
+
+on:
+  workflow_run:
+    workflows: ["Verify"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One deploy per commit at a time; do not cancel in flight to avoid leaving
+# a half-uploaded Worker bundle behind.
+concurrency:
+  group: "cloudflare-deploy-${{ github.event.workflow_run.head_sha }}"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Build Worker bundle
+        run: npm run build
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: ./
+          command: deploy --config dist/server/wrangler.json --outdir dist/deploy
+          wranglerVersion: 4.92.0

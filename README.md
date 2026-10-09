@@ -2,6 +2,10 @@
 
 Bilingual Traditional Chinese / English traffic map built with Leaflet, React and Next.js. The original seven layers are joined by harbour journey boards, road works, toll points, boundary queues, weather warnings, rail arrivals, bus arrivals and ferries. The ranked intelligence panel combines incidents, slow roads, warnings and feed faults.
 
+[![Vercel deploy](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/deploy-vercel.yml/badge.svg)](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/deploy-vercel.yml)
+[![Cloudflare Worker deploy](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/deploy-cloudflare.yml/badge.svg)](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/deploy-cloudflare.yml)
+[![Verify](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/verify.yml/badge.svg)](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/verify.yml)
+
 ## Run and validate
 
 Node 22.13 or later:
@@ -61,6 +65,33 @@ Bus routes require `lng`, `lat`, and `zoom`. Server routes and direct adapters e
 Bus stops are always drawn as individual icons with decluttered name/route labels; clicking a stop label or icon opens a live bilingual ETA popup anchored at the label. Choosing “Show route” on an arrival in the popup (or in the sidebar details) draws its complete ordered route and an animated estimated bus approach. KMB/LWB, Citybus, GMB and NLB retain their direction and service identity. Each selected route loads through `/api/bus-route` (or official feeds in the static build) and then refreshes every 30 seconds while visible; manual global Refresh or the route's Retry also updates it. Re-selecting a route reuses its retained data. Official CSDI road geometry is checked against the ordered stops; unavailable or mismatched geometry is labelled as an approximate stop connection. The bus icon estimates one approaching service from fresh ETAs, without vehicle GPS or persistent vehicle identification. Scheduled, expired or unavailable estimates do not create a moving bus.
 
 [CORS probe results](docs/cors-probe.md) record real GET status and headers. KMB, Citybus, GMB, NLB, HKO warnings and SLP return allow-origin `*`. Both ImmD queue files return HTTP 200 without allow-origin, so boundary queues require hosting. HKeMobility requires server requests; rail sharing and mixed ferry sources also require hosting.
+
+## Deployment
+
+Two production targets, both updated on every push to `main` once the corresponding GitHub secret is set:
+
+| Destination | URL | CI workflow | Secrets required |
+| --- | --- | --- | --- |
+| Vercel (Next.js) | https://hkrttrafficinfo.vercel.app/ | [`deploy-vercel.yml`](.github/workflows/deploy-vercel.yml) | `VERCEL_TOKEN` |
+| Cloudflare Worker (vinext) | https://hk-rt-traffic-info.stanley-it.workers.dev/ | [`deploy-cloudflare.yml`](.github/workflows/deploy-cloudflare.yml) | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
+
+Both workflows are gated on the [`Verify`](.github/workflows/verify.yml) job finishing green, so a failing test, lint or typecheck blocks both deployments before the bundle is uploaded.
+
+To wire these up:
+
+1. **Vercel:** create a token at https://dash.vercel.com/account/tokens with scope *Production Deployment* on the `hkrttrafficinfo` project. Save it at https://github.com/StanleyCheng/HKRTTrafficInfo/settings/secrets/actions/new as `VERCEL_TOKEN`.
+2. **Cloudflare:** create an API token at https://dash.cloudflare.com/profile/api-tokens with *Workers Scripts: Edit* and *Account Settings: Read*. Find the account ID on the right-hand side of the Workers & Pages dashboard. Save them as `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` under the same page.
+
+Manual fallbacks for the same two destinations:
+
+```sh
+# Cloudflare Worker (no extra setup if you have already run wrangler login)
+npm run build
+npx wrangler deploy --config dist/server/wrangler.json --outdir dist/deploy
+
+# Vercel (uses the same token via VERCEL_TOKEN env var)
+npx vercel deploy --prod --yes --token "$VERCEL_TOKEN"
+```
 
 ## Caching and freshness
 
