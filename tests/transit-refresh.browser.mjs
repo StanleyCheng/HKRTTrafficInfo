@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { openLayers, closeControls, reloadAll } from './browser-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = (process.argv[2] || 'http://localhost:5173').replace(/\/$/, '');
 const evidence = path.resolve(process.argv[3] || 'outputs/transit-refresh');
@@ -73,12 +74,14 @@ async function create({ incomplete = false, gated = false, hold = false } = {}) 
   await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => window.__map?._loaded);
   if (!gated) await page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
+  await openLayers(page);
   for (const kind of kinds.filter(kind => kind !== 'mtr')) await page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
   await until(() => kinds.filter(kind => !gated || !buses.includes(kind)).every(kind => calls[kind].length > 0));
   if (!hold) {
     await until(async () => (await page.locator('[data-marker-id="ferry-fixture"]').count()) === 1 && (gated || (await page.locator('[data-marker-id="nlb-fixture"]').count()) === 1));
-    await until(() => page.locator('.sidebar-footer > button').isEnabled());
+    await until(() => page.locator('.status-refresh').isEnabled());
   }
+  await closeControls(page);
   await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 100));
   return { context, page, calls, mode, held, failed };
 }
@@ -106,8 +109,8 @@ async function requestCounts(state) {
   };
 }
 async function refresh(state) {
-  await until(() => state.page.locator('.sidebar-footer > button').isEnabled());
-  await state.page.locator('.sidebar-footer > button').evaluate(element => element.click());
+  await until(() => state.page.locator('.status-refresh').isEnabled());
+  await reloadAll(state.page);
 }
 async function visibility(page) {
   await page.evaluate(() => {
@@ -178,7 +181,6 @@ try {
     await state.page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
     await until(() => buses.every(kind => state.calls[kind].length === 1));
     await until(async () => (await state.page.locator('[data-marker-id="nlb-fixture"]').count()) === 1);
-    const loaded = await requestCounts(state);
     await state.page.evaluate(() => { window.__map.setView([22.285, 113.955], 17, { animate: false }); });
     await until(() => buses.every(kind => state.calls[kind].length === 2), 'Panning to a new eligible viewport refetches every bus feed');
     await tick(state, 65000);
@@ -207,6 +209,7 @@ try {
     let before = counts(state), visible = await labels(state);
     for (const kind of kinds) state.mode[kind] = 'fail';
     await refresh(state); await changed(state, before);
+    await openLayers(state.page);
     await until(async () => (await state.page.locator(kinds.map(kind => `.layer-card.${kind} [role="alert"]`).join(',')).count()) === 7);
     assert.deepEqual(await labels(state), visible, 'Failed refresh keeps the last known data visible');
     await tick(state, 65000);
@@ -218,6 +221,7 @@ try {
     await until(async () => (await state.page.locator(kinds.map(kind => `.layer-card.${kind} [role="alert"]`).join(',')).count()) === 0, 'The polling cadence clears feed errors without manual Retry');
     await waitLabels(state, visible);
     before = counts(state); visible = await labels(state);
+    await closeControls(state.page);
     const failedBeforeSlowRequest = state.failed.length;
     for (const kind of kinds) state.mode[kind] = 'hold';
     await refresh(state); await changed(state, before);
@@ -233,7 +237,7 @@ try {
   await test('Selected bus route polls every 30 seconds while visible and recovers automatically from failures', async () => {
     const state = await create();
     await state.page.locator('[data-marker-id="kmb-fixture"] .marker-displacement').evaluate(element => element.click());
-    await state.page.locator('.stop-eta-popup .bus-route-button').first().evaluate(element => element.click());
+    await state.page.locator('.item-popup .bus-route-button').first().evaluate(element => element.click());
     await until(() => state.calls['bus-route'].length === 1);
     await until(async () => (await state.page.locator('.bus-route-marker').count()) === 1);
     await state.page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
@@ -246,7 +250,7 @@ try {
     assert.notEqual(await position(), before, 'Cadence refreshes update the route vehicle estimate');
     state.mode['bus-route'] = 'api-fail';
     await tick(state, 65000);
-    await state.page.locator('#panel-tab-details').evaluate(element => element.click());
+    await openLayers(state.page);
     await until(async () => (await state.page.locator('.bus-route-status .warning-text').count()) > 0);
     assert.equal(await state.page.locator('.bus-route-polyline').count(), 1, 'An HTTP-200 API failure retains the last route geometry');
     assert.equal(await state.page.locator('.bus-route-marker').count(), 0, 'Failed route data must not show an estimated vehicle');

@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { openLayers } from './browser-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = (process.argv[2] || 'http://localhost:5173').replace(/\/$/, '');
 const evidence = path.resolve(process.argv[3] || '.impeccable/review/rail');
@@ -46,6 +47,7 @@ async function create(kind = 'mtr', response = () => 'complete', language = 'en'
   });
   await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => window.__map?._loaded);
+  await openLayers(page);
   if (kind === 'lrt') await page.locator('.layer-card.lrt [role="switch"]').evaluate(element => element.click());
   await until(() => calls.length >= 1);
   await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 1000));

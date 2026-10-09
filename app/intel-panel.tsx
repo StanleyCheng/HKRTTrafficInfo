@@ -15,7 +15,7 @@ export default function IntelPanel({ input, language, onSelect }: { input: Intel
   const trigger = useRef<HTMLButtonElement>(null);
   const marquee = board.ranked.length ? board.ranked : [{ id: 'empty', title: m.empty, tone: 'none' }];
   function close() { setOpen(false); requestAnimationFrame(() => trigger.current?.focus()); }
-  function select(item: IntelItem) { if (item.camera) { close(); onSelect({ camera: item.camera, segment: item.segment }); } }
+  function select(item: IntelItem) { if (item.camera) { setOpen(false); onSelect({ camera: item.camera, segment: item.segment }); } }
   const points = currentCrossingPoints(input.states.crossing?.data, input.now);
   return <section className={`intel-shell ${open ? 'expanded' : ''}`} aria-label={m.intel} onKeyDown={event => { if (event.key === 'Escape' && open) { event.preventDefault(); close(); } }}>
     <button ref={trigger} type="button" className="intel-trigger" aria-label={m.expand} aria-expanded={open} aria-controls="intel-panel" onClick={() => { setOpen(value => !value); if (!open) requestAnimationFrame(() => document.getElementById(`intel-tab-${tab}`)?.focus()); }}>
@@ -27,7 +27,7 @@ export default function IntelPanel({ input, language, onSelect }: { input: Intel
       {!!points.length && <div className="crossing-pills">{(['CH', 'EH', 'WH'] as const).map(code => {
         const best = points.flatMap(point => point.legs.filter(leg => leg.code === code && leg.minutes !== null).map(leg => ({ ...leg, point }))).sort((a, b) => a.minutes! - b.minutes!)[0];
         const camera = input.states.crossing?.data?.cameras.find(camera => camera.sourceId === best?.point.id);
-        return <button key={code} type="button" className={best?.colour || 'none'} disabled={!camera} onClick={() => { if (camera) { close(); onSelect({ camera }); } }}><span>{m.crossingNames[code]}</span><strong>{best?.minutes ?? '—'} <small>{m.minutes}</small></strong></button>;
+        return <button key={code} type="button" className={best?.colour || 'none'} disabled={!camera} onClick={() => { if (camera) { setOpen(false); onSelect({ camera }); } }}><span>{m.crossingNames[code]}</span><strong>{best?.minutes ?? '—'} <small>{m.minutes}</small></strong></button>;
       })}</div>}
       <div className="intel-tabs" role="tablist" aria-label={m.intel}>{INTEL_TABS.map(name => <button type="button" key={name} id={`intel-tab-${name}`} role="tab" aria-selected={tab === name} aria-controls={`intel-content-${name}`} tabIndex={tab === name ? 0 : -1} onClick={() => setTab(name)} onKeyDown={event => {
         const i = INTEL_TABS.indexOf(name), next = event.key === 'ArrowRight' ? (i + 1) % INTEL_TABS.length : event.key === 'ArrowLeft' ? (i + INTEL_TABS.length - 1) % INTEL_TABS.length : event.key === 'Home' ? 0 : event.key === 'End' ? INTEL_TABS.length - 1 : null;

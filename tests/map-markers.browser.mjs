@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { openLayers, closeControls } from './browser-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = (process.argv[2] || 'http://localhost:5173').replace(/\/$/, '');
 const evidence = path.resolve(process.argv[3] || 'outputs/vehicle-icons');
@@ -66,12 +67,12 @@ async function create(mobile = false, parking = [{ vacancy: 10, space: 100 }, { 
   await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => window.__map?._loaded);
   await page.evaluate(center => { window.__map.setView(center, 17, { animate: false }); }, center);
-  if (mobile) await page.locator('.mobile-panel-button').click();
+  await openLayers(page);
   for (const toggle of await page.locator('.layer-card .layer-toggle').all()) if (await toggle.getAttribute('aria-checked') !== 'true') await toggle.click();
   await page.waitForFunction(() => [...document.querySelectorAll('.layer-card')].every(card => !card.querySelector('.spin')));
   const detectors = page.getByRole('switch', { name: 'Show detector locations', exact: true });
   await detectors.waitFor(); if (await detectors.getAttribute('aria-checked') !== 'true') await detectors.click();
-  if (mobile) { await page.locator('.mobile-panel-close').click(); await page.locator('.sidebar').waitFor({ state: 'hidden' }); }
+  await closeControls(page);
   return { context, page };
 }
 async function hoverMarker(page, marker) {
@@ -123,10 +124,12 @@ try {
     assert.equal(await card.locator('img').evaluate(image => getComputedStyle(image).objectFit), 'contain', 'Full image retains the stamped capture time');
     await card.hover(); await page.waitForTimeout(400);
     assert.equal(await card.count(), 1, 'Pointer can enter and inspect the rich card');
-    const unrelatedLayer = page.locator('.layer-card.rainfall .layer-toggle');
+    await page.locator('.layer-group-picker button').nth(1).evaluate(button => button.click());
+    const unrelatedLayer = page.locator('.desktop-layer-button.rainfall');
     await unrelatedLayer.evaluate(button => button.click());
     assert.equal(await card.count(), 1, 'Unrelated feed/layer updates retain the hovered snapshot');
     await unrelatedLayer.evaluate(button => button.click());
+    await page.locator('.layer-group-picker button').first().evaluate(button => button.click());
     await card.getByRole('button', { name: 'Refresh snapshot', exact: true }).click();
     await page.waitForFunction(() => !document.querySelector('.snapshot-hover .refresh-image')?.disabled);
     assert.equal(requests, loadedRequests + 1, 'Refresh remains usable inside hover');
@@ -145,14 +148,13 @@ try {
     for (const edge of ['right', 'left']) {
       await page.evaluate(edge => {
         const m = window.__map, point = m.latLngToContainerPoint([22.288, 113.949]);
-        const area = document.querySelector('.map-canvas').getBoundingClientRect(), sidebar = document.querySelector('.sidebar').getBoundingClientRect();
-        m.panBy(point.subtract([edge === 'right' ? m.getSize().x - 100 : Math.max(0, sidebar.right - area.left) + 60, 180]), { animate: false });
+        m.panBy(point.subtract([edge === 'right' ? m.getSize().x - 100 : 60, 180]), { animate: false });
       }, edge);
     await hoverMarker(page, marker); await card.waitFor(); await card.locator('img').waitFor();
     await card.locator('.warning-text').waitFor(); await page.waitForTimeout(100);
     const contained = await card.evaluate(element => {
       const card = element.closest('.leaflet-popup').getBoundingClientRect(), map = document.querySelector('.map-canvas').getBoundingClientRect();
-      return card.left >= Math.max(map.left, document.querySelector('.sidebar').getBoundingClientRect().right) && card.top >= Math.max(map.top, document.querySelector('.topbar').getBoundingClientRect().bottom, document.querySelector('.traffic-status').getBoundingClientRect().bottom) && card.right <= Math.min(map.right, document.querySelector('.map-tools').getBoundingClientRect().left) && card.bottom <= map.bottom;
+      return card.left >= map.left && card.top >= Math.max(map.top, document.querySelector('.topbar').getBoundingClientRect().bottom, document.querySelector('.traffic-status').getBoundingClientRect().bottom) && card.right <= Math.min(map.right, document.querySelector('.map-tools').getBoundingClientRect().left) && card.bottom <= map.bottom;
     });
     assert.equal(contained, true, 'Near-edge popup remains inside the map without panning');
     await page.screenshot({ path: path.join(evidence, `snapshot-hover-${edge}-edge.png`) });
@@ -170,7 +172,7 @@ try {
     await page.screenshot({ path: path.join(evidence, 'snapshot-hover-zh.png') });
     await page.keyboard.press('Escape');
     await marker.focus(); await page.keyboard.press('Enter');
-    await page.getByRole('heading', { level: 4, name: '快拍測試 1', exact: true }).waitFor();
+    await page.getByRole('heading', { level: 2, name: '快拍測試 1', exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await context.close();
   });
@@ -191,7 +193,7 @@ try {
     await card.getByRole('button', { name: 'Reload snapshot', exact: true }).click();
     await card.locator('img').waitFor(); assert.equal(requests, failedRequests + 1);
     const retriedRequests = requests;
-    const toggle = page.locator('.layer-card.snapshot .layer-toggle');
+    const toggle = page.locator('.desktop-layer-button.snapshot');
     await toggle.click(); await card.waitFor({ state: 'detached' });
     assert.equal(await marker.count(), 0);
     await toggle.click(); await marker.waitFor();
@@ -201,7 +203,7 @@ try {
     assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await context.close();
   });
-  await test('Snapshot hover fits a narrow mobile map and closes when the layers panel opens', async () => {
+  await test('Snapshot hover fits a narrow mobile map and closes when layer controls open', async () => {
     const { page, context } = await create(true);
     await page.setViewportSize({ width: 375, height: 844 });
     await page.evaluate(() => { window.__map.setView([22.288, 113.949], 16, { animate: false }); });
@@ -219,7 +221,7 @@ try {
       return card.left >= map.left && card.right <= tools.left && card.bottom <= map.bottom;
     }), true, 'Full photo fits the actual 375px map space clear of controls');
     await page.screenshot({ path: path.join(evidence, 'snapshot-hover-mobile-375.png') });
-    await page.locator('.mobile-panel-button').click(); await card.waitFor({ state: 'detached' });
+    await openLayers(page); await card.waitFor({ state: 'detached' });
     assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await context.close();
   });
@@ -282,9 +284,11 @@ try {
     assert.ok(layout.every(marker => Math.max(Math.abs(marker.x), Math.abs(marker.y)) <= 34.01), 'Display displacements stay within 34px on each axis');
     await page.evaluate(() => { window.__colocated = [...document.querySelectorAll('.camera-marker[title*="redlight fixture"]')]; });
     for (let index = 0; index < 3; index++) {
-      const point = layout[index].center; await page.mouse.click(point[0], point[1]);
-      await page.getByRole('heading', { level: 4, name: `redlight fixture ${index + 1}`, exact: true }).waitFor();
-      if (mobile) { await page.locator('.mobile-panel-close').click(); await page.locator('.sidebar').waitFor({ state: 'hidden' }); }
+      await targets.nth(index).locator('.marker-inner').click();
+      await page.getByRole('heading', { level: 2, name: `redlight fixture ${index + 1}`, exact: true }).waitFor();
+      await page.waitForFunction(() => document.querySelectorAll('.item-popup').length === 1);
+      await page.locator('.item-popup .leaflet-popup-close-button').click();
+      await page.locator('.item-popup').waitFor({ state: 'detached' });
     }
     await page.evaluate(() => { window.__map.panBy([12, 8], { animate: false }); });
     assert.equal(await page.evaluate(() => window.__colocated.every(element => element.isConnected)), true);

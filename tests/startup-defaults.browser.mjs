@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { openLayers, closeControls } from './browser-controls.mjs';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = (process.argv[2] || 'http://localhost:5173').replace(/\/$/, '');
@@ -79,6 +80,7 @@ try {
   });
   await test('MTR is enabled on first visit and renders moving train positions', async () => {
     const { page, context, calls } = await create();
+    await openLayers(page);
     const mtr = page.locator('.layer-card.mtr [role="switch"]');
     await mtr.waitFor({ state: 'attached' });
     assert.equal(await mtr.getAttribute('aria-checked'), 'true', 'MTR must be enabled for a first visit');
@@ -98,6 +100,7 @@ try {
   });
   await test('MTR loads initially and a user choice to disable survives rerenders without refetching', async () => {
     const { page, context, calls } = await create();
+    await openLayers(page);
     const mtr = page.locator('.layer-card.mtr [role="switch"]');
     await page.locator('.vehicle-marker').waitFor({ timeout: 10000 });
     await page.waitForTimeout(250);
@@ -108,9 +111,11 @@ try {
     assert.equal(await mtr.getAttribute('aria-checked'), 'false');
     assert.equal(await page.locator('.vehicle-marker').count(), 0, 'Disabling MTR must remove its moving vehicles');
     const afterDisable = calls();
+    await closeControls(page);
     await page.getByRole('button', { name: 'Chinese', exact: true }).click();
     await page.evaluate(() => { window.__map.setView([22.285, 114.16], 15, { animate: false }); });
     await page.waitForTimeout(16000);
+    await openLayers(page);
     assert.equal(await mtr.getAttribute('aria-checked'), 'false', 'User disabling MTR must survive language and viewport rerenders');
     assert.equal(calls(), afterDisable, 'Language and viewport changes must not reload MTR');
     assert.equal(await page.evaluate(() => window.__gpsRequests.length), 1, 'Layer, language and viewport rerenders must not request GPS again');
@@ -138,14 +143,14 @@ try {
   }
   if (staticMode) await test('Static export keeps unavailable MTR disabled without locking refresh', async () => {
     const { page, context, calls } = await create({ settledFeedFailures: true });
+    await openLayers(page);
     const mtr = page.locator('.layer-card.mtr [role="switch"]');
     await mtr.waitFor({ state: 'attached' });
     assert.equal(await mtr.isDisabled(), true, 'Static export must keep its hosted-only MTR switch unavailable');
     await page.waitForFunction(() => ['flow', 'incident', 'redlight', 'speed', 'snapshot', 'parking', 'rainfall'].every(kind => !document.querySelector(`.layer-card.${kind} .spin`)), { timeout: 15000 });
-    console.log('Static settled state: ' + JSON.stringify({ mtrEnabled: await mtr.getAttribute('aria-checked'), mtrSpinner: await page.locator('.layer-card.mtr .spin').count(), footerDisabled: await page.locator('.sidebar-footer button').isDisabled(), mapRefreshDisabled: await page.locator('.status-refresh').isDisabled() }));
+    console.log('Static settled state: ' + JSON.stringify({ mtrEnabled: await mtr.getAttribute('aria-checked'), mtrSpinner: await page.locator('.layer-card.mtr .spin').count(), mapRefreshDisabled: await page.locator('.status-refresh').isDisabled() }));
     assert.equal(await mtr.getAttribute('aria-checked'), 'false', 'An unavailable MTR layer must not be enabled by default');
     assert.equal(await page.locator('.layer-card.mtr .spin').count(), 0, 'An unavailable MTR layer must not retain a loading spinner');
-    assert.equal(await page.locator('.sidebar-footer button').isDisabled(), false, 'Refresh must unlock after original feeds settle');
     assert.equal(await page.locator('.status-refresh').isDisabled(), false, 'Map refresh must also unlock after active feeds settle');
     assert.equal(calls(), 0, 'Static export must not request an unavailable MTR feed');
     await context.close();

@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { openLayers, closeControls, reloadAll } from './browser-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.argv[2] || 'http://localhost:5173';
 const evidence = path.resolve(process.argv[3] || 'outputs/ferry-hover');
@@ -31,7 +32,9 @@ try {
   await fs.mkdir(evidence, { recursive: true });
   await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => window.__map?._loaded);
+  await openLayers(page);
   await page.locator('.layer-card.ferry [role="switch"]').click();
+  await closeControls(page);
   const marker = page.locator('[data-marker-id="ferry-fixture"]'), card = page.locator('.ferry-hover');
   await marker.waitFor();
   await page.evaluate(() => { window.__map.setView([22.296, 114.17], 15, { animate: false }); });
@@ -69,13 +72,14 @@ try {
   await page.keyboard.press('Escape');
   gpsUpdated = true;
   const response = page.waitForResponse(response => response.url().includes('/api/ferry') && response.ok());
-  await page.locator('.sidebar-footer button').click(); await response;
+  await reloadAll(page); await response;
   await page.waitForFunction(() => { let lng; window.__map.eachLayer(layer => { if (layer.getElement?.()?.title === '測試渡輪 1') lng = layer.getLatLng().lng; }); return lng > 114.173 && lng < 114.175; });
   await page.waitForTimeout(1200);
   assert.equal(await page.evaluate(() => { let lng; window.__map.eachLayer(layer => { if (layer.getElement?.()?.title === '測試渡輪 1') lng = layer.getLatLng().lng; }); return lng; }), 114.175, 'GPS correction reaches confirmed fix');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.waitForLoadState('networkidle');
-  console.log(await page.evaluate(() => ({ reduced: matchMedia('(prefers-reduced-motion: reduce)').matches, canvas: document.querySelector('.map-canvas')?.className })));
+  // Headless media emulation changes matches without delivering change; resume the visible tab.
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await page.waitForFunction(() => document.querySelector('.map-canvas')?.classList.contains('map-motion-paused'));
   const reducedBoat = page.locator('.ferry-marker[title="測試渡輪 0"]');
   const reducedPosition = await reducedBoat.getAttribute('style');
@@ -91,7 +95,7 @@ try {
   }), true, 'Pier hover fits the 375px map clear of controls and status');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   await page.screenshot({ path: path.join(evidence, 'ferry-hover-mobile.png') });
-  await page.locator('.mobile-panel-button').click(); await card.waitFor({ state: 'detached' });
+  await openLayers(page); await card.waitFor({ state: 'detached' });
   assert.deepEqual(await page.evaluate(() => window.__errors), []);
   console.log('PASS: all operator sprites, timetable motion, confirmed GPS interpolation, reduced motion, delayed bilingual pier hover, departure filtering, unknown times, countdown, focus and Escape, mobile positioning and dismissal');
 } finally { await context.close(); await browser.close(); }

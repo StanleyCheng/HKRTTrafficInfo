@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { openLayers, closeControls, reloadAll } from './browser-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = (process.argv[2] || 'http://localhost:5173').replace(/\/$/, '');
 const evidence = path.resolve(process.argv[3] || 'outputs/bus-route');
@@ -69,19 +70,19 @@ async function create({ mobile = false, reducedMotion = 'no-preference' } = {}) 
   await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => window.__map?._loaded);
   await page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
-  if (mobile) await page.locator('.mobile-panel-button').click();
+  await openLayers(page);
   for (const kind of ['kmb', 'citybus', 'gmb', 'nlb']) await page.locator(`.layer-card.${kind} [role="switch"]`).click();
-  if (mobile) await page.locator('.mobile-panel-close').click();
+  await closeControls(page);
   await page.locator('.camera-marker[title$="kmb fixture stop"]').waitFor();
   return { context, page, controls, requests, arrivalRequests, mobile };
 }
 async function select(fixture, variant) {
-  const { page, mobile } = fixture;
-  if (mobile && await page.locator('.sidebar.mobile-open').count()) await page.locator('.mobile-panel-close').click();
+  const { page } = fixture;
+  await closeControls(page);
   await page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
   if (await page.locator('.map-canvas.route-focus').count()) await page.locator('.map-canvas').click({ position: { x: 30, y: 150 } });
   await page.locator(`.camera-marker[title$="${variant.operator} fixture stop"] .marker-displacement`).click();
-  const button = page.locator(`.stop-eta-popup .bus-route-button[aria-label^="Show route ${variant.route} ·"]`).first();
+  const button = page.locator(`.item-popup .bus-route-button[aria-label^="Show route ${variant.route} ·"]`).first();
   await page.evaluate(() => { window.__busRouteFitComplete = false; window.__map.once('zoomend', () => { window.__busRouteFitComplete = true; }); });
   await button.click();
   await page.locator('.bus-route-polyline').waitFor();
@@ -91,19 +92,19 @@ async function samples(page, count = 14) {
   return page.evaluate(count => new Promise(resolve => { const frames = []; function frame() { const e = document.querySelector('.bus-route-marker'); frames.push(e?.style.transform); if (frames.length >= count) resolve(frames); else requestAnimationFrame(frame); } requestAnimationFrame(frame); }), count);
 }
 async function refresh(page) {
-  await page.locator('.sidebar-footer > button').click();
+  await reloadAll(page);
 }
 async function closeStopPopup(page) {
-  await page.waitForFunction(() => document.querySelectorAll('.stop-eta-popup').length === 1);
-  await page.locator('.stop-eta-popup .leaflet-popup-close-button').click();
-  await page.locator('.stop-eta-popup').waitFor({ state: 'detached' });
+  await page.waitForFunction(() => document.querySelectorAll('.item-popup').length === 1);
+  await page.locator('.item-popup .leaflet-popup-close-button').click();
+  await page.locator('.item-popup').waitFor({ state: 'detached' });
 }
 async function assertRouteLabels(page, operator, language = 'en', checkViewport = true) {
   const labels = page.locator('.bus-route-stop-label');
   await page.waitForFunction(count => document.querySelectorAll('.bus-route-stop-label').length === count, routeStops.length);
   assert.deepEqual(await labels.allTextContents(), routeStops.map(stop => language === 'en' ? stop.nameEn : stop.nameTc), 'Every selected-route stop keeps its complete name in the app language');
   const rendered = await labels.evaluateAll(elements => {
-    const overlays = [...document.querySelectorAll('.topbar,.sidebar,.map-tools,.traffic-status,.mobile-dock,.desktop-layer-dock,.layer-group-picker,.intel-shell')].filter(element => { const style = getComputedStyle(element), rect = element.getBoundingClientRect(); return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0; });
+    const overlays = [...document.querySelectorAll('.topbar,.map-tools,.map-toolbar,.traffic-status,.mobile-dock,.desktop-layer-dock,.layer-group-picker,.intel-shell')].filter(element => { const style = getComputedStyle(element), rect = element.getBoundingClientRect(); return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0; });
     return elements.map(element => {
       const style = getComputedStyle(element), rect = element.getBoundingClientRect();
       const coveredBy = overlays.filter(overlay => { const area = overlay.getBoundingClientRect(); return rect.left < area.right && rect.right > area.left && rect.top < area.bottom && rect.bottom > area.top; }).map(overlay => overlay.className);
@@ -117,7 +118,7 @@ async function assertRouteLabels(page, operator, language = 'en', checkViewport 
     assert.equal(label.visible, true, 'Full-route stop names remain visible');
     if (checkViewport) {
       assert.equal(label.inViewport, true, `Full-route label fits inside the screen: ${label.name}`);
-      assert.deepEqual(label.coveredBy, [], `Full-route label clears header, sidebar and map controls: ${label.name}`);
+      assert.deepEqual(label.coveredBy, [], `Full-route label clears header and map controls: ${label.name}`);
       assert.equal(label.reachable, true, `Full-route label center is directly tap reachable: ${label.name}`);
     }
   }
@@ -163,11 +164,11 @@ try {
       assert.equal(await f.page.locator(`.camera-marker[data-marker-id="${variant.operator}-RSTOP1"]`).count(), 0, 'Full-route stop is absent from the nearby stop catalogue');
       await f.page.evaluate(() => { window.__originalBus = document.querySelector('.bus-route-marker'); });
       await f.page.locator('.bus-route-stop-label[data-stop-id="RSTOP1"]').click();
-      await f.page.locator('.stop-eta-popup .arrival-destination').filter({ hasText: `Off-map ${variant.operator} arrival at RSTOP1` }).waitFor();
-      assert.equal(await f.page.locator('.stop-eta-name').textContent(), routeStops[1].nameEn);
+      await f.page.locator('.item-popup .arrival-destination').filter({ hasText: `Off-map ${variant.operator} arrival at RSTOP1` }).waitFor();
+      assert.equal(await f.page.locator('.item-detail-title').textContent(), routeStops[1].nameEn);
       assert.deepEqual(f.arrivalRequests.at(-1), { ...Object.fromEntries(Object.entries(variant).map(([key, value]) => [key, String(value)])), stopId: 'RSTOP1', stopSeq: '2' }, 'Clicked-stop arrivals preserve route, operator, direction, company and service variant');
       assert.equal(await f.page.evaluate(() => window.__originalBus === document.querySelector('.bus-route-marker')), true, 'Opening stop arrivals keeps the selected route and estimated bus');
-      assert.equal(await f.page.locator('.stop-eta-popup .arrival-route').textContent(), variant.route);
+      assert.equal(await f.page.locator('.item-popup .arrival-route').textContent(), variant.route);
       await closeStopPopup(f.page);
     }
     assert.deepEqual(await f.page.evaluate(() => window.__errors), []);
@@ -178,21 +179,21 @@ try {
     const f = await create(); await select(f, variants[0]);
     const terminus = f.page.locator('.bus-route-stop-label[data-stop-id="RSTOP2"]');
     await terminus.focus(); await terminus.press('Enter');
-    await f.page.locator('.stop-eta-popup .arrival-destination').filter({ hasText: 'Off-map kmb arrival at RSTOP2' }).waitFor();
-    assert.equal(await f.page.locator('.stop-eta-name').textContent(), routeStops[2].nameEn);
+    await f.page.locator('.item-popup .arrival-destination').filter({ hasText: 'Off-map kmb arrival at RSTOP2' }).waitFor();
+    assert.equal(await f.page.locator('.item-detail-title').textContent(), routeStops[2].nameEn);
     assert.equal(f.arrivalRequests.at(-1).stopSeq, '3');
     await closeStopPopup(f.page);
     const first = f.page.locator('.bus-route-stop-label[data-stop-id="RSTOP0"]');
     await first.focus(); await first.press('Space');
-    await f.page.locator('.stop-eta-popup .arrival-destination').filter({ hasText: 'Off-map kmb arrival at RSTOP0' }).waitFor();
-    assert.equal(await f.page.locator('.stop-eta-name').textContent(), routeStops[0].nameEn);
+    await f.page.locator('.item-popup .arrival-destination').filter({ hasText: 'Off-map kmb arrival at RSTOP0' }).waitFor();
+    assert.equal(await f.page.locator('.item-detail-title').textContent(), routeStops[0].nameEn);
     await closeStopPopup(f.page);
     await f.page.locator('.language-toggle button').nth(1).click();
     await f.page.waitForFunction(name => document.querySelector('.bus-route-stop-label')?.textContent === name, routeStops[0].nameTc);
     await assertRouteLabels(f.page, 'kmb', 'zh', false);
     await f.page.locator('.bus-route-stop-label[data-stop-id="RSTOP1"]').click();
-    await f.page.locator('.stop-eta-popup .arrival-destination').filter({ hasText: 'kmb全路線車站到站資訊' }).waitFor();
-    assert.equal(await f.page.locator('.stop-eta-name').textContent(), routeStops[1].nameTc);
+    await f.page.locator('.item-popup .arrival-destination').filter({ hasText: 'kmb全路線車站到站資訊' }).waitFor();
+    assert.equal(await f.page.locator('.item-detail-title').textContent(), routeStops[1].nameTc);
     assert.equal(f.requests.at(-1).stopId, 'KMB1', 'Opening route-stop arrivals leaves the original selected stop unchanged');
     assert.equal(await f.page.locator('.bus-route-polyline').count(), 1);
     assert.ok(new Set(await samples(f.page)).size >= 10, 'Estimated next-bus motion continues while arrivals are displayed');
@@ -203,33 +204,33 @@ try {
     const f = await create(); await select(f, variants[0]);
     f.controls.arrivalDelay = 400;
     await f.page.locator('.bus-route-stop-label[data-stop-id="RSTOP0"]').click();
-    await f.page.locator('.stop-eta-status[role="status"]').waitFor();
+    await f.page.locator('.item-detail-status[role="status"]').waitFor();
     f.controls.arrivalDelay = 0;
     const middle = f.page.locator('.bus-route-stop-label[data-stop-id="RSTOP1"]');
     await middle.focus(); await middle.press('Enter');
-    await f.page.locator('.stop-eta-popup .arrival-destination').filter({ hasText: 'Off-map kmb arrival at RSTOP1' }).waitFor();
+    await f.page.locator('.item-popup .arrival-destination').filter({ hasText: 'Off-map kmb arrival at RSTOP1' }).waitFor();
     await f.page.waitForTimeout(500);
-    assert.equal(await f.page.locator('.stop-eta-name').textContent(), routeStops[1].nameEn);
-    assert.ok((await f.page.locator('.stop-eta-popup .arrival-destination').textContent()).includes('RSTOP1'), 'Older stop response cannot replace newer popup data');
+    assert.equal(await f.page.locator('.item-detail-title').textContent(), routeStops[1].nameEn);
+    assert.ok((await f.page.locator('.item-popup .arrival-destination').textContent()).includes('RSTOP1'), 'Older stop response cannot replace newer popup data');
     await closeStopPopup(f.page);
     f.controls.arrivalDelay = 400;
     await f.page.locator('.bus-route-stop-label[data-stop-id="RSTOP2"]').click();
-    await f.page.locator('.stop-eta-status[role="status"]').waitFor();
+    await f.page.locator('.item-detail-status[role="status"]').waitFor();
     await closeStopPopup(f.page);
     await f.page.waitForTimeout(500);
-    assert.equal(await f.page.locator('.stop-eta-popup').count(), 0, 'A delayed response cannot reopen a closed popup');
+    assert.equal(await f.page.locator('.item-popup').count(), 0, 'A delayed response cannot reopen a closed popup');
     f.controls.arrivalDelay = 0;
     for (const mode of ['error', 'stale']) {
       f.controls.arrivalMode = mode;
       await middle.click();
-      await f.page.locator('.stop-eta-status[role="alert"]').waitFor();
-      assert.equal(await f.page.locator('.stop-eta-popup .arrival-destination').count(), 0, 'Unavailable arrivals must not be presented as fresh');
-      assert.equal(await f.page.locator('.stop-eta-popup').getByText('No upcoming arrivals reported.', { exact: true }).count(), 0, 'Failure is distinct from an empty live result');
+      await f.page.locator('.item-detail-status[role="alert"]').waitFor();
+      assert.equal(await f.page.locator('.item-popup .arrival-destination').count(), 0, 'Unavailable arrivals must not be presented as fresh');
+      assert.equal(await f.page.locator('.item-popup').getByText('No upcoming arrivals reported.', { exact: true }).count(), 0, 'Failure is distinct from an empty live result');
       await closeStopPopup(f.page);
     }
     f.controls.arrivalMode = 'empty'; await middle.click();
-    await f.page.locator('.stop-eta-popup').getByText('No upcoming arrivals reported.', { exact: true }).waitFor();
-    assert.equal(await f.page.locator('.stop-eta-status[role="alert"]').count(), 0);
+    await f.page.locator('.item-popup').getByText('No upcoming arrivals reported.', { exact: true }).waitFor();
+    assert.equal(await f.page.locator('.item-detail-status[role="alert"]').count(), 0);
     assert.equal(await f.page.locator('.bus-route-polyline').count(), 1);
     assert.equal(f.requests.at(-1).stopId, 'KMB1');
     assert.deepEqual(await f.page.evaluate(() => window.__errors), []);
@@ -250,8 +251,7 @@ try {
     await f.page.locator('.bus-route-marker').waitFor({ state: 'detached' });
     assert.equal(await f.page.locator('.bus-route-polyline').count(), 1, 'Stale route stays visible without misleading movement');
     await assertRouteLabels(f.page, 'kmb', 'en', false);
-    // Selecting a route from the map popup keeps the current sidebar tab.
-    await f.page.locator('#panel-tab-details').click();
+    await openLayers(f.page);
     await f.page.getByRole('button', { name: 'Close route', exact: true }).click();
     await f.page.locator('.bus-route-polyline').waitFor({ state: 'detached' });
     await f.page.waitForFunction(() => document.querySelectorAll('.bus-route-stop-label').length === 0);
@@ -261,7 +261,7 @@ try {
   await test('Missing position and unavailable road geometry remain explicit without invented movement', async () => {
     const f = await create(); f.controls.mode = 'approximate'; await select(f, variants[2]);
     assert.equal(await f.page.locator('.bus-route-marker').count(), 0);
-    await f.page.locator('#panel-tab-details').click();
+    await openLayers(f.page);
     await f.page.getByText('Route connects published stops; road geometry is unavailable.', { exact: true }).waitFor();
     await f.page.getByText('No current position estimate available.', { exact: true }).waitFor();
     await f.context.close();
@@ -274,17 +274,18 @@ try {
     await f.page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); document.dispatchEvent(new Event('visibilitychange')); });
     assert.equal(new Set(await samples(f.page)).size, 1);
     await f.page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' }); document.dispatchEvent(new Event('visibilitychange')); });
-    await f.page.locator('#panel-tab-layers').click();
+    await openLayers(f.page);
     await f.page.locator('.layer-card.kmb [role="switch"]').click();
     await f.page.locator('.bus-route-marker').waitFor({ state: 'detached' });
     await f.page.locator('.bus-route-polyline').waitFor({ state: 'detached' });
     await f.page.locator('.layer-card.kmb [role="switch"]').click();
     f.controls.delay = 700;
+    await closeControls(f.page);
     await f.page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
     await f.page.locator('.camera-marker[title$="kmb fixture stop"] .marker-displacement').click();
     await f.page.locator('.bus-route-button').first().click();
-    await f.page.locator('#panel-tab-details').click();
-    await f.page.locator('.clear-selection').click();
+    await openLayers(f.page);
+    await f.page.getByRole('button', { name: 'Close route', exact: true }).click();
     await f.page.waitForTimeout(900);
     assert.equal(await f.page.locator('.bus-route-polyline, .bus-route-marker, .bus-route-stop-label').count(), 0, 'Cancelled selection cannot revive route or labels after response');
     await f.context.close();
@@ -298,8 +299,8 @@ try {
     assert.equal(fit, true);
     await assertRouteLabels(f.page, 'gmb');
     await f.page.locator('.bus-route-stop-label[data-stop-id="RSTOP1"]').tap();
-    await f.page.locator('.stop-eta-popup .arrival-destination').filter({ hasText: 'Off-map gmb arrival at RSTOP1' }).waitFor();
-    assert.equal(await f.page.locator('.stop-eta-name').textContent(), routeStops[1].nameEn);
+    await f.page.locator('.item-popup .arrival-destination').filter({ hasText: 'Off-map gmb arrival at RSTOP1' }).waitFor();
+    assert.equal(await f.page.locator('.item-detail-title').textContent(), routeStops[1].nameEn);
     assert.equal(await f.page.locator('.map-area').getAttribute('inert'), null, 'Tapping a route-stop name keeps the mobile map usable');
     assert.equal(await f.page.locator('.bus-route-polyline').count(), 1);
     await closeStopPopup(f.page);

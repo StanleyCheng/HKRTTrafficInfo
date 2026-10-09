@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { openLayers, closeControls, reloadAll } from './browser-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = (process.argv[2] || 'http://localhost:5173').replace(/\/$/, '');
 const evidence = path.resolve(process.argv[3] || 'outputs/map-motion');
@@ -19,7 +20,7 @@ const roads = [
 const contexts = [];
 
 async function create({ mobile = false, reducedMotion = 'no-preference', gps = false, deviceScaleFactor = 1 } = {}) {
-  const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, reducedMotion, deviceScaleFactor });
+  const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, reducedMotion, deviceScaleFactor, hasTouch: mobile });
   contexts.push(context);
   const observedAt = new Date().toISOString();
   const hk = new Date(Date.now() + 8 * 3600000).toISOString();
@@ -65,9 +66,9 @@ async function create({ mobile = false, reducedMotion = 'no-preference', gps = f
   await page.goto(origin + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.locator('.vehicle-marker').waitFor({ timeout: 30000 });
   await page.waitForFunction(() => window.__map?._loaded);
-  if (mobile) await page.locator('.mobile-panel-button').click();
+  await openLayers(page);
   for (const kind of ['lrt', 'ferry']) await page.locator(`.layer-card.${kind} [role="switch"]`).click();
-  if (mobile) { await page.locator('.mobile-panel-close').click(); await page.locator('.sidebar').waitFor({ state: 'hidden' }); }
+  await closeControls(page);
   await page.waitForFunction(count => document.querySelectorAll('.vehicle-marker').length === count, gps ? 4 : 3);
   await page.evaluate(() => { window.__map.setView([22.286, 114.159], 16, { animate: false }); });
   await page.waitForFunction(() => { let count = 0; window.__map.eachLayer(layer => { if (layer.options?.className === 'segment-polyline') count++; }); return count === 5; });
@@ -135,7 +136,7 @@ try {
     await page.waitForTimeout(16000);
     assert.equal(mtrCalls(), calls, 'Language changes and elapsed time must not refresh retained transit feeds');
     const response = page.waitForResponse(response => response.url().includes('/api/mtr') && response.ok());
-    await page.locator('.sidebar-footer > button').click();
+    await reloadAll(page);
     await response;
     assert.equal(mtrCalls(), calls + 1, 'Manual refresh reloads the MTR feed');
     const identity = await page.evaluate(() => window.__originalVehicles.map(element => ({ name: element.title, connected: element.isConnected })));
@@ -172,6 +173,7 @@ try {
       await vehicles.nth(index).press('Enter');
       await page.locator('.arrival-board').waitFor();
       assert.match(await page.locator('.arrival-board').innerText(), [/TWL/, /614P/, /Fixture/][index], 'Keyboard activation selects corresponding vehicle details');
+      await page.keyboard.press('Escape');
       await vehicles.nth(index).evaluate(element => element.blur());
       await page.mouse.move(0, 0);
       await page.locator('.leaflet-tooltip').waitFor({ state: 'hidden' });
@@ -203,7 +205,7 @@ try {
     assert.equal((await dotStyles(page))[2].offset, stopped, 'Zero-speed dots must not imply movement');
     const click = await page.evaluate(() => { const point = window.__map.latLngToContainerPoint([22.283, 114.16]), rect = document.querySelector('.leaflet-container').getBoundingClientRect(); return { x: rect.x + point.x, y: rect.y + point.y }; });
     await page.mouse.click(click.x, click.y);
-    await page.getByRole('heading', { name: 'Slow fixture road', exact: true, level: 4 }).waitFor();
+    await page.getByRole('heading', { name: 'Slow fixture road', exact: true, level: 2 }).waitFor();
     assert.equal(await page.locator('.live-figure strong').innerText(), '20km/h', 'Dots must preserve segment click details');
     const selectedRoadWidth = await page.evaluate(() => { let width; window.__map.eachLayer(layer => { if (layer.options?.className === 'segment-polyline' && layer.getLatLngs()[0].lat === 22.283) width = layer.options.weight; }); return width; });
     assert.equal(selectedRoadWidth, 7.2, 'Real segment click widens the selected colored road');
@@ -237,7 +239,7 @@ try {
     assert.equal(await position(), 114.161);
     confirmGps();
     const response = page.waitForResponse(response => response.url().includes('/api/ferry') && response.ok());
-    await page.locator('.sidebar-footer button').click();
+    await reloadAll(page);
     await response;
     await page.waitForFunction(() => { let moving = false; window.__map.eachLayer(layer => { if (layer.options?.icon?.options?.className?.includes('vehicle-marker') && layer.getElement()?.title === 'GPS fixture ferry') moving = layer.getLatLng().lng > 114.161; }); return moving; });
     const correcting = await position();
@@ -251,21 +253,19 @@ try {
     assert.ok(!gpsMotion.animations.includes('running'));
     await context.close();
   });
-  await test('Mobile: marker remains clickable; inactive map pauses and resumes motion without replacing markers', async () => {
+  await test('Mobile: tapping a vehicle opens details while map and vehicle movement remain active', async () => {
     const { page, context } = await create({ mobile: true });
     await page.evaluate(() => { window.__mobileVehicles = [...document.querySelectorAll('.vehicle-marker')]; });
     await page.evaluate(() => { let marker; window.__map.eachLayer(layer => { if (!marker && layer.options?.icon?.options?.className?.includes('vehicle-marker')) marker = layer; }); window.__map.setView(marker.getLatLng(), 16, { animate: false }); });
     const target = await page.locator('.vehicle-marker .marker-displacement').first().boundingBox();
-    await page.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
-    await page.locator('.sidebar.mobile-open .arrival-board').waitFor();
-    assert.equal(await page.locator('.map-area').getAttribute('inert'), '', 'Mobile details make map inactive');
+    await page.touchscreen.tap(target.x + target.width / 2, target.y + target.height / 2);
+    await page.locator('.item-popup .arrival-board').waitFor();
+    assert.equal(await page.locator('.map-area').getAttribute('inert'), null, 'Mobile details leave the map interactive');
     await page.waitForTimeout(350);
-    const inactive = await frameSamples(page);
-    assert.equal(new Set(inactive.map(sample => JSON.stringify(sample))).size, 1, 'Inactive mobile map pauses marker work');
-    assert.ok((await vehicleMotion(page)).every(vehicle => !vehicle.animations.includes('running')), 'Inactive map stops miniature animation');
-    assert.ok((await dotStyles(page)).every(dot => dot.state === 'paused' || dot.duration === 0), 'Inactive map pauses road dots');
-    await page.locator('.mobile-panel-close').click();
-    assert.ok(new Set((await frameSamples(page)).map(sample => sample[0])).size >= 10, 'Closing details resumes animation');
+    assert.ok(new Set((await frameSamples(page)).map(sample => sample[0])).size >= 10, 'Opening details preserves continuous marker movement');
+    assert.ok((await dotStyles(page)).some(dot => dot.state === 'running' && dot.duration > 0), 'Road speed dots continue while details are open');
+    await page.locator('.item-popup .leaflet-popup-close-button').click();
+    assert.ok(new Set((await frameSamples(page)).map(sample => sample[0])).size >= 10, 'Closing details preserves animation');
     assert.equal(await page.evaluate(() => window.__mobileVehicles.every(element => element.isConnected)), true);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: path.join(evidence, 'mobile-motion.png') });
