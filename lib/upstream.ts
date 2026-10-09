@@ -1,6 +1,6 @@
 import { keepWorkerRequestAlive, openFeedCache } from "./feed-cache.ts"
 
-type UpstreamBody = { status: number; body: ArrayBuffer; contentType: string; fetchedAt: string }
+export type UpstreamBody = { status: number; body: ArrayBuffer; contentType: string; fetchedAt: string }
 
 type UpstreamOptions = {
   headers?: HeadersInit
@@ -9,6 +9,14 @@ type UpstreamOptions = {
 
 const memory = new Map<string, { expires: number; body: UpstreamBody }>()
 const pending = new Map<string, Promise<UpstreamBody>>()
+
+/** Read the most recently succeeded body for the URL, even after its TTL has expired.
+ *  Used by resilient callers to implement stale-while-error so a transient upstream
+ *  blip does not blank the UI. The map only stores successful responses, so any
+ *  caller's downstream JSON parsing is still safe. */
+export function lastGoodUpstream(url: string): UpstreamBody | undefined {
+  return memory.get(url)?.body
+}
 
 export async function fetchUpstream(url: string, ttlMs: number, options: UpstreamOptions = {}): Promise<UpstreamBody> {
   const fresh = memory.get(url)

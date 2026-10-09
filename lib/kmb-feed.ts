@@ -7,7 +7,7 @@ import { isListedKmbRow, kmbReachMetres, STOP_CAP } from "./kmb-reach.ts"
 import { etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
 import { etaQueue, takeEtaTurn } from "./polite-fetch.ts"
 import { pool } from "./pool.ts"
-import { fetchUpstream } from "./upstream.ts"
+import { fetchUpstreamResilient } from "./upstream-resilient.ts"
 import type { KmbCall, KmbPlacesResponse, KmbResponse, KmbStopBoard } from "./types.ts"
 
 const FETCH_LIMIT = 6
@@ -68,7 +68,10 @@ export async function loadKmbNear(lng: number, lat: number, now = Date.now(), zo
     })
     return missed
   })
-  const missed = turn ?? 0
+  const total = nearest.length
+  const missed = turn
+  const totalFailure = total > 0 && missed === total
+  const partialFailure = !totalFailure && missed > 0
   await catalogueRefresh
 
   const stops: KmbStopBoard[] = []
@@ -86,15 +89,19 @@ export async function loadKmbNear(lng: number, lat: number, now = Date.now(), zo
       calls: callsAt(rows, now, stop.id),
     })
   }
-  const error = missed > 0 ? "Some KMB arrivals could not refresh" : undefined
+  const error = totalFailure
+    ? "KMB arrivals could not refresh"
+    : partialFailure
+      ? `Some KMB arrivals could not refresh (${missed} of ${total})`
+      : undefined
   const latest = Math.max(0, ...nearest.map((stop) => remembered.get(stop.id)?.at ?? 0))
   return {
-    ok: true,
+    ok: !totalFailure,
     ...(error ? { error } : {}),
     observedAt: latest > 0 ? new Date(latest).toISOString() : null,
-    stale: missed > 0 || turn === null,
+    stale: totalFailure,
     stops,
-    cacheable: turn !== null && missed === 0,
+    cacheable: !totalFailure && !partialFailure,
   }
 }
 
@@ -136,14 +143,14 @@ function text(value: unknown): string {
 
 async function fetchStop(stopId: string): Promise<EtaRow[] | null> {
   try {
-    const response = await etaQueue(() => fetchUpstream(`${ETA_ROOT}/${encodeURIComponent(stopId)}`, ETA_FRESH_MS, {
+    const response = await etaQueue(() => fetchUpstreamResilient(`${ETA_ROOT}/${encodeURIComponent(stopId)}`, ETA_FRESH_MS, {
       timeoutMs: 5_000,
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",
       },
     }))
-    if (response.status !== 200) return null
+    if (response.servedFromCache || response.status < 200 || response.status >= 300) return null
     const body = JSON.parse(new TextDecoder().decode(response.body)) as { data?: EtaRow[] }
     return Array.isArray(body.data) ? body.data : []
   } catch {

@@ -5,7 +5,7 @@ import { nearestNlbStops, nlbStop } from "./nlb-network.ts"
 import { etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
 import { etaQueue, takeEtaTurn } from "./polite-fetch.ts"
 import { pool } from "./pool.ts"
-import { fetchUpstream } from "./upstream.ts"
+import { fetchUpstreamResilient } from "./upstream-resilient.ts"
 import type { NlbCall, NlbPlacesResponse, NlbResponse, NlbStopBoard } from "./types.ts"
 
 const STOP_LIMIT = 6
@@ -56,7 +56,10 @@ export async function loadNlbNear(lng: number, lat: number, now = Date.now(), zo
     })
     return missed
   })
-  const missed = turn ?? 0
+  const total = pairs.length
+  const missed = turn
+  const totalFailure = total > 0 && missed === total
+  const partialFailure = !totalFailure && missed > 0
 
   const stops: NlbStopBoard[] = []
   for (const stop of nearest) {
@@ -79,15 +82,19 @@ export async function loadNlbNear(lng: number, lat: number, now = Date.now(), zo
       calls: calls.slice(0, 12),
     })
   }
-  const error = missed > 0 ? "Some New Lantao arrivals could not refresh" : undefined
+  const error = totalFailure
+    ? "NLB arrivals could not refresh"
+    : partialFailure
+      ? `Some NLB arrivals could not refresh (${missed} of ${total})`
+      : undefined
   const latest = Math.max(0, ...pairs.map((pair) => remembered.get(`${pair.stopId}/${pair.route}`)?.at ?? 0))
   return {
     ok: nearest.length === 0 || stops.length > 0,
     ...(error ? { error } : {}),
     observedAt: latest > 0 ? new Date(latest).toISOString() : null,
-    stale: missed > 0 || turn === null,
+    stale: totalFailure,
     stops,
-    cacheable: turn !== null && missed === 0,
+    cacheable: !totalFailure && !partialFailure,
   }
 }
 
@@ -106,14 +113,14 @@ function callAt(route: string, rows: Arrival[], now: number): NlbCall | null {
 async function fetchEta(routeId: string, stopId: string): Promise<Arrival[] | null> {
   const url = `${ETA_ROOT}&routeId=${encodeURIComponent(routeId)}&stopId=${encodeURIComponent(stopId)}&lang=en`
   try {
-    const response = await etaQueue(() => fetchUpstream(url, ETA_FRESH_MS, {
+    const response = await etaQueue(() => fetchUpstreamResilient(url, ETA_FRESH_MS, {
       timeoutMs: 5_000,
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",
       },
     }))
-    if (response.status !== 200) return null
+    if (response.servedFromCache || response.status < 200 || response.status >= 300) return null
     const text = new TextDecoder().decode(response.body)
     if (!text) return []
     const body = JSON.parse(text) as { estimatedArrivals?: Arrival[] }

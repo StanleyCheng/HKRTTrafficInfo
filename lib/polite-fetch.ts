@@ -15,17 +15,23 @@ export function politeQueue(limit: number) {
   }
 }
 
-const refreshing = new Set<string>()
+const refreshing = new Map<string, Promise<unknown>>()
 
-// One refresh per operator. Other operators still progress through the shared ETA queue.
-export async function takeEtaTurn<T>(key: string, task: () => Promise<T>): Promise<T | null> {
-  const started = Date.now()
-  while (refreshing.has(key) && Date.now() - started < 200) await pause(40)
-  if (refreshing.has(key)) return null
-  refreshing.add(key)
-  return keepWorkerRequestAlive(Promise.resolve().then(task).finally(() => {
-    refreshing.delete(key)
-  }))
+// One refresh per operator at a time, but callers arriving while a refresh is in
+// flight JOIN that in-flight promise rather than silently returning null. This
+// makes the same kind of caller (e.g. two open popovers for citybus) share one
+// upstream round-trip per polling tick instead of paying for two and never
+// seeing the freshest data anyway.
+export async function takeEtaTurn<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const inflight = refreshing.get(key)
+  if (inflight) return inflight as Promise<T>
+  const promise = keepWorkerRequestAlive(Promise.resolve().then(task))
+  refreshing.set(key, promise)
+  try {
+    return await promise
+  } finally {
+    if (refreshing.get(key) === promise) refreshing.delete(key)
+  }
 }
 
 // One isolate shares this queue, so several map views cannot open a burst of ETA calls together.

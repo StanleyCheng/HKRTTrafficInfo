@@ -311,7 +311,13 @@ export default function TrafficMonitor() {
       try {
         const data = await getIntegrationData(kind, viewport, language, request.controller.signal);
         if (!isCurrent()) return;
-        const error = Boolean(data.stale || data.feedError || ((kind === 'mtr' || kind === 'lrt') && !data.complete));
+        // A bus feed surfaces total failures as data.stale=true + a
+        // non-parenthetical feedError; partial misses leave data.stale=false
+        // and only set feedError to "Some X (N of M)", which is a soft warning
+        // rendered in the popover rather than a red banner. MTR/LRT derive their
+        // failure flag from !data.complete (which already accounts for staleness).
+        const partialMiss = Boolean(data.feedError && /\(\d+ of \d+\)/.test(data.feedError))
+        const error = !partialMiss && (Boolean(data.stale) || Boolean(data.feedError) || ((kind === 'mtr' || kind === 'lrt') && !data.complete))
         setStates(state => ({ ...state, [kind]: { data, loading: false, error } }));
       } catch {
         if (isCurrent()) setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false, error: true } }));

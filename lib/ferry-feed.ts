@@ -68,8 +68,10 @@ const FORTUNE_LEGS = [
 export async function loadFerrySnapshot(now = Date.now()): Promise<FerryResponse> {
   forgetStale(clocks, now)
   forgetStale(vessels, now)
-  const turn = await takeEtaTurn("ferry", () => refreshFerryClock(now))
-  return ferryBoard(now, turn !== null)
+  // takeEtaTurn now joins the in-flight promise; the refresh always runs for the
+  // first caller and shares its result with any concurrent callers.
+  await takeEtaTurn("ferry", () => refreshFerryClock(now))
+  return ferryBoard(now)
 }
 
 async function refreshFerryClock(now: number): Promise<true> {
@@ -99,7 +101,7 @@ async function refreshFerryClock(now: number): Promise<true> {
   return true
 }
 
-function ferryBoard(now: number, fresh: boolean): FerryResponse {
+function ferryBoard(now: number): FerryResponse {
   const byPier = new Map<string, FerryCall[]>()
   const rows = [...clocks.values()].flatMap((item) => heldRows(item, now) ?? [])
   const key = (row: Clock) => `${row.route}:${row.pierId}:${row.destTc}`
@@ -159,7 +161,10 @@ function ferryBoard(now: number, fresh: boolean): FerryResponse {
   moving.push(...estimateFerryVessels(ferryTracks(), marks, gpsRoutes, pierPoint, now))
   const error = [...new Set(feedFaults.values())].join("; ")
   const latest = Math.max(0, ...[...clocks.values()].map((item) => item.at))
-  return { ok: true, ...(error ? { error } : {}), stale: !fresh || Boolean(error), observedAt: latest > 0 ? new Date(latest).toISOString() : null, piers: boards, vessels: moving, cacheable: fresh && !error }
+  // Per-feed sub-requests can fail individually; only mark stale when something
+  // actually broke upstream. Module-scope `feedFaults` flags per-key failures.
+  const stale = Boolean(error)
+  return { ok: true, ...(error ? { error } : {}), stale, observedAt: latest > 0 ? new Date(latest).toISOString() : null, piers: boards, vessels: moving, cacheable: !error }
 }
 
 function ferryTracks(): FerryTrack[] {

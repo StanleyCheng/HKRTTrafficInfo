@@ -4,7 +4,7 @@ import { citybusStop, nearestCitybusStops } from "./citybus-network.ts"
 import { etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
 import { etaQueue, takeEtaTurn } from "./polite-fetch.ts"
 import { pool } from "./pool.ts"
-import { fetchUpstream } from "./upstream.ts"
+import { fetchUpstreamResilient } from "./upstream-resilient.ts"
 import type { CitybusCall, CitybusPlacesResponse, CitybusResponse, CitybusStopBoard } from "./types.ts"
 
 const STOP_LIMIT = 6
@@ -63,7 +63,9 @@ export async function loadCitybusNear(lng: number, lat: number, now = Date.now()
     })
     return missed
   })
-  const missed = turn ?? 0
+  const missed = turn
+  const totalFailure = pairs.length > 0 && missed === pairs.length
+  const partialFailure = !totalFailure && missed > 0
 
   const stops: CitybusStopBoard[] = []
   for (const stop of nearest) {
@@ -84,15 +86,19 @@ export async function loadCitybusNear(lng: number, lat: number, now = Date.now()
       calls: callsAt(rows, now, stop.id),
     })
   }
-  const error = missed > 0 ? "Some Citybus arrivals could not refresh" : undefined
+  const error = totalFailure
+    ? "Citybus arrivals could not refresh"
+    : partialFailure
+      ? `Some Citybus arrivals could not refresh (${missed} of ${pairs.length})`
+      : undefined
   const latest = Math.max(0, ...pairs.map((pair) => remembered.get(`${pair.stopId}/${pair.route}`)?.at ?? 0))
   return {
-    ok: true,
+    ok: !totalFailure,
     ...(error ? { error } : {}),
     observedAt: latest > 0 ? new Date(latest).toISOString() : null,
-    stale: missed > 0 || turn === null,
+    stale: totalFailure,
     stops,
-    cacheable: turn !== null && missed === 0,
+    cacheable: !totalFailure && !partialFailure,
   }
 }
 
@@ -132,14 +138,17 @@ function text(value: unknown): string {
 
 async function fetchEta(stopId: string, route: string): Promise<EtaRow[] | null> {
   try {
-    const response = await etaQueue(() => fetchUpstream(`${ETA_ROOT}/${encodeURIComponent(stopId)}/${encodeURIComponent(route)}`, ETA_FRESH_MS, {
+    const response = await etaQueue(() => fetchUpstreamResilient(`${ETA_ROOT}/${encodeURIComponent(stopId)}/${encodeURIComponent(route)}`, ETA_FRESH_MS, {
       timeoutMs: 5_000,
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",
       },
     }))
-    if (response.status !== 200) return null
+    // servedFromCache means every attempt failed and the wrapper served a
+    // previous good body. We must still surface that as a miss so the bus feed
+    // can mark partial vs total failure correctly.
+    if (response.servedFromCache || response.status < 200 || response.status >= 300) return null
     const body = JSON.parse(new TextDecoder().decode(response.body)) as { data?: EtaRow[] }
     return Array.isArray(body.data) ? body.data : []
   } catch {

@@ -39,10 +39,10 @@ const held = takeEtaTurn("kmb", async () => {
 await new Promise((resolve) => setTimeout(resolve, 30))
 const sibling = await takeEtaTurn("ferry", async () => "ferry")
 assert.equal(sibling, "ferry", "A slow bus refresh must not starve ferry or other operators")
-const skipped = await takeEtaTurn("kmb", async () => {
+const joined = await takeEtaTurn("kmb", async () => {
   ran += 1
   return "second"
 })
-assert.equal(skipped, null)
-assert.equal(ran, 1)
+assert.equal(joined, "held", "Concurrent callers join the same in-flight refresh instead of returning null")
+assert.equal(ran, 1, "Joined callers must not run another task")
 assert.equal(await held, "held")
