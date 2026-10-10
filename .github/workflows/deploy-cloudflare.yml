@@ -31,6 +31,23 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 1
+      # Fail before the install and build spend a minute producing a bundle
+      # that wrangler cannot upload: a missing token otherwise surfaces as the
+      # generic "set a CLOUDFLARE_API_TOKEN environment variable" line from the
+      # action's own npx invocation.
+      - name: Check Cloudflare credentials
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=""
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then missing="CLOUDFLARE_API_TOKEN"; fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then missing="${missing:+$missing, }CLOUDFLARE_ACCOUNT_ID"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::$missing not set. Create a Cloudflare API token with 'Workers Scripts: Edit' and 'Account Settings: Read' at https://dash.cloudflare.com/profile/api-tokens, then save it (with the account ID from the Workers & Pages dashboard) at https://github.com/${{ github.repository }}/settings/secrets/actions/new."
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
