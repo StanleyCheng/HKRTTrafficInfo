@@ -41,9 +41,12 @@ jobs:
         shell: bash
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
-            echo "::error::VERCEL_TOKEN is not set. Add it at https://github.com/${{ github.repository }}/settings/secrets/actions/new with scope 'Production Deployment' on project hkrttrafficinfo."
+            echo "::error::VERCEL_TOKEN is not set. Add a token scoped to the team that owns this project at https://vercel.com/account/tokens (Scope → team → All Projects) using https://github.com/${{ github.repository }}/settings/secrets/actions/new."
             exit 1
           fi
           # --yes skips the "deploy to existing project?" confirmation; the
           # project is matched from vercel.json + git remote automatically.
-          npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
+          if ! npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"; then
+            echo "::error::Vercel refused these credentials. The CLI resolves the account before deploying, so a token scoped to a single project fails here with 'The token provided via --token argument is not valid' even though the REST API accepts it — recreate the token with the team selected in Scope (All Projects)."
+            exit 1
+          fi

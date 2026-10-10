@@ -81,7 +81,7 @@ Both workflows are gated on the [`Verify`](.github/workflows/verify.yml) job fin
 
 To wire these up:
 
-1. **Vercel:** create a token at https://dash.vercel.com/account/tokens with scope *Production Deployment* on the `hkrttrafficinfo` project. Save it at https://github.com/StanleyCheng/HKRTTrafficInfo/settings/secrets/actions/new as `VERCEL_TOKEN`.
+1. **Vercel:** create a token at https://vercel.com/account/tokens and set **Scope** to the team that owns the project (`stanleychengs-projects` → *All Projects*), then save it at https://github.com/StanleyCheng/HKRTTrafficInfo/settings/secrets/actions/new as `VERCEL_TOKEN`. The CLI resolves the account before it deploys, so a token scoped to the single project is refused with *The token provided via `--token` argument is not valid* even though the REST API answers with it; select the team, not the project.
 2. **Cloudflare:** create an API token at https://dash.cloudflare.com/profile/api-tokens with *Workers Scripts: Edit* and *Account Settings: Read*. Find the account ID on the right-hand side of the Workers & Pages dashboard. Save them as `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` under the same page.
 
 Manual fallbacks for the same two destinations:
