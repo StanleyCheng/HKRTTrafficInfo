@@ -4,7 +4,7 @@ import type { ApproachesResponse, ControlPointsResponse, FerryResponse, LrtRespo
 import { linesThrough, lineRecord, mtrStationCollection, mtrTrackCollection, projectNetworkTrain, stationRecord } from './mtr-network.ts';
 import { lrtColor, lrtStation, lrtStationCollection, lrtTrackCollection, projectLrtTrain } from './lrt-network.ts';
 import { railPosition } from './rail-geometry.ts';
-import { placeOnPath } from './ferry-run.ts';
+import { ferryVesselPoint } from './ferry-run.ts';
 import { ferryInstant } from './ferry-clock.ts';
 import { ferryVehicleIcon } from './vehicle-icons.ts';
 import { decorateControlPoints } from './control-points.ts';
@@ -150,9 +150,8 @@ export function withBoundarySpeeds(data: CameraData | undefined, segments: FlowS
 export function movingCameras(kind: 'mtr' | 'lrt' | 'ferry', data: CameraData, now: number): Camera[] {
   if (!data.payload || !data.observedAt || now - Date.parse(data.observedAt) > 180000) return [];
   if (kind === 'ferry') return (data.payload as FerryResponse).vessels.flatMap(vessel => {
-    const path = vessel.pathLng?.map((lng, i) => ({ lng, lat: vessel.pathLat?.[i] ?? vessel.lat })) ?? [{ lng: vessel.fromLng ?? vessel.lng, lat: vessel.fromLat ?? vessel.lat }, { lng: vessel.toLng ?? vessel.lng, lat: vessel.toLat ?? vessel.lat }];
-    const spot = vessel.fix === 'gps' ? vessel : placeOnPath(path, vessel.departAt ?? null, vessel.arriveAt ?? null, now);
-    return spot ? [{ id: `ferry-vessel-${vessel.id}`, sourceId: vessel.id, kind, vehicleIcon: ferryVehicleIcon(vessel.route, vessel.id), name: vessel.nameTc, nameEn: vessel.nameEn, lat: spot.lat, lng: spot.lng, estimated: vessel.fix !== 'gps', positionType: 'vehicle', dataUpdated: data.observedAt ?? undefined, arrivals: [{ route: vessel.route, destination: vessel.destTc || vessel.nameTc, destinationEn: vessel.destEn || vessel.nameEn, minutes: spot.minutes, eta: vessel.eta }] }] : [];
+    const spot = ferryVesselPoint(vessel, Date.parse(data.observedAt!), now);
+    return spot ? [{ id: `ferry-vessel-${vessel.id}`, sourceId: vessel.id, kind, vehicleIcon: ferryVehicleIcon(vessel.route, vessel.id), name: vessel.nameTc, nameEn: vessel.nameEn, lat: spot.lat, lng: spot.lng, estimated: spot.estimated, positionType: 'vehicle', dataUpdated: vessel.observedAt ?? data.observedAt ?? undefined, arrivals: [{ route: vessel.route, destination: vessel.destTc || vessel.nameTc, destinationEn: vessel.destEn || vessel.nameEn, minutes: spot.minutes, eta: vessel.eta }] }] : [];
   });
   return (data.payload as MtrResponse | LrtResponse).trains.flatMap(train => {
     const spot = kind === 'mtr' ? projectNetworkTrain(train, now) : projectLrtTrain(train, now);

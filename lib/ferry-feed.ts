@@ -76,7 +76,7 @@ export async function loadFerrySnapshot(now = Date.now()): Promise<FerryResponse
 
 async function refreshFerryClock(now: number): Promise<true> {
   const jobs = [
-    ...SUN_ROUTES.map((route) => ({ key: `sun:${route.code}`, run: () => fetchSun(route) })),
+    ...SUN_ROUTES.map((route) => ({ key: `sun:${route.code}`, run: () => fetchSun(route, now) })),
     ...HKKF_ROUTES.flatMap((route) => (["inbound", "outbound"] as const).map((direction) => ({
       key: `hkkf:${route.id}:${direction}`,
       run: () => fetchHkkf(route, direction),
@@ -91,7 +91,12 @@ async function refreshFerryClock(now: number): Promise<true> {
     }
     feedFaults.delete(job.key)
     clocks.set(job.key, { at: now, rows: result.clocks })
-    if (job.key.startsWith("sun:")) vessels.set(job.key, { at: now, rows: result.vessel ? [result.vessel] : [] })
+    if (job.key.startsWith("sun:")) {
+      const prior = vessels.get(job.key)?.rows[0]
+      const vessel = result.vessel
+      if (vessel && prior?.id === vessel.id && prior.lng === vessel.lng && prior.lat === vessel.lat && prior.departAt === vessel.departAt) vessel.observedAt = prior.observedAt
+      vessels.set(job.key, { at: now, rows: vessel ? [vessel] : [] })
+    }
   })
   await Promise.all([
     live,
@@ -151,7 +156,7 @@ function ferryBoard(now: number): FerryResponse {
   const gpsRoutes = new Set<string>()
   for (const item of vessels.values()) {
     for (const vessel of heldRows(item, now) ?? []) {
-      if (!vessel) continue
+      if (!vessel || !vessel.observedAt || now - Date.parse(vessel.observedAt) > 180_000) continue
       gpsRoutes.add(vessel.route)
       moving.push({ ...vessel, minutes: ferryMinutes(vessel.eta, now) })
     }
@@ -241,7 +246,7 @@ function pierPoint(id: string): { lng: number; lat: number } | null {
   return pier ? { lng: pier.lng, lat: pier.lat } : null
 }
 
-async function fetchSun(route: (typeof SUN_ROUTES)[number]): Promise<SunFix | null> {
+async function fetchSun(route: (typeof SUN_ROUTES)[number], now: number): Promise<SunFix | null> {
   try {
     const response = await etaQueue(() => fetchUpstream(`https://www.sunferry.com.hk/eta/?route=${encodeURIComponent(route.code)}`, ETA_FRESH_MS, {
       timeoutMs: 8_000,
@@ -289,9 +294,14 @@ async function fetchSun(route: (typeof SUN_ROUTES)[number]): Promise<SunFix | nu
     const from = pierPoint(route.from)
     const to = pierPoint(route.to)
     const path = from && to ? ferryFairway(route.from, route.to, from, to) : []
+    let departAt = ferryInstant(depart, now)
+    const arriveAt = ferryInstant(arrive, now)
+    // An overnight arrival can refer to yesterday's departure clock.
+    if (departAt != null && arriveAt != null && departAt > arriveAt && !depart.includes("T")) departAt -= 24 * 60 * 60_000
     const vessel: FerryVessel | null = Number.isFinite(lng) && Number.isFinite(lat) && lat > 22 && lat < 23 && lng > 113 && lng < 115
       ? {
           id: `${route.code}-${text(row.vesselcode) || "boat"}`,
+          observedAt: new Date(now).toISOString(),
           nameTc: `${route.fromTc} – ${route.destTc}`,
           nameEn: `${route.fromEn} – ${route.destEn}`,
           lng,
@@ -300,6 +310,8 @@ async function fetchSun(route: (typeof SUN_ROUTES)[number]): Promise<SunFix | nu
           eta: arrive || depart,
           minutes: null,
           fix: "gps",
+          departAt,
+          arriveAt,
           destTc: route.destTc,
           destEn: route.destEn,
           pathLng: path.map((point) => point.lng),

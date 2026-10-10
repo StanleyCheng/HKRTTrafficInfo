@@ -94,6 +94,41 @@ test("ferry adapter retains scheduled pier calls and interpolates clock vessels"
   assert.deepEqual(movingCameras("ferry", normalizeIntegration("ferry", { ...ferry, observedAt: "invalid" }), now), [])
 })
 
+test("GPS ferries advance around route bends between feed refreshes", () => {
+  const payload: FerryResponse = { ...ferry, vessels: [{ ...ferry.vessels[0], fix: "gps", lng: 114.04, lat: 22.301, pathLng: [114, 114.05, 114.05], pathLat: [22.3, 22.3, 22.31], eta: new Date(now + 120000).toISOString(), arriveAt: now + 120000, observedAt: new Date(now).toISOString() }] }
+  const data = normalizeIntegration("ferry", payload)
+  const first = movingCameras("ferry", data, now)[0]!
+  const later = movingCameras("ferry", data, now + 90000)[0]!
+  assert.notDeepEqual([later.lng, later.lat], [first.lng, first.lat], "GPS ferries must advance between polls")
+  assert.equal(first.lat, 22.3, "GPS positions should be projected onto the displayed route")
+  assert.equal(later.lng, 114.05, "Travel must turn along the route rather than cutting across the bend")
+  assert.ok(later.lat > 22.3 && later.lat < 22.31)
+  assert.equal(later.estimated, true)
+  const arrived = movingCameras("ferry", data, now + 120000)[0]!
+  assert.deepEqual([arrived.lng, arrived.lat], [114.05, 22.31])
+  const refreshed = normalizeIntegration("ferry", { ...payload, observedAt: new Date(now + 60000).toISOString() })
+  assert.deepEqual(movingCameras("ferry", refreshed, now + 90000), movingCameras("ferry", data, now + 90000), "Refreshing another feed must not reset the GPS anchor")
+  assert.deepEqual(movingCameras("ferry", refreshed, now + 180001), [], "A fresh global timestamp must not revive an old GPS fix")
+  const reverse = normalizeIntegration("ferry", { ...payload, vessels: [{ ...payload.vessels[0], lng: 114.051, lat: 22.308, pathLng: [114.05, 114.05, 114], pathLat: [22.31, 22.3, 22.3] }] } as FerryResponse)
+  const returning = movingCameras("ferry", reverse, now + 90000)[0]!
+  assert.equal(returning.lat, 22.3)
+  assert.ok(returning.lng < 114.05 && returning.lng > 114)
+})
+
+test("GPS ferries wait for departure and do not invent motion without an arrival", () => {
+  const gps = { ...ferry.vessels[0], fix: "gps" as const, lng: 114.04, departAt: now + 60000, arriveAt: now + 120000 }
+  const waiting = normalizeIntegration("ferry", { ...ferry, vessels: [gps] } as FerryResponse)
+  assert.equal(movingCameras("ferry", waiting, now + 30000)[0]?.lng, 114)
+  assert.ok(movingCameras("ferry", waiting, now + 90000)[0]!.lng > 114)
+  const noArrival = normalizeIntegration("ferry", { ...ferry, vessels: [{ ...gps, departAt: null, arriveAt: null }] } as FerryResponse)
+  assert.equal(movingCameras("ferry", noArrival, now)[0]?.lng, movingCameras("ferry", noArrival, now + 60000)[0]?.lng)
+  const raw = normalizeIntegration("ferry", { ...ferry, vessels: [{ ...gps, pathLng: undefined, pathLat: undefined, arriveAt: null }] } as FerryResponse)
+  assert.equal(movingCameras("ferry", raw, now)[0]?.estimated, false)
+  assert.equal(movingCameras("ferry", raw, now + 60000)[0]?.lng, gps.lng)
+  const malformed = normalizeIntegration("ferry", { ...ferry, vessels: [{ ...gps, pathLat: [] }] } as FerryResponse)
+  assert.deepEqual(movingCameras("ferry", malformed, now), [])
+})
+
 test("bus adapter preserves scheduled flags and partial failure metadata", () => {
   const payload: CitybusResponse = { ok: true, stale: true, error: "Some arrivals unavailable", observedAt: new Date(now).toISOString(), stops: [{ id: "stop", nameTc: "車站", nameEn: "Stop", lng: 114.18, lat: 22.3, routes: ["1"], calls: [{ route: "1", destTc: "目的地", destEn: "Destination", eta: new Date(now + 60000).toISOString(), minutes: 1, scheduled: true, remarkTc: "", remarkEn: "" }] }] }
   const data = normalizeIntegration("citybus", payload)

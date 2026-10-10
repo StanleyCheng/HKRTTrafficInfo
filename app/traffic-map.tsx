@@ -885,10 +885,10 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
           if (existing.feed !== feed) {
             // Refresh corrections follow the track; latitude/longitude tweens cut across curves.
             if (railPosition) existing.railCorrection = !reducedMotion.matches && existing.camera.railPosition?.key === railPosition.key && existing.railDistance !== undefined ? { distance: existing.railDistance - railPosition.distance, at: now } : undefined;
-            else if (!rail && !reducedMotion.matches) {
+            else if (!rail && !camera.estimated && !reducedMotion.matches) {
               const position = existing.marker.getLatLng();
               existing.correction = { lat: position.lat - camera.lat, lng: position.lng - camera.lng, at: now };
-            }
+            } else if (!rail) existing.correction = undefined;
           }
           if (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn) {
             const destination = vehicleDestination(camera, language, name);

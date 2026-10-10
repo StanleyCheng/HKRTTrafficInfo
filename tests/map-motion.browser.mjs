@@ -46,7 +46,7 @@ async function create({ mobile = false, reducedMotion = 'no-preference', gps = f
   await context.route('**/api/lrt**', route => route.fulfill({ json: { ok: true, observedAt, boards: [], trains: [{ id: 'motion-lrt', line: '614P', dest: '100', plat: '1', ttnt: .3, observedAt, delay: false, timeType: 'A', anchor: '240', path: ['1', '240', '250', '100'], hold: ['1', '240', '250', '100'] }] } }));
   await context.route('**/api/ferry**', route => {
     const vessels = [{ id: 'motion-ferry', nameTc: '測試渡輪', nameEn: 'Fixture ferry', lng: 114.163, lat: 22.291, route: '天星', fix: 'clock', eta: new Date(Date.parse(observedAt) + 180000).toISOString(), minutes: 3, departAt: Date.parse(observedAt) - 30000, arriveAt: Date.parse(observedAt) + 180000, pathLng: [114.159, 114.166], pathLat: [22.287, 22.296] }];
-    if (gps) vessels.push({ id: 'motion-gps', nameTc: '定位渡輪', nameEn: 'GPS fixture ferry', lng: gpsUpdated ? 114.163 : 114.161, lat: 22.292, route: '天星', fix: 'gps', eta: '', minutes: 3 });
+    if (gps) vessels.push({ id: 'motion-gps', nameTc: '定位渡輪', nameEn: 'GPS fixture ferry', lng: gpsUpdated ? 114.163 : 114.161, lat: 22.292, route: '天星', fix: 'gps', eta: '', minutes: 3, ...(gps === 'route' ? { lng: gpsUpdated ? 114.1612 : 114.1605, lat: gpsUpdated ? 22.293 : 22.2921, observedAt: gpsUpdated ? new Date().toISOString() : observedAt, arriveAt: Date.parse(observedAt) + 120000, departAt: Date.parse(observedAt) - 60000, eta: new Date(Date.parse(observedAt) + 120000).toISOString(), pathLng: [114.16, 114.161, 114.161], pathLat: [22.292, 22.292, 22.294] } : {}) });
     return route.fulfill({ json: { ok: true, observedAt, piers: [], vessels } });
   });
   await context.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgQIAI7mY6QAAAABJRU5ErkJggg==', 'base64') }));
@@ -255,6 +255,28 @@ try {
     const gpsMotion = (await vehicleMotion(page)).find(vehicle => vehicle.title === 'GPS fixture ferry');
     assert.equal(gpsMotion.running, false, 'Stationary GPS fix must not run a miniature animation');
     assert.ok(!gpsMotion.animations.includes('running'));
+    await context.close();
+  });
+  await test('GPS ferry follows its route before and after a refresh across a bend', async () => {
+    const { page, context, confirmGps } = await create({ gps: 'route' });
+    const sample = () => page.evaluate(() => new Promise(resolve => {
+      const points = [];
+      const frame = () => {
+        window.__map.eachLayer(layer => { if (layer.getElement?.()?.title === 'GPS fixture ferry') { const point = layer.getLatLng(); points.push([point.lng, point.lat]); } });
+        if (points.length >= 40) resolve(points); else requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    }));
+    const before = await sample();
+    assert.ok(new Set(before.map(point => JSON.stringify(point))).size > 20, 'GPS route estimates move between polls');
+    confirmGps();
+    const response = page.waitForResponse(response => response.url().includes('/api/ferry') && response.ok());
+    await reloadAll(page);
+    await response;
+    const after = await sample();
+    for (const [lng, lat] of [...before, ...after]) assert.ok(Math.abs(lat - 22.292) < 1e-10 || Math.abs(lng - 114.161) < 1e-10, 'Refresh correction must not cut the route bend');
+    assert.ok(after.some(([, lat]) => lat >= 22.293), 'Refreshed GPS advances to the next route segment');
+    assert.match(await page.locator('.vehicle-marker[title="GPS fixture ferry"]').getAttribute('aria-label'), /Estimated position/);
     await context.close();
   });
   await test('Mobile: tapping a vehicle opens details while map and vehicle movement remain active', async () => {

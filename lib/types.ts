@@ -334,6 +334,7 @@ export type FerryPier = {
 
 export type FerryVessel = {
   id: string
+  observedAt?: string
   nameTc: string
   nameEn: string
   lng: number
