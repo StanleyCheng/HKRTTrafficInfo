@@ -597,7 +597,12 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
         target?.focus({ preventScroll: true });
       }
     };
-    const checkViewport = () => { const point = popup.getLatLng(); if (popup.isOpen() && point && !m.getBounds().contains(point)) popup.remove(); };
+    // While our own reveal pan animates, getBounds() blends the old center
+    // with the moving pane and can momentarily report the anchor outside;
+    // skip removal then and re-check once the pan settles at moveend.
+    let revealing = false;
+    const checkViewport = () => { if (revealing) return; const point = popup.getLatLng(); if (popup.isOpen() && point && !m.getBounds().contains(point)) popup.remove(); };
+    const endReveal = () => { if (revealing) { revealing = false; checkViewport(); } };
     const closeOnBlank = (event: Leaflet.LeafletMouseEvent) => {
       const target = event.originalEvent?.target;
       if (event.sourceTarget !== m || target instanceof Element && target.closest('.leaflet-marker-icon,.leaflet-popup,.leaflet-tooltip,.leaflet-control-container')) return;
@@ -627,9 +632,42 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     const resize = () => {
       checkViewport();
       if (!popup.isOpen()) return;
-      popup.options.autoPan = true;
       sizePopup();
-      popup.options.autoPan = false;
+      panToReveal();
+    };
+    // Reveal the card with a bounded pan of our own. Leaflet's autoPan keeps
+    // panning until the card fits the padded workspace, and for a tall card
+    // near an edge that pan pushes the card's own anchor out of the map;
+    // checkViewport then reads the anchor as scrolled away and removes the
+    // popup moments after it opened. Reveal the card, draw an off-screen
+    // anchor back in (earlier popups may have panned it out), and cap the
+    // pan so the anchor always stays a margin inside the map.
+    const panToReveal = () => {
+      const node = popup.getElement(), area = m.getContainer().getBoundingClientRect();
+      if (!node || !area.width || !area.height) return;
+      const rect = node.getBoundingClientRect();
+      const padding = {
+        topLeft: L.point(popup.options.autoPanPaddingTopLeft ?? L.point(12, 12)),
+        bottomRight: L.point(popup.options.autoPanPaddingBottomRight ?? L.point(12, 12)),
+      };
+      // panBy subtracts from the pane position, so a positive delta moves the
+      // card up/left: revealing a bottom/right overflow needs a positive pan.
+      const delta = L.point(
+        Math.max(0, (rect.right - area.left) - (area.width - padding.bottomRight.x)) - Math.max(0, padding.topLeft.x - (rect.left - area.left)),
+        Math.max(0, (rect.bottom - area.top) - (area.height - padding.bottomRight.y)) - Math.max(0, padding.topLeft.y - (rect.top - area.top)),
+      );
+      const anchor = popup.getLatLng();
+      if (anchor) {
+        const margin = 12, point = m.latLngToContainerPoint(anchor), size = m.getSize();
+        delta.x += Math.max(0, point.x - (size.x - margin)) + Math.min(0, point.x - margin);
+        delta.y += Math.max(0, point.y - (size.y - margin)) + Math.min(0, point.y - margin);
+        // The pan moves the anchor by -delta; keep it a margin inside the map.
+        delta.x = Math.min(Math.max(delta.x, point.x - (size.x - margin)), point.x - margin);
+        delta.y = Math.min(Math.max(delta.y, point.y - (size.y - margin)), point.y - margin);
+      }
+      if (!delta.x && !delta.y) return;
+      revealing = true;
+      m.panBy(delta, { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
     };
     const open = () => {
       popup.openOn(m);
@@ -643,9 +681,8 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       closeButton?.setAttribute('title', messages[popupLanguage.current].closeControls);
       source?.setAttribute('aria-controls', popupElement.id);
       source?.setAttribute('aria-expanded', 'true');
-      popup.options.autoPan = true;
       updatePopup(popup);
-      popup.options.autoPan = false;
+      panToReveal();
       popup.on('remove', onRemove);
       if (keyboard) popupElement.focus({ preventScroll: true });
       detailsOpenRef.current?.(popupElement);
@@ -653,6 +690,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     if (focusMoving.current) m.once('moveend', open);
     else open();
     m.on('moveend', checkViewport);
+    m.on('moveend', endReveal);
     m.on('resize', resize);
     m.on('click', closeOnBlank);
     document.addEventListener('keydown', escape);
@@ -660,7 +698,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     observer.observe(popupElement);
     m.getContainer().closest('.app-shell')?.querySelectorAll<HTMLElement>('.topbar,.traffic-status,.intel-shell,.desktop-layer-dock,.mobile-dock,.layer-group-picker,.map-tools').forEach(node => observer.observe(node));
     return () => {
-      observer.disconnect(); m.off('moveend', open); m.off('moveend', checkViewport); m.off('resize', resize); m.off('click', closeOnBlank); document.removeEventListener('keydown', escape);
+      observer.disconnect(); m.off('moveend', open); m.off('moveend', checkViewport); m.off('moveend', endReveal); m.off('resize', resize); m.off('click', closeOnBlank); document.removeEventListener('keydown', escape);
       popup.getElement()?.removeEventListener('focusin', focusIn); popup.getElement()?.removeEventListener('focusout', focusOut);
       popup.off('remove', onRemove); if (popupRef.current?.popup === popup) popupRef.current = null; popup.remove();
       source?.removeAttribute('aria-controls'); source?.removeAttribute('aria-expanded');
