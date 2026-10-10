@@ -786,7 +786,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       if (!coordinate) { remove(); return; }
       const point = L.latLng(coordinate[1], coordinate[0]);
       if (!entry) {
-        const icon = L.divIcon({ className: 'camera-marker vehicle-marker bus-route-marker', html: vehicleHtml(vehicleIcon({ kind: route.operator, route: route.route, company: route.company }), layers[route.operator].color, destination), iconSize: [16, 16], iconAnchor: [8, 8] });
+        const icon = L.divIcon({ className: 'camera-marker vehicle-marker bus-route-marker', html: vehicleHtml(vehicleIcon({ kind: route.operator, route: route.route, company: route.company }), layers[route.operator].color, destination), iconSize: [24, 24], iconAnchor: [12, 12] });
         const marker = enableMarkerKeyboard(L.marker(point, { icon, title: name, alt: name, keyboard: true, zIndexOffset: 500 }).addTo(m));
         marker.getElement()?.setAttribute('aria-label', name);
         busVehicle.current = entry = { key: route.key, marker, distance: displayDistance, feed: busRoute, heading: marker.getElement()?.querySelector<HTMLElement>('.vehicle-heading') ?? null };
@@ -895,7 +895,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
           return;
         }
         const hover = rail ? railHoverText(camera, language, now) : name;
-        const icon = L.divIcon({ className: `camera-marker vehicle-marker${rail ? ' rail-marker' : ' ferry-marker'}`, html: vehicleHtml(vehicleIcon(camera), camera.color ?? layers[camera.kind].color, vehicleDestination(camera, language, name)), iconSize: [16, 16], iconAnchor: [8, 8] });
+        const icon = L.divIcon({ className: `camera-marker vehicle-marker${rail ? ' rail-marker' : ' ferry-marker'}`, html: vehicleHtml(vehicleIcon(camera), camera.color ?? layers[camera.kind].color, vehicleDestination(camera, language, name)), iconSize: [24, 24], iconAnchor: [12, 12] });
         const marker = enableMarkerKeyboard(L.marker([camera.lat, camera.lng], { icon, title: hover, alt: name, keyboard: true }).addTo(group));
         const vehicleLabel = rail ? hover : `${name} · ${camera.estimated ? integrationMessages[language].estimatedFerry : integrationMessages[language].gps}`;
         const node = marker.getElement();

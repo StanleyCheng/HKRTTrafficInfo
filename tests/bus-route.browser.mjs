@@ -138,16 +138,21 @@ try {
       for (const [key, value] of Object.entries(variant)) assert.equal(actual[key], String(value), `${variant.operator} ${key}`);
       await f.page.locator('.bus-route-marker').waitFor();
       await f.page.waitForFunction(() => { const image = document.querySelector('.bus-route-marker .vehicle-art'); return image?.complete && image.naturalWidth > 0; });
-      const artwork = await f.page.locator('.bus-route-marker').evaluate(element => ({
-        src: element.querySelector('.vehicle-art').getAttribute('src'), heading: element.querySelector('.vehicle-heading').style.transform,
-        running: element.classList.contains('is-running'), width: element.getBoundingClientRect().width,
-        animations: element.getAnimations({ subtree: true }).map(animation => animation.playState),
-        destination: element.querySelector('.vehicle-dest')?.textContent.trim(),
-        borderColor: getComputedStyle(element.querySelector('.vehicle-dest')).borderTopColor, borderWidth: getComputedStyle(element.querySelector('.vehicle-dest')).borderTopWidth,
-      }));
+      const artwork = await f.page.locator('.bus-route-marker').evaluate(element => {
+        const image = element.querySelector('.vehicle-art'), target = element.getBoundingClientRect(), art = image.getBoundingClientRect();
+        return {
+          src: image.getAttribute('src'), heading: element.querySelector('.vehicle-heading').style.transform,
+          running: element.classList.contains('is-running'), size: [target.width, target.height], art: [image.clientWidth, image.clientHeight],
+          centered: Math.max(Math.abs(art.x + art.width / 2 - target.x - target.width / 2), Math.abs(art.y + art.height / 2 - target.y - target.height / 2)),
+          gap: target.top - element.querySelector('.vehicle-dest').getBoundingClientRect().bottom,
+          animations: element.getAnimations({ subtree: true }).map(animation => animation.playState),
+          destination: element.querySelector('.vehicle-dest')?.textContent.trim(),
+          borderColor: getComputedStyle(element.querySelector('.vehicle-dest')).borderTopColor, borderWidth: getComputedStyle(element.querySelector('.vehicle-dest')).borderTopWidth,
+      }; });
       assert.match(artwork.src, new RegExp(`bus-${variant.company === 'LWB' ? 'lwb' : variant.operator}`), 'Bus miniature matches its actual operator');
       assert.match(artwork.heading, /^rotate\(-?[\d.]+deg\)$/, 'Bearing rotates the inner wrapper');
-      assert.equal(artwork.width, 16); assert.equal(artwork.running, false);
+      assert.deepEqual(artwork.size, [24, 24]); assert.deepEqual(artwork.art, [24, 24]); assert.equal(artwork.running, false);
+      assert.ok(artwork.centered < .01 && Math.abs(artwork.gap - 6) < .01, 'Bus artwork stays centered with label clearance');
       assert.equal(artwork.animations.length, 0, 'The estimated bus miniature stays static; only its position moves');
       assert.equal(artwork.destination, `${variant.route} → Fixture terminus`, 'The bus labels where it is heading');
       assert.equal(artwork.borderColor, operatorColors[variant.operator], 'Moving bus label border matches its operator');

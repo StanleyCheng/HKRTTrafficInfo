@@ -117,12 +117,16 @@ try {
     const { page, context, mtrCalls } = await create();
     await page.waitForFunction(() => [...document.querySelectorAll('.vehicle-art')].every(image => image.complete && image.naturalWidth > 0));
     const sizes = await page.locator('.vehicle-marker').evaluateAll(elements => elements.map(element => {
-      const image = element.querySelector('.vehicle-art'), target = element.getBoundingClientRect();
-      return { loaded: image?.complete && image.naturalWidth > 0, target: target.width, tabindex: element.tabIndex };
+      const image = element.querySelector('.vehicle-art'), target = element.getBoundingClientRect(), art = image.getBoundingClientRect();
+      return { loaded: image.complete && image.naturalWidth > 0, target: [target.width, target.height], art: [image.clientWidth, image.clientHeight],
+        centered: Math.max(Math.abs(art.x + art.width / 2 - target.x - target.width / 2), Math.abs(art.y + art.height / 2 - target.y - target.height / 2)),
+        gap: target.top - element.querySelector('.vehicle-dest').getBoundingClientRect().bottom, tabindex: element.tabIndex };
     }));
     for (const size of sizes) {
       assert.equal(size.loaded, true, 'Generated vehicle artwork must load');
-      assert.ok(Math.abs(size.target - 16) < .01 && size.tabindex === 0, 'Vehicle retains its 16px pointer bounds and keyboard focus');
+      assert.deepEqual(size.target, [24, 24], 'Vehicle pointer bounds are 1.5× their original size');
+      assert.deepEqual(size.art, [24, 24], 'The artwork itself grows with its pointer bounds');
+      assert.ok(size.centered < .01 && Math.abs(size.gap - 6) < .01 && size.tabindex === 0, 'Artwork stays centered with label clearance and keyboard focus');
     }
     const samples = await frameSamples(page);
     for (let index = 0; index < 3; index++) assert.ok(new Set(samples.map(sample => sample[index])).size >= 10, `Vehicle ${index} must move visibly on at least 10 of 14 frames`);
@@ -164,7 +168,7 @@ try {
     for (const vehicle of artwork) {
       assert.equal(vehicle.role, 'button'); assert.equal(vehicle.tabindex, 0);
       assert.equal(vehicle.label, vehicle.ferry ? `${vehicle.title} · Estimated position · timetable / arrival data` : vehicle.title); assert.ok(vehicle.label);
-      assert.equal(vehicle.width, 16); assert.equal(vehicle.height, 16);
+      assert.equal(vehicle.width, 24); assert.equal(vehicle.height, 24);
     }
     for (let index = 0; index < 3; index++) {
       await page.evaluate(index => { const target = [...document.querySelectorAll('.vehicle-marker')][index]; window.__map.eachLayer(layer => { if (layer.getElement?.() === target) window.__map.setView(layer.getLatLng(), 16, { animate: false }); }); }, index);

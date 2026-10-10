@@ -433,9 +433,9 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .camera-marker:focus-visible .marker-displacement{outline:2px solid #137f87;outline-offset:3px;border-radius:5px}
 .marker-leader{position:absolute;left:50%;top:50%;height:1px;background:#405e7699;transform-origin:left center;pointer-events:none}
 .marker-leader::before{content:"";position:absolute;left:-2px;top:-2px;width:5px;height:5px;background:#405e76;border:1px solid #fff;border-radius:50%}
-.camera-marker.vehicle-marker .marker-inner{width:16px;height:16px;margin:0;background:none;border:0;border-radius:0;box-shadow:none;transform:none}
-.vehicle-heading,.vehicle-art{display:block;width:16px;height:16px;transform-origin:center}
+.camera-marker.vehicle-marker .marker-inner{width:24px;height:24px;margin:0;background:none;border:0;border-radius:0;box-shadow:none;transform:none}
+.vehicle-heading,.vehicle-art{display:block;width:24px;height:24px;transform-origin:center}
 .vehicle-art{object-fit:contain;filter:drop-shadow(0 1px 1px #18364366);user-select:none}
 .rail-marker .vehicle-art{filter:drop-shadow(0 0 1px #fff3b0) drop-shadow(0 1px 1px #fff3b0)}
-.vehicle-dest{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);white-space:nowrap;padding:1px 7px;border:1px solid var(--marker-color);border-radius:999px;background:#fff;box-shadow:0 2px 4px #24384726;color:#1f3a47;font:600 10px/1.4 system-ui,sans-serif;pointer-events:auto;cursor:pointer}
+.vehicle-dest{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);white-space:nowrap;padding:1px 7px;border:1px solid var(--marker-color);border-radius:999px;background:#fff;box-shadow:0 2px 4px #24384726;color:#1f3a47;font:600 10px/1.4 system-ui,sans-serif;pointer-events:auto;cursor:pointer}
 .vehicle-dest::after{content:"";position:absolute;left:50%;top:100%;width:1px;height:5px;background:#8aa3b0}
