@@ -188,6 +188,10 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .map-canvas:has(.item-popup) .leaflet-bottom { z-index: 350; }
 .leaflet-control-attribution { font-size: 10px !important; background: #ffffffeb !important; }
 .leaflet-control-scale-line { font-size: 11px !important; border-color: #657c89 !important; color: #39525e !important; }
+/* The desktop intel ticker spans the bottom of the map; lift the corner
+   attribution above it (mirroring .intel-panel's 50px offset) so the links
+   stay clickable. */
+@media (min-width:701px) and (min-height:521px) { .map-canvas .leaflet-bottom.leaflet-right { bottom: 50px; } }
 .camera-marker { border: none; background: none; }
 .marker-inner { width: 30px; height: 30px; background: var(--marker-color); border: 2px solid white; box-shadow: 0 2px 6px #15374740; border-radius: 10px; display: grid; place-items: center; color: #172c39; }
 .marker-inner svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
