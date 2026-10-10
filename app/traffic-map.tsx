@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import { integrationMessages, messages } from '@/lib/i18n';
-import { Camera, CameraData, FlowSegment, Language, MapPath, hkTime, layerText, layers, readableInk, speedLevelColors } from '@/lib/traffic';
+import { Camera, CameraData, FlowSegment, Language, MapPath, hkTime, layerText, layers, parkingCounts, readableInk, speedLevelColors } from '@/lib/traffic';
 import type { TrafficSearchItem } from '@/lib/traffic-view';
 import { ferryDepartures, movingCameras, railHoverText, type MapViewport } from '@/lib/integration-client';
 import { stopPlate } from '@/lib/stop-plate';
@@ -66,6 +66,19 @@ const OPENFREEMAP_ATTRIBUTION = '<a href="https://openfreemap.org/" target="_bla
 const busStopKinds: readonly string[] = ['kmb', 'citybus', 'gmb', 'nlb'];
 const isBusStop = (camera: Camera) => busStopKinds.includes(camera.kind);
 const hasDelayedHover = (camera: Camera) => camera.kind === 'snapshot' || camera.kind === 'ferry' && camera.positionType === 'pier';
+// Every vehicle type the car park publishes, in the current language, as label plus
+// available / total. The tooltip and the accessible name both read this list.
+const parkingRows = (camera: Camera, language: Language): { label: string; counts: string }[] => {
+  const copy = messages[language];
+  const locale = language === 'en' ? 'en-HK' : 'zh-HK';
+  return (camera.parkingSpaces ?? []).map(space => ({ label: copy.parkingTypeLabel[space.type], counts: parkingCounts(space, locale) }));
+};
+// Leaflet takes tooltip content as HTML, so the same rows are escaped into it: names and counts
+// come from the public feed.
+const parkingTooltipHtml = (camera: Camera, language: Language, name: string): string => {
+  const rows = parkingRows(camera, language).map(row => `<span class="parking-tooltip-row"><span>${escapeHtml(row.label)}</span><b>${row.counts}</b></span>`).join('');
+  return `<span class="parking-tooltip-body"><strong class="parking-tooltip-name">${escapeHtml(name)}</strong>${rows ? `<span class="parking-tooltip-counts">${escapeHtml(messages[language].parkingCountsHeader)}</span>${rows}` : ''}</span>`;
+};
 
 // Plate anchor candidates in preference order, matching .stop-plate and its
 // .pos-* modifiers in globals.css. Offsets are container pixels from the stop
@@ -323,12 +336,25 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       const marker = oldMarker ?? enableMarkerKeyboard(L.marker([camera.lat, camera.lng], { icon, keyboard: true, cameraKind: camera.kind } as Leaflet.MarkerOptions).addTo(group));
       if (oldMarker) marker.setIcon(icon).setLatLng([camera.lat, camera.lng]);
       const node = marker.getElement();
-      if (node) { if (hasDelayedHover(camera)) node.removeAttribute('title'); else node.title = rail ? hover : camera.kind === 'parking' ? copy.parkingAvailability(camera.vacancy?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—', camera.capacity?.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK') ?? '—') : `${layerText(camera.kind, language).name}: ${name}`; node.setAttribute('aria-label', hover); node.setAttribute('aria-haspopup', 'dialog'); node.dataset.markerId = camera.id; }
-      const label = document.createElement('span'); label.textContent = name;
+      // A car park states its counts in the tooltip, so it never gets the browser's delayed native
+      // title, and its label repeats the counts because no popup opens to carry them.
+      const rows = camera.kind === 'parking' ? parkingRows(camera, language) : [];
+      if (node) {
+        if (hasDelayedHover(camera) || camera.kind === 'parking') node.removeAttribute('title');
+        else node.title = rail ? hover : `${layerText(camera.kind, language).name}: ${name}`;
+        node.setAttribute('aria-label', rows.length ? `${hover} · ${rows.map(row => `${row.label} ${row.counts}`).join(' · ')}` : hover);
+        if (camera.kind === 'parking') node.removeAttribute('aria-haspopup');
+        else node.setAttribute('aria-haspopup', 'dialog');
+        node.dataset.markerId = camera.id;
+      }
+      if (!oldMarker && camera.kind === 'parking') marker.on('tooltipopen', (event: Leaflet.TooltipEvent) => { const element = event.tooltip.getElement(); if (element) element.style.borderColor = color; });
+      const textLabel = document.createElement('span'); textLabel.textContent = name;
+      const tooltipLabel: string | HTMLElement = camera.kind === 'parking' ? parkingTooltipHtml(camera, language, name) : textLabel;
       if (rail || camera.kind === 'ferry') marker.unbindTooltip();
-      else if (marker.getTooltip()) marker.setTooltipContent(label);
-      else marker.bindTooltip(label, { direction: 'top', offset: [0, -12] });
-      if (!oldMarker) marker.on('click', () => {
+      else if (marker.getTooltip()) marker.setTooltipContent(tooltipLabel);
+      else marker.bindTooltip(tooltipLabel, { direction: 'top', offset: [0, -12], className: camera.kind === 'parking' ? 'parking-tooltip' : undefined });
+      // Car parks carry their counts in the tooltip, so their marker opens no details popup.
+      if (!oldMarker && camera.kind !== 'parking') marker.on('click', () => {
         const latest = markerData.current.get(camera.id)?.camera;
         if (!latest || isBusStop(latest) && routeFocusRef.current) return;
         popupOrigin.current = { id: latest.id, element: marker.getElement() ?? null };

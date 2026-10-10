@@ -1,4 +1,4 @@
-import type { Language, OriginalLayerKind } from './traffic';
+import type { Language, OriginalLayerKind, ParkingVehicleType } from './traffic';
 
 type AppMessages = {
   languageControl: string;
@@ -80,9 +80,9 @@ type AppMessages = {
   speedLimitLabel: string;
   flowCoverage: (mapped: string, expected: string) => string;
   speedLayerNote: string;
-  parkingSpaces: string;
   parkingNoLive: string;
-  parkingAvailability: (vacancy: string, total: string) => string;
+  parkingCountsHeader: string;
+  parkingTypeLabel: Record<ParkingVehicleType, string>;
   heightLimitLabel: string;
   metres: (height: string) => string;
   openingStatusLabel: string;
@@ -195,8 +195,8 @@ export const messages: Record<Language, AppMessages> = {
     noLiveSpeed: '官方暫未提供有效車速讀數', directionLabel: '行車方向', showDetectors: '顯示探測器位置', routeNumberLabel: '路線編號', speedLimitLabel: '道路限速',
     flowCoverage: (mapped, expected) => `已配對 ${mapped} / ${expected} 個官方車速路段；未有相符路網線段的不會顯示。`,
     speedLayerNote: '路段顏色按官方道路限速及實時平均車速分類：一般道路紅色 ≤15、黃色 ≤30、綠色 >30 km/h；限速 70 km/h 或以上道路紅色 ≤25、黃色 ≤50、綠色 >50 km/h。失效、格式錯誤或超過 10 分鐘的讀數顯示灰色。',
-    parkingSpaces: '私家車空位', parkingNoLive: '暫無實時空位數據',
-    parkingAvailability: (vacancy, total) => `${vacancy} 個空位 / 共 ${total} 個私家車車位`,
+    parkingNoLive: '暫無實時空位數據', parkingCountsHeader: '空位 / 總數',
+    parkingTypeLabel: { privateCar: '私家車', LGV: '輕型貨車', HGV: '重型貨車', CV: '貨櫃車', coach: '旅遊巴士', motorCycle: '電單車' },
     heightLimitLabel: '高度限制', metres: height => `${height} 米`, openingStatusLabel: '開放狀態',
     rainfallAmount: '過去一小時雨量', millimetres: mm => `${mm} 毫米`,
     rainfallNote: '天文台提供分區最高雨量讀數；標記位置為分區參考點，並非量度站。',
@@ -215,7 +215,7 @@ export const messages: Record<Language, AppMessages> = {
       snapshot: '運輸署交通快拍完整位置名冊（XML）及官方 JPEG 影像。已選快拍每兩分鐘重新讀取，時間取自影像回應的 Last-Modified。',
       flow: '運輸署「策略性／主要道路的交通數據」：把每 2 分鐘更新的官方處理後平均車速，按 CSDI Road Network 2nd Generation 的官方道路限速及 IRN CENTERLINE 分類着色；另可按需要顯示探測器當刻平均讀數。',
       incident: '運輸署「特別交通消息」（XML），雙語對照。官方消息沒有座標；地圖標示是透過官方地址查詢服務（ALS）按路名推斷的大約位置，未能確定位置的消息只於列表顯示。',
-      parking: '資料一線通「停車場空置車位數據」（一鍵通版本）：結合停車場基本資料（位置、高度限制、開放時間）及實時私家車空位數目。',
+      parking: '資料一線通「停車場空置車位數據」（一鍵通版本）：結合停車場基本資料（位置、高度限制、開放時間）及官方公布各車種的可用車位與總車位數目。',
       rainfall: '香港天文台「過去一小時降雨量」開放數據（JSON，每 15 分鐘更新）。雨量為分區最高讀數，標記置於分區參考點。',
     },
     dataGovLink: '資料一線通', locationXml: '完整位置 XML', officialApi: 'CSDI 官方 API',
@@ -280,8 +280,8 @@ export const messages: Record<Language, AppMessages> = {
     noLiveSpeed: 'No valid speed reading from the official source', directionLabel: 'Direction', showDetectors: 'Show detector locations', routeNumberLabel: 'Route number', speedLimitLabel: 'Road speed limit',
     flowCoverage: (mapped, expected) => `Matched ${mapped} / ${expected} official speed segments; segments without matching road geometry are not shown.`,
     speedLayerNote: 'Segment colours use official road speed limits and live average speeds: ordinary roads are red at ≤15, amber at ≤30 and green above 30 km/h; roads limited to 70 km/h or more are red at ≤25, amber at ≤50 and green above 50 km/h. Invalid, malformed or over-10-minute-old readings are grey.',
-    parkingSpaces: 'Private car spaces', parkingNoLive: 'No live vacancy data',
-    parkingAvailability: (vacancy, total) => `${vacancy} available / ${total} total private car spaces`,
+    parkingNoLive: 'No live vacancy data', parkingCountsHeader: 'Available / total',
+    parkingTypeLabel: { privateCar: 'Private car', LGV: 'Light goods vehicle', HGV: 'Heavy goods vehicle', CV: 'Container vehicle', coach: 'Coach', motorCycle: 'Motor cycle' },
     heightLimitLabel: 'Height limit', metres: height => `${height} m`, openingStatusLabel: 'Opening status',
     rainfallAmount: 'Rainfall in the past hour', millimetres: mm => `${mm} mm`,
     rainfallNote: 'HKO publishes district-maximum readings; markers sit at district reference points, not measuring stations.',
@@ -300,7 +300,7 @@ export const messages: Record<Language, AppMessages> = {
       snapshot: 'The Transport Department’s complete traffic-snapshot location list (XML) and official JPEG images. The selected snapshot refreshes every two minutes; update time comes from the image response’s Last-Modified value.',
       flow: 'The Transport Department’s Traffic Data of Strategic / Major Roads: official processed average speeds (updated every 2 minutes) are classified using official road speed limits and drawn on the IRN CENTERLINE from the CSDI Road Network (2nd Generation). Optional detector points show current average readings.',
       incident: 'The Transport Department’s Special Traffic News (XML), bilingual. Official notices carry no coordinates; map pins are approximate positions inferred from road names via the official Address Lookup Service (ALS). Notices without a confident match appear in the list only.',
-      parking: 'The DATA.GOV.HK one-stop car park information and vacancy API: basic car park details (location, height limit, opening hours) merged with real-time private-car vacancy counts.',
+      parking: 'The DATA.GOV.HK one-stop car park information and vacancy API: basic car park details (location, height limit, opening hours) with the spaces available and the spaces the car park has, for every vehicle type it publishes.',
       rainfall: 'Hong Kong Observatory “Rainfall in the past hour” open data (JSON, every 15 minutes). Readings are district maxima; markers sit at district reference points, not at measuring stations.',
     },
     dataGovLink: 'DATA.GOV.HK', locationXml: 'Complete location XML', officialApi: 'Official CSDI API',

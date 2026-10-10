@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { openLayers, closeControls } from './browser-controls.mjs';
+import { openLayers, openSearch, closeControls } from './browser-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = (process.argv[2] || 'http://localhost:5173').replace(/\/$/, '');
 const evidence = path.resolve(process.argv[3] || 'outputs/vehicle-icons');
@@ -28,7 +28,20 @@ async function create(mobile = false, parking = [{ vacancy: 10, space: 100 }, { 
       return route.fulfill({ headers, json: { features: Array.from({ length: count }, (_, i) => ({ attributes: { OBJECTID: i + 1, PopupInfo: `<table><tr><th>SITE_DESC_CHI</th><td>${kind} fixture ${i + 1}</td></tr><tr><th>SITE_DESC_ENG</th><td>${kind} fixture ${i + 1}</td></tr></table>` }, geometry: { x: kind === 'redlight' ? 113.951 : 113.943 + i * .006, y: kind === 'redlight' ? 22.282 : 22.285 } })) } });
     }
     if (url.pathname.includes('Traffic_Camera_Locations_')) return route.fulfill({ headers, body: `<image-list>${[1, 2].map(index => `<image><key>${index}</key><description>${url.pathname.includes('_Tc') ? '快拍測試' : 'snapshot fixture'} ${index}</description><latitude>22.288</latitude><longitude>${113.943 + index * .006}</longitude><url>${origin}/fixture.jpg?camera=${index}</url></image>`).join('')}</image-list>` });
-    if (url.pathname.endsWith('/carpark-info-vacancy')) return route.fulfill({ headers, json: { results: parking.map((counts, index) => ({ park_Id: String(index + 1), name: `parking fixture ${index + 1}`, latitude: 22.292, longitude: 113.943 + (index + 1) * .006, privateCar: url.searchParams.get('data') === 'info' ? { space: counts.space } : [{ vacancy_type: counts.type ?? 'A', vacancy: counts.vacancy }] })) } });
+    if (url.pathname.endsWith('/carpark-info-vacancy')) {
+      const wantInfo = url.searchParams.get('data') === 'info';
+      const zh = (url.searchParams.get('lang') ?? '').startsWith('zh');
+      const results = parking.map((counts, index) => {
+        const types = { privateCar: { available: counts.vacancy, total: counts.space, status: counts.type }, ...(counts.types ?? {}) };
+        const row = { park_Id: String(index + 1), name: `${zh ? '測試停車場' : 'parking fixture'} ${index + 1}`, latitude: 22.292, longitude: 113.943 + (index + 1) * .006 };
+        for (const [key, spaces] of Object.entries(types)) {
+          if (wantInfo) { if (spaces.total !== undefined) row[key] = { space: spaces.total }; }
+          else row[key] = [{ vacancy_type: spaces.status ?? 'A', vacancy: spaces.available, lastupdate: `${date} ${time}` }];
+        }
+        return row;
+      });
+      return route.fulfill({ headers, json: { results } });
+    }
     if (url.searchParams.get('dataType') === 'rhrread') return route.fulfill({ headers, json: { rainfall: { data: [{ place: 'Islands District', max: 2 }, { place: 'Central & Western District', max: 3 }], endTime: observedAt } } });
     if (url.pathname.endsWith('/specialtrafficnews.xml')) return route.fulfill({ headers, body: `<body><message><msgID>1</msgID><ChinText>測試道路事故</ChinText><EngText>Fixture Road collision</EngText></message><message><msgID>2</msgID><ChinText>第二測試道路事故</ChinText><EngText>Other Road collision</EngText></message></body>` });
     if (url.hostname === 'www.als.gov.hk') return route.fulfill({ headers, json: { SuggestedAddress: [{ ValidationInformation: { Score: 100 }, Address: { PremisesAddress: { GeospatialInformation: { Latitude: '22.296', Longitude: url.searchParams.get('q') === 'Fixture Road' ? '113.949' : '113.955' } } } }] } });
@@ -82,6 +95,10 @@ async function hoverMarker(page, marker) {
   const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-marker-id]')?.getAttribute('data-marker-id'), { x: box.x + box.width / 2, y: box.y + box.height / 2 });
   assert.equal(hit, await marker.getAttribute('data-marker-id'), 'Hover must reach the visible marker');
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+}
+async function closeTooltips(page) {
+  // Leaflet keeps tooltips that were opened for a selected item, so tests close them explicitly.
+  await page.evaluate(() => { window.__map.eachLayer(layer => layer.closeTooltip?.()); });
 }
 async function counts(page) {
   return page.evaluate(() => { const counts = {}; window.__map.eachLayer(layer => { if (layer.options?.cameraKind && layer.getElement?.()?.classList.contains('camera-marker')) counts[layer.options.cameraKind] = (counts[layer.options.cameraKind] || 0) + 1; }); return counts; });
@@ -168,7 +185,7 @@ try {
     assert.equal(await card.locator('.snapshot-hover-name').textContent(), '快拍測試 1');
     assert.match(await card.locator('.image-update').textContent(), /^影像更新 /);
     assert.match(await card.locator('.snapshot-note').textContent(), /拍攝時間以圖中標示為準/);
-    assert.equal(await page.locator('[data-marker-id="parking-1"]').getAttribute('title'), '10 個空位 / 共 100 個私家車車位');
+    assert.equal(await page.locator('[data-marker-id="parking-1"]').getAttribute('aria-label'), '測試停車場 1 · 私家車 10 / 100');
     await page.screenshot({ path: path.join(evidence, 'snapshot-hover-zh.png') });
     await page.keyboard.press('Escape');
     await marker.focus(); await page.keyboard.press('Enter');
@@ -225,24 +242,79 @@ try {
     assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await context.close();
   });
-  await test('Parking hover preserves location and shows bilingual vacancy / total counts in the native title', async () => {
-    const { page, context } = await create(false, [{ vacancy: 10, space: 100 }, { vacancy: 0, space: 0 }, { vacancy: 4 }, { space: 80 }, { vacancy: 1, space: 20, type: 'B' }, { vacancy: 0, space: 30, type: 'C' }]);
+  await test('Parking tooltip names the carpark and lists every vehicle type as available / total, and opens no popup', async () => {
+    const { page, context } = await create(false, [
+      { vacancy: 10, space: 100, types: { motorCycle: { available: 2, total: 30 } } },
+      { vacancy: 0, space: 0 },
+      { vacancy: 4 },
+      { space: 80 },
+      { vacancy: 1, space: 20, type: 'B' },
+      { vacancy: 0, space: 30, type: 'C' },
+    ]);
     await page.evaluate(() => { window.__map.setView([22.292, 113.964], 15, { animate: false }); });
-    const expected = ['10 available / 100 total private car spaces', '0 available / 0 total private car spaces', '4 available / — total private car spaces', '— available / 80 total private car spaces', '— available / 20 total private car spaces', '— available / 30 total private car spaces'];
-    for (const [index, title] of expected.entries()) {
+    const expected = [
+      'parking fixture 1 · Private car 10 / 100 · Motor cycle 2 / 30',
+      // A car park recording no spaces of its own lists no vehicle type at all.
+      'parking fixture 2',
+      'parking fixture 3 · Private car 4 / —',
+      'parking fixture 4 · Private car — / 80',
+      'parking fixture 5 · Private car — / 20',
+      'parking fixture 6 · Private car — / 30',
+    ];
+    for (const [index, label] of expected.entries()) {
       const marker = page.locator(`[data-marker-id="parking-${index + 1}"]`);
       await marker.waitFor();
-      assert.equal(await marker.getAttribute('title'), title);
-      assert.equal(await marker.getAttribute('aria-label'), `parking fixture ${index + 1}`);
+      // Counts moved out of the delayed native title into the tooltip.
+      assert.equal(await marker.getAttribute('title'), null);
+      assert.equal(await marker.getAttribute('aria-label'), label);
+      assert.equal(await marker.getAttribute('aria-haspopup'), null, 'A carpark marker advertises no dialog');
     }
-    await page.locator('[data-marker-id="parking-1"] .marker-inner').hover();
-    await page.getByRole('tooltip', { name: 'parking fixture 1', exact: true }).waitFor();
+    const empty = page.locator('[data-marker-id="parking-2"]');
+    await hoverMarker(page, empty);
+    const emptyTooltip = page.locator('.leaflet-tooltip.parking-tooltip');
+    await emptyTooltip.locator('.parking-tooltip-name').waitFor();
+    assert.equal(await emptyTooltip.locator('.parking-tooltip-row').count(), 0, 'A car park with no recorded spaces lists no vehicle type');
+    // Leaflet fades a closed tooltip out, so let this one detach before hovering the next marker.
+    await closeTooltips(page);
+    await emptyTooltip.waitFor({ state: 'detached' });
+    const marker = page.locator('[data-marker-id="parking-1"]');
+    await hoverMarker(page, marker);
+    const tooltip = page.locator('.leaflet-tooltip.parking-tooltip');
+    await tooltip.locator('.parking-tooltip-row').first().waitFor();
+    assert.equal(await tooltip.locator('.parking-tooltip-name').textContent(), 'parking fixture 1');
+    assert.equal(await tooltip.locator('.parking-tooltip-counts').textContent(), 'Available / total');
+    assert.deepEqual(await tooltip.locator('.parking-tooltip-row').evaluateAll(rows => rows.map(row => [row.querySelector('span').textContent, row.querySelector('b').textContent])), [['Private car', '10 / 100'], ['Motor cycle', '2 / 30']]);
+    assert.equal(await tooltip.evaluate(element => getComputedStyle(element).borderTopColor), 'rgb(123, 95, 201)', 'The tooltip carries a thin carpark-coloured border');
+    // The tooltip holds everything the popup used to, so a click opens nothing.
+    await marker.locator('.marker-inner').click();
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator('.item-popup').count(), 0, 'Clicking a carpark leaves the details popup closed');
+    // Choosing the car park from search still opens the details panel, listing the same rows.
+    await openSearch(page);
+    await page.locator('.search-popover').getByRole('button', { name: 'Other locations', exact: true }).click();
+    await page.locator('.search-popover input').fill('parking fixture 3');
+    await page.locator('.search-popover').getByRole('button', { name: /^Locate parking fixture 3,/ }).click();
+    await page.locator('.search-popover').waitFor({ state: 'detached' });
+    const popup = page.locator('.item-popup');
+    await popup.locator('.parking-spaces').waitFor();
+    assert.equal(await popup.locator('.parking-counts-header').textContent(), 'Available / total');
+    assert.deepEqual(await popup.locator('.parking-spaces li').evaluateAll(rows => rows.map(row => [row.querySelector('span').textContent, row.querySelector('b').textContent])), [['Private car', '4 / —']]);
+    await popup.locator('.leaflet-popup-close-button').click();
+    await popup.waitFor({ state: 'detached' });
+    await page.mouse.move(50, 20);
+    await closeTooltips(page);
+    await page.locator('.leaflet-tooltip.parking-tooltip').waitFor({ state: 'detached' });
     await page.getByRole('button', { name: 'Chinese', exact: true }).click();
     await page.waitForFunction(() => document.documentElement.lang === 'zh-HK');
-    assert.equal(await page.locator('[data-marker-id="parking-1"]').getAttribute('title'), '10 個空位 / 共 100 個私家車車位');
-    assert.equal(await page.locator('[data-marker-id="parking-2"]').getAttribute('title'), '0 個空位 / 共 0 個私家車車位');
-    await page.locator('[data-marker-id="parking-1"] .marker-inner').hover();
-    await page.getByRole('tooltip', { name: 'parking fixture 1', exact: true }).waitFor();
+    assert.equal(await marker.getAttribute('aria-label'), '測試停車場 1 · 私家車 10 / 100 · 電單車 2 / 30');
+    // The language switch re-renders every marker icon; hover the settled element.
+    await page.waitForTimeout(300);
+    await hoverMarker(page, marker);
+    const zhTooltip = page.locator('.leaflet-tooltip.parking-tooltip');
+    await zhTooltip.locator('.parking-tooltip-name').waitFor();
+    assert.equal(await zhTooltip.locator('.parking-tooltip-name').textContent(), '測試停車場 1');
+    assert.deepEqual(await zhTooltip.locator('.parking-tooltip-row').evaluateAll(rows => rows.map(row => [row.querySelector('span').textContent, row.querySelector('b').textContent])), [['私家車', '10 / 100'], ['電單車', '2 / 30']]);
+    await page.screenshot({ path: path.join(evidence, 'parking-tooltip-zh.png') });
     assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await context.close();
   });

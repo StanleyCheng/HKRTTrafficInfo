@@ -99,21 +99,34 @@ test('traffic search matches both languages, district names and identifiers with
   assert.equal(road.camera.district, undefined);
 });
 
-test('parking joins private-car capacity with exact vacancy counts without inventing missing data', async () => {
+test('parking joins capacity with live vacancy counts per vehicle type without inventing missing data', async () => {
   const values = [10, 0, '12', undefined, null, '', ' ', -1, 'unknown', 'Infinity', 1.5, true];
   const expected = [10, 0, 12, null, null, null, null, null, null, null, null, null];
-  const info = values.map((space, index) => ({ park_Id: String(index), name: `Park ${index}`, latitude: 22.3, longitude: 114.1, privateCar: { space } }));
-  const vacancy: { park_Id: string; privateCar: { vacancy_type?: string; vacancy: unknown }[] }[] = values.map((count, index) => ({ park_Id: String(index), privateCar: [{ vacancy_type: 'A', vacancy: count }] }));
+  type ParkingInfoFixture = { park_Id: string; name: string; latitude: number; longitude: number; privateCar?: { space: unknown }; LGV?: { space: unknown }; coach?: { space: unknown } };
+  type ParkingVacancyFixture = { park_Id: string; privateCar?: { vacancy_type?: string; vacancy: unknown; lastupdate?: string }[]; LGV?: { vacancy_type?: string; vacancy: unknown; lastupdate?: string }[]; HGV?: { vacancy_type?: string; vacancy: unknown; lastupdate?: string }[] };
+  const info: ParkingInfoFixture[] = values.map((space, index) => ({ park_Id: String(index), name: `Park ${index}`, latitude: 22.3, longitude: 114.1, privateCar: { space } }));
+  const vacancy: ParkingVacancyFixture[] = values.map((count, index) => ({ park_Id: String(index), privateCar: [{ vacancy_type: 'A', vacancy: count }] }));
   for (const [index, type] of ['B', 'C', undefined].entries()) {
     info.push({ park_Id: `status-${index}`, name: `Status ${index}`, latitude: 22.3, longitude: 114.1, privateCar: { space: 100 } });
     vacancy.push({ park_Id: `status-${index}`, privateCar: [{ vacancy_type: type, vacancy: 1 }] });
   }
+  // A car park serving several vehicle types keeps them apart, including one that only publishes
+  // a live count (HGV) and one that only publishes capacity (coach).
+  info.push({ park_Id: 'multi', name: 'Multi', latitude: 22.3, longitude: 114.1, privateCar: { space: 100 }, LGV: { space: 5 }, coach: { space: 2 } });
+  vacancy.push({ park_Id: 'multi', privateCar: [{ vacancy_type: 'A', vacancy: 40, lastupdate: '2026-10-03 12:00:00' }], LGV: [{ vacancy_type: 'A', vacancy: 1 }], HGV: [{ vacancy_type: 'A', vacancy: 0, lastupdate: '2026-10-03 12:05:00' }] });
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async input => Response.json({ results: new URL(String(input)).searchParams.get('data') === 'info' ? info : vacancy });
   try {
     const data = await getCameraData('parking');
-    assert.deepEqual(data.cameras.slice(0, values.length).map(camera => camera.capacity), expected);
-    assert.deepEqual(data.cameras.slice(0, values.length).map(camera => camera.vacancy), expected);
-    assert.deepEqual(data.cameras.slice(values.length).map(camera => [camera.vacancy, camera.capacity]), [[null, 100], [null, 100], [null, 100]]);
+    assert.deepEqual(data.cameras.slice(0, values.length).map(camera => camera.parkingSpaces), expected.map((count, index) => index === 1 || count === null ? undefined : [{ type: 'privateCar', available: count, total: count }]));
+    assert.deepEqual(data.cameras.slice(values.length, values.length + 3).map(camera => camera.parkingSpaces), [[{ type: 'privateCar', available: null, total: 100 }], [{ type: 'privateCar', available: null, total: 100 }], [{ type: 'privateCar', available: null, total: 100 }]]);
+    const multi = data.cameras.find(camera => camera.sourceId === 'multi')!;
+    assert.deepEqual(multi.parkingSpaces, [
+      { type: 'privateCar', available: 40, total: 100 },
+      { type: 'LGV', available: 1, total: 5 },
+      { type: 'HGV', available: 0, total: null },
+      { type: 'coach', available: null, total: 2 },
+    ]);
+    assert.equal(multi.dataUpdated, '2026-10-03T12:05:00+08:00', 'The newest type report dates the car park');
   } finally { globalThis.fetch = originalFetch; }
 });

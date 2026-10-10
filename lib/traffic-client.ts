@@ -2,7 +2,7 @@
 // Fetches official open-data endpoints directly; all upstream hosts allow CORS.
 import { loadSlpDetectors } from './slp.ts';
 import { XMLParser } from 'fast-xml-parser';
-import { type Camera, type CameraData, type FlowSegment, type IncidentNotice, type OriginalLayerKind as LayerKind, featureService, isLiveTrafficDataFresh, officialHongKongTimestamp, snapshotInventory, snapshotInventoryEn, speedLevel, speedLevelColors } from './traffic.ts';
+import { type Camera, type CameraData, type FlowSegment, type IncidentNotice, type OriginalLayerKind as LayerKind, type ParkingSpaces, featureService, isLiveTrafficDataFresh, officialHongKongTimestamp, snapshotInventory, snapshotInventoryEn, speedLevel, speedLevelColors } from './traffic.ts';
 import { inHongKong, isUnnamedRoad, parseCsv, parseSegmentRouteNumbers, pickLatestPeriod, popupFields, roundCoordinate } from './traffic-parsing.ts';
 
 const parser = new XMLParser({ ignoreAttributes: true, parseTagValue: false, processEntities: true });
@@ -348,12 +348,34 @@ async function loadIncidents(): Promise<CameraData> {
   return { cameras, count: cameras.length, expectedCount: notices.length, complete: true, fetchedAt: new Date().toISOString(), sourceLastModified: response.headers.get('Last-Modified'), source: speedNewsUrl, notices };
 }
 
-type ParkingInfo = { park_Id: string; name?: string; displayAddress?: string; latitude?: number | string; longitude?: number | string; opening_status?: string; heightLimits?: { height?: number | string }[]; district?: string; nature?: string; carpark_Type?: string; privateCar?: { space?: number | string } };
-type ParkingVacancy = { park_Id: string; privateCar?: { vacancy_type?: string; vacancy?: number | string; lastupdate?: string }[] };
+// The API publishes one object per vehicle type on both endpoints; a car park only
+// appears under the types it actually serves. Type A reports a live count, B reports
+// availability without a number and C reports closure, so only A yields `available`.
+const PARKING_VEHICLE_TYPES = ['privateCar', 'LGV', 'HGV', 'CV', 'coach', 'motorCycle'] as const;
+type ParkingTypeEntry = { space?: number | string };
+type ParkingVacancyEntry = { vacancy_type?: string; vacancy?: number | string; lastupdate?: string };
+type ParkingInfo = { park_Id: string; name?: string; displayAddress?: string; latitude?: number | string; longitude?: number | string; opening_status?: string; heightLimits?: { height?: number | string }[]; district?: string; nature?: string; carpark_Type?: string } & Partial<Record<typeof PARKING_VEHICLE_TYPES[number], ParkingTypeEntry>>;
+type ParkingVacancy = { park_Id: string } & Partial<Record<typeof PARKING_VEHICLE_TYPES[number], ParkingVacancyEntry[]>>;
 
 function parkingCount(value: unknown): number | null {
   const count = typeof value === 'number' || (typeof value === 'string' && value.trim()) ? Number(value) : NaN;
   return Number.isSafeInteger(count) && count >= 0 ? count : null;
+}
+
+function parkingSpaces(row: ParkingInfo, live: ParkingVacancy | undefined): { spaces: ParkingSpaces[]; updated?: string } {
+  const spaces: ParkingSpaces[] = [];
+  let updated: string | undefined;
+  for (const type of PARKING_VEHICLE_TYPES) {
+    const total = parkingCount(row[type]?.space);
+    const report = live?.[type]?.[0];
+    const available = report?.vacancy_type === 'A' ? parkingCount(report.vacancy) : null;
+    // Only the vehicle types this car park reports reach the tooltip: nothing to show means it does
+    // not offer that type, and a type it records as having no spaces at all is not offered either.
+    if (total === 0 || (total === null && available === null)) continue;
+    spaces.push({ type, available, total });
+    if (report?.lastupdate && report.lastupdate > (updated ?? '')) updated = report.lastupdate;
+  }
+  return { spaces, updated };
 }
 
 async function loadParking(): Promise<CameraData> {
@@ -362,34 +384,35 @@ async function loadParking(): Promise<CameraData> {
     officialFetch(`${parkingBaseUrl}?data=info&lang=zh_HK`).catch(() => null),
     officialFetch(`${parkingBaseUrl}?data=vacancy&lang=en_US`),
   ]);
-  const infoRows = ((await infoEn.json()) as { results?: ParkingInfo[] }).results;
+  // The endpoints are public JSON APIs; only `results` is read from each response.
+  const infoJson = (await infoEn.json()) as { results?: ParkingInfo[] };
+  const vacancyJson = (await vacancy.json()) as { results?: ParkingVacancy[] };
+  const infoRows = infoJson.results;
   if (!Array.isArray(infoRows) || !infoRows.length) throw new Error('官方停車場名冊格式不符或未提供資料。');
   let zhNames = new Map<string, ParkingInfo>();
   if (infoZh) {
     try {
-      const zhRows = ((await infoZh.json()) as { results?: ParkingInfo[] }).results ?? [];
-      zhNames = new Map(zhRows.map(row => [row.park_Id, row]));
+      const zhJson = (await infoZh.json()) as { results?: ParkingInfo[] };
+      zhNames = new Map((zhJson.results ?? []).map(row => [row.park_Id, row]));
     } catch {
       // English names remain available if the optional Chinese feed is malformed.
     }
   }
-  const vacancyByPark = new Map(((await vacancy.json()) as { results?: ParkingVacancy[] }).results?.map(row => [row.park_Id, row.privateCar?.[0]]) ?? []);
+  const vacancyByPark = new Map((vacancyJson.results ?? []).map(row => [row.park_Id, row]));
   const cameras: Camera[] = [];
   for (const row of infoRows) {
     const lat = Number(row.latitude);
     const lng = Number(row.longitude);
     if (!row.park_Id || !inHongKong(lat, lng)) continue;
-    const live = vacancyByPark.get(row.park_Id);
-    // Only type A reports a count; B reports availability and C reports closure.
-    const vacancyCount = live?.vacancy_type === 'A' ? parkingCount(live.vacancy) : null;
+    const { spaces, updated } = parkingSpaces(row, vacancyByPark.get(row.park_Id));
     const zh = zhNames.get(row.park_Id);
     cameras.push({
       id: `parking-${row.park_Id}`, sourceId: row.park_Id, kind: 'parking',
       name: zh?.name || row.name || row.park_Id, nameEn: row.name,
       lat, lng, district: row.district || undefined,
       remarks: (zh?.displayAddress || row.displayAddress || '').trim() || undefined,
-      vacancy: vacancyCount, capacity: parkingCount(row.privateCar?.space), heightLimit: Number(row.heightLimits?.[0]?.height) || undefined,
-      openingStatus: row.opening_status || undefined, dataUpdated: live?.lastupdate?.replace(' ', 'T') ? `${live.lastupdate.replace(' ', 'T')}+08:00` : undefined,
+      parkingSpaces: spaces.length ? spaces : undefined, heightLimit: Number(row.heightLimits?.[0]?.height) || undefined,
+      openingStatus: row.opening_status || undefined, dataUpdated: updated?.replace(' ', 'T') ? `${updated.replace(' ', 'T')}+08:00` : undefined,
     });
   }
   if (!cameras.length) throw new Error('官方停車場名冊暫無可用位置。');

@@ -8,6 +8,11 @@ export type Arrival = { route: string; destination: string; destinationEn: strin
 export type MapPath = { id: string; color: string; points: [number, number][] };
 export type Language = 'en' | 'zh';
 export type SpeedLevel = 'free' | 'moderate' | 'slow' | 'unknown';
+// The car park API reports each of these separately; private car is simply the first one.
+export type ParkingVehicleType = 'privateCar' | 'LGV' | 'HGV' | 'CV' | 'coach' | 'motorCycle';
+export type ParkingSpaces = { type: ParkingVehicleType; available: number | null; total: number | null };
+// A car park row reads "available / total"; the tooltip and the detail panel share this format.
+export const parkingCounts = (space: ParkingSpaces, locale: string): string => `${space.available?.toLocaleString(locale) ?? '—'} / ${space.total?.toLocaleString(locale) ?? '—'}`;
 export type Camera = {
   id: string; sourceId: string; kind: LayerKind; name: string; nameEn?: string;
   lat: number; lng: number; district?: string; districtEn?: string; region?: string; regionEn?: string; remarks?: string;
@@ -15,7 +20,9 @@ export type Camera = {
   color?: string; lineColors?: string[]; rotation?: number; vehicleIcon?: string;
   level?: SpeedLevel; speedKmh?: number | null;
   speedLimitKmh?: number;
-  vacancy?: number | null; capacity?: number | null; heightLimit?: number; openingStatus?: string;
+  heightLimit?: number; openingStatus?: string;
+  // Every vehicle type the car park publishes, with the spaces that are free and the spaces it has.
+  parkingSpaces?: ParkingSpaces[];
   rainfallMm?: number;
   text?: string; textEn?: string;
   dataUpdated?: string;

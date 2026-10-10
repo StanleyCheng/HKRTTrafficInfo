@@ -105,6 +105,15 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .level-badge { color: #172c39; font-size: 12px; font-weight: 650; padding: 4px 8px; border-radius: 8px; }
 .live-label { font-size: 13px; color: var(--muted); }
 .detail-address { font-size: 13px; color: #405965; line-height: 1.7; overflow-wrap: anywhere; }
+/* Car parks list every published vehicle type as available / total in both the popup and the
+   marker tooltip. The tooltip's thin border takes the marker's layer colour when it opens. */
+.parking-spaces, .parking-tooltip-body { display: flex; flex-direction: column; gap: 3px; }
+.parking-counts-header, .parking-tooltip-counts { font-size: 11px; color: #52707e; letter-spacing: .02em; }
+.parking-spaces ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.parking-spaces li, .parking-tooltip-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.parking-tooltip-name { font-size: 13px; font-weight: 650; }
+.parking-tooltip-row { font-size: 12px; }
+.parking-spaces li b, .parking-tooltip-row b { font-variant-numeric: tabular-nums; }
 .snapshot-frame { position: relative; aspect-ratio: 4/3; background: #e8eef1; border-radius: 12px; overflow: hidden; display: grid; place-items: center; }
 .snapshot-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .image-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; background: #e8eef1ed; font-size: 13px; color: #405965; text-align: center; padding: 20px; }

@@ -197,15 +197,15 @@ All seven layers share the same pipeline: `TrafficMonitor.fetchLayer(kind)` → 
 
 ### 5.6 Parking vacancy (`parking`)
 
-- **Function**: car-park markers with live private-car vacancy count, height limit, opening status, address.
-- **UI**: markers (`symbols.parking`); detail live-figure vacancy, `heightLimitLabel`, `openingStatusLabel`, address as remarks.
+- **Function**: car-park markers listing the spaces available and the spaces the car park has for every vehicle type it publishes, plus height limit, opening status and address.
+- **UI**: markers (`symbols.parking`); the marker tooltip and the detail panel both list `parkingTypeLabel` rows as `available / total` in the current language, tooltip bordered in the layer colour; no details popup opens from the marker (search selection still shows it).
 - **Client access**: `loadParking()` (`lib/traffic-client.ts`).
 - **Server route**: none (deleted `/api/cameras/parking`).
 - **Upstream**: DATA.GOV.HK one-stop API, base `https://api.data.gov.hk/v1/carpark-info-vacancy`, three requests: `?data=info&lang=en_US`, `?data=info&lang=zh_HK` (optional, failure tolerated), `?data=vacancy&lang=en_US`. Format: JSON `{results: [...]}`. Dataset `https://data.gov.hk/en-data/dataset/hk-dpo-datagovhk1-carpark-info-vacancy`.
 - **Refresh**: poll 300 s; TTL 180 s.
-- **Parsing**: info rows filtered to HK bounds; joined to vacancy by `park_Id` (`privateCar[0]`); vacancy negative/missing → `null` (shown as "no live data", `parkingNoLive`); Chinese name/address preferred when present; `lastupdate` normalized `YYYY-MM-DD HH:mm:ss` → `+08:00` ISO; `heightLimits[0].height` numeric.
+- **Parsing**: info rows filtered to HK bounds; both endpoints read per vehicle type (`privateCar`, `LGV`, `HGV`, `CV`, `coach`, `motorCycle`); `parkingSpaces` joins `space` with the live `vacancy` where `vacancy_type` is `A` (B reports availability without a count, C reports closure); a type with no spaces recorded and no live count, or with `space: 0`, is dropped so only the types the car park offers are listed; Chinese name/address preferred when present; newest `lastupdate` normalized `YYYY-MM-DD HH:mm:ss` → `+08:00` ISO; `heightLimits[0].height` numeric.
 - **Failure**: empty/malformed English info feed → hard error; zh feed failure → English names retained.
-- **Gotchas**: only `privateCar` vacancy is used; `opening_status` passed through raw (English feed values even in zh UI).
+- **Gotchas**: `parkingNoLive` still covers a car park whose every type was dropped; `opening_status` passed through raw (English feed values even in zh UI).
 
 ### 5.7 District rainfall (`rainfall`)
 

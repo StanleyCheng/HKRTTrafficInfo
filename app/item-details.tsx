@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { ArrowUpRight, LoaderCircle } from 'lucide-react';
 import { formatRecordDate, integrationMessages, messages } from '@/lib/i18n';
-import { hkTime, layerText, layers, speedLevelColors, type Camera, type Language } from '@/lib/traffic';
+import { hkTime, layerText, layers, parkingCounts, speedLevelColors, type Camera, type Language } from '@/lib/traffic';
 import type { BusRouteSelection } from '@/lib/bus-route';
 import SnapshotImage from './snapshot-image';
 
@@ -35,10 +35,13 @@ export default function ItemDetails({ camera, language, now, stale, onActivity, 
       <span className="level-badge" style={{ background: speedLevelColors[camera.level ?? 'unknown'] }}>{copy.speedLevels[camera.level ?? 'unknown']}</span>
       <span className="live-label">{copy.speedNow}</span>
     </div>}
-    {camera.kind === 'parking' && <div className="live-figure">
-      <strong>{camera.vacancy === null || camera.vacancy === undefined ? '—' : camera.vacancy.toLocaleString(numberLocale)}</strong>
-      <span className="live-label">{camera.vacancy === null || camera.vacancy === undefined ? copy.parkingNoLive : copy.parkingSpaces}</span>
-    </div>}
+    {camera.kind === 'parking' && (camera.parkingSpaces?.length ? <div className="parking-spaces">
+      <span className="parking-counts-header">{copy.parkingCountsHeader}</span>
+      <ul>{camera.parkingSpaces.map(space => <li key={space.type}><span>{copy.parkingTypeLabel[space.type]}</span><b>{parkingCounts(space, numberLocale)}</b></li>)}</ul>
+    </div> : <div className="live-figure">
+      <strong>—</strong>
+      <span className="live-label">{copy.parkingNoLive}</span>
+    </div>)}
     {camera.kind === 'parking' && camera.remarks && <p className="detail-address">{camera.remarks}</p>}
     {camera.kind === 'rainfall' && camera.rainfallMm !== undefined && <div className="live-figure">
       <strong>{camera.rainfallMm}</strong>
