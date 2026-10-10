@@ -1,8 +1,70 @@
-import type { GeoPoint } from "./mtr-estimate.ts"
+import { metresBetween, type GeoPoint } from "./mtr-estimate.ts"
 import piersFile from "../data/ferry-piers.json" with { type: "json" }
 
 // shortcut: corridors are inferred from official coastlines, replace with operator sailing polylines when published.
 // Source and terminal tolerances: docs/ferry-geography.md.
+
+// A ferry cannot turn on the spot, so each corridor is rounded with a
+// centripetal Catmull-Rom spline that still passes through every inferred
+// bend. Legs without neighbouring bends stay exactly straight.
+const CURVE_SAMPLE_METRES = 20
+const CURVE_STRAIGHT_METRES = 0.5
+
+const reflect = (about: GeoPoint, away: GeoPoint): GeoPoint => ({ lng: 2 * about.lng - away.lng, lat: 2 * about.lat - away.lat })
+
+// Perpendicular distance in metres from `point` to the line through `a` and `b`.
+function offTrackMetres(a: GeoPoint, b: GeoPoint, point: GeoPoint): number {
+  const metresPerLat = 111_320
+  const metresPerLng = metresPerLat * Math.cos((a.lat * Math.PI) / 180)
+  const dx = (b.lng - a.lng) * metresPerLng
+  const dy = (b.lat - a.lat) * metresPerLat
+  const length = Math.hypot(dx, dy)
+  if (length === 0) return metresBetween(a, point)
+  return Math.abs((point.lng - a.lng) * metresPerLng * dy - (point.lat - a.lat) * metresPerLat * dx) / length
+}
+
+const lerpPoint = (a: GeoPoint, b: GeoPoint, from: number, to: number, at: number): GeoPoint => {
+  const mix = (at - from) / (to - from)
+  return { lng: a.lng + (b.lng - a.lng) * mix, lat: a.lat + (b.lat - a.lat) * mix }
+}
+
+// Barry-Goldman centripetal Catmull-Rom over one knot interval [t1, t2].
+function curvePoint(p0: GeoPoint, p1: GeoPoint, p2: GeoPoint, p3: GeoPoint, t0: number, t1: number, t2: number, t3: number, at: number): GeoPoint {
+  const a1 = lerpPoint(p0, p1, t0, t1, at)
+  const a2 = lerpPoint(p1, p2, t1, t2, at)
+  const a3 = lerpPoint(p2, p3, t2, t3, at)
+  const b1 = lerpPoint(a1, a2, t0, t2, at)
+  const b2 = lerpPoint(a2, a3, t1, t3, at)
+  return lerpPoint(b1, b2, t1, t2, at)
+}
+
+// The corridor knots are emitted verbatim (piers and inferred bends); the
+// spline only adds interior points around bends, rounded to pier precision.
+function smoothFairway(corridor: readonly GeoPoint[]): GeoPoint[] {
+  const points = corridor.filter((point, index) => index === 0 || metresBetween(corridor[index - 1]!, point) >= 1)
+  if (points.length < 3) return [...points]
+  const path: GeoPoint[] = []
+  for (let index = 0; index + 1 < points.length; index += 1) {
+    const p1 = points[index]!
+    const p2 = points[index + 1]!
+    path.push(p1)
+    const p0 = points[index - 1] ?? reflect(p1, p2)
+    const p3 = points[index + 2] ?? reflect(p2, p1)
+    // Only neighbouring bends curve a leg; without them it stays a straight line.
+    if (offTrackMetres(p1, p2, p0) < CURVE_STRAIGHT_METRES && offTrackMetres(p1, p2, p3) < CURVE_STRAIGHT_METRES) continue
+    const t1 = Math.sqrt(Math.max(metresBetween(p0, p1), 1e-6))
+    const t2 = t1 + Math.sqrt(Math.max(metresBetween(p1, p2), 1e-6))
+    const t3 = t2 + Math.sqrt(Math.max(metresBetween(p2, p3), 1e-6))
+    const steps = Math.max(2, Math.ceil(metresBetween(p1, p2) / CURVE_SAMPLE_METRES))
+    for (let step = 1; step < steps; step += 1) {
+      const point = curvePoint(p0, p1, p2, p3, 0, t1, t2, t3, t1 + ((t2 - t1) * step) / steps)
+      path.push({ lng: Math.round(point.lng * 1e6) / 1e6, lat: Math.round(point.lat * 1e6) / 1e6 })
+    }
+  }
+  path.push(points[points.length - 1]!)
+  return path
+}
+
 const HARBOUR_WEST: GeoPoint[] = [
   { lng: 114.148, lat: 22.294 },
   { lng: 114.128, lat: 22.293 },
@@ -100,6 +162,7 @@ const FAIRWAY: Record<string, GeoPoint[]> = {
   "hkkf-peng-chau|hkkf-hei-ling-chau": [
     { lng: 114.033, lat: 22.283 },
     { lng: 114.027, lat: 22.273 },
+    { lng: 114.0242, lat: 22.266 },
     { lng: 114.023, lat: 22.263 },
   ],
   "sun-chi-ma-wan|sun-cheung-chau": [
@@ -137,9 +200,9 @@ const FAIRWAY: Record<string, GeoPoint[]> = {
 
 export function ferryFairway(fromId: string, toId: string, from: GeoPoint, to: GeoPoint): GeoPoint[] {
   const forward = FAIRWAY[`${fromId}|${toId}`]
-  if (forward) return [from, ...forward, to]
+  if (forward) return smoothFairway([from, ...forward, to])
   const back = FAIRWAY[`${toId}|${fromId}`]
-  if (back) return [from, ...[...back].reverse(), to]
+  if (back) return smoothFairway([to, ...back, from]).reverse()
   return [from, to]
 }
 

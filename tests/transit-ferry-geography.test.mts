@@ -4,9 +4,11 @@ import piersFile from "../data/ferry-piers.json" with { type: "json" }
 import { ferryFairway, ferryPaths } from "../lib/ferry-fairway.ts"
 import { estimateFerryVessels, pathMetres, pointAlong } from "../lib/ferry-run.ts"
 import { movingCameras, normalizeIntegration } from "../lib/integration-client.ts"
-import { metresBetween } from "../lib/mtr-estimate.ts"
+import { metresBetween, type GeoPoint } from "../lib/mtr-estimate.ts"
 import type { FerryResponse, FerryVessel } from "../lib/types.ts"
 import { inSea, landSamples } from "./ferry-geography.mts"
+
+const headingOf = (from: GeoPoint, to: GeoPoint): number => Math.atan2((to.lng - from.lng) * Math.cos((from.lat * Math.PI) / 180), to.lat - from.lat)
 
 const pairs = [
   ["hkkf-central", "hkkf-yung-shue-wan"],
@@ -74,6 +76,16 @@ for (const pair of pairs) {
       assert.ok(pathMetres(path) <= metresBetween(from, to) * 2.7, "route must be a reasonable crossing")
       const land = landSamples(path)
       assert.equal(land.length, 0, `${from.id} → ${to.id}: ${land.length} land samples, first ${JSON.stringify(land[0])}`)
+      // A ferry cannot turn on the spot: heading changes must be spread along
+      // the corridor. Short legs only occur at pier approaches, where real
+      // boats manoeuvre hardest; longer legs must change heading gradually.
+      for (let vertex = 1; vertex + 1 < path.length; vertex += 1) {
+        const previous = path[vertex - 1]!, point = path[vertex]!, next = path[vertex + 1]!
+        let turn = Math.abs(headingOf(previous, point) - headingOf(point, next)) * 180 / Math.PI
+        if (turn > 180) turn = 360 - turn
+        const leg = Math.min(metresBetween(previous, point), metresBetween(point, next))
+        assert.ok(turn <= (leg > 60 ? 10 : 35), `${from.id} → ${to.id}: ${turn.toFixed(1)}° turn on ${leg.toFixed(0)} m legs at vertex ${vertex} must be spread along the corridor`)
+      }
       const track = { route: "fixture", fromId: from.id, toId: to.id, fromTc: from.nameTc, fromEn: from.nameEn, toTc: to.nameTc, toEn: to.nameEn, destTc: to.nameTc }
       const vessel = estimateFerryVessels([track], [
         { route: "fixture", pierId: from.id, arriving: false, eta: new Date(now).toISOString(), destTc: to.nameTc },

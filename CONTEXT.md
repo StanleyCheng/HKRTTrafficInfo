@@ -7,6 +7,9 @@ This context names the geographic records and map controls used to explore Hong 
 **Map item**:
 A selectable geographic record or road segment, including cameras, detectors, incidents, parking, rainfall, crossings, works, tolls, boundary points, stops, stations, piers, and moving transport records.
 
+**Sailing corridor**:
+The smooth water path drawn between two piers. Route lines, timetable estimates and projected GPS movement all follow the same corridor in either direction.
+
 **Item popup**:
 The information shown next to a selected map item.
 
