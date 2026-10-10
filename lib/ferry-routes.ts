@@ -1,8 +1,8 @@
 export const SUN_ROUTES: { code: string; from: string; to: string; fromTc: string; fromEn: string; destTc: string; destEn: string }[] = [
   { code: "CECC", from: "sun-central", to: "sun-cheung-chau", fromTc: "中環", fromEn: "Central", destTc: "長洲", destEn: "Cheung Chau" },
   { code: "CCCE", from: "sun-cheung-chau", to: "sun-central", fromTc: "長洲", fromEn: "Cheung Chau", destTc: "中環", destEn: "Central" },
-  { code: "CEMW", from: "sun-central", to: "sun-mui-wo", fromTc: "中環", fromEn: "Central", destTc: "梅窩", destEn: "Mui Wo" },
-  { code: "MWCE", from: "sun-mui-wo", to: "sun-central", fromTc: "梅窩", fromEn: "Mui Wo", destTc: "中環", destEn: "Central" },
+  { code: "CEMW", from: "hkkf-central-6", to: "sun-mui-wo", fromTc: "中環", fromEn: "Central", destTc: "梅窩", destEn: "Mui Wo" },
+  { code: "MWCE", from: "sun-mui-wo", to: "hkkf-central-6", fromTc: "梅窩", fromEn: "Mui Wo", destTc: "中環", destEn: "Central" },
   { code: "NPHH", from: "sun-north-point", to: "sun-hung-hom", fromTc: "北角", fromEn: "North Point", destTc: "紅磡", destEn: "Hung Hom" },
   { code: "HHNP", from: "sun-hung-hom", to: "sun-north-point", fromTc: "紅磡", fromEn: "Hung Hom", destTc: "北角", destEn: "North Point" },
   { code: "NPKC", from: "sun-north-point", to: "sun-kowloon-city", fromTc: "北角", fromEn: "North Point", destTc: "九龍城", destEn: "Kowloon City" },

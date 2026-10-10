@@ -5,6 +5,7 @@ import { linesThrough, lineRecord, mtrStationCollection, mtrTrackCollection, pro
 import { lrtColor, lrtStation, lrtStationCollection, lrtTrackCollection, projectLrtTrain } from './lrt-network.ts';
 import { railPosition } from './rail-geometry.ts';
 import { ferryVesselPoint } from './ferry-run.ts';
+import { ferryPaths } from './ferry-fairway.ts';
 import { ferryInstant } from './ferry-clock.ts';
 import { ferryVehicleIcon } from './vehicle-icons.ts';
 import { decorateControlPoints } from './control-points.ts';
@@ -121,7 +122,7 @@ export function normalizeIntegration(kind: IntegrationKind, payload: Envelope): 
       const eta = ferryInstant(call.eta, Date.parse(data.observedAt ?? data.fetchedAt));
       return { route: call.route, destination: call.destTc, destinationEn: call.destEn, eta: eta === null ? undefined : new Date(eta).toISOString(), firstFerry: call.firstFerry, lastFerry: call.lastFerry, minutes: call.minutes, scheduled: call.scheduled, remark: call.remarkTc, remarkEn: call.remarkEn };
     }) }));
-    data.paths = (payload as FerryResponse).vessels.filter(vessel => vessel.pathLng && vessel.pathLat).map(vessel => ({ id: vessel.id, color: layers.ferry.color, points: vessel.pathLng!.map((lng, i) => [vessel.pathLat![i], lng] as [number, number]) }));
+    data.paths = ferryPaths().map(path => ({ id: path.id, color: layers.ferry.color, points: path.pathLng.map((lng, i) => [path.pathLat[i], lng] as [number, number]) }));
   }
   data.cameras = data.cameras.map(camera => ({ ...camera, dataUpdated: kind === 'crossing' || kind === 'mtr' || kind === 'lrt' ? camera.dataUpdated : camera.dataUpdated || data.observedAt || undefined }));
   data.count = kind === 'weather-warning' ? (payload as WarningsResponse).warnings.length : data.cameras.length;

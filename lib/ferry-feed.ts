@@ -60,7 +60,7 @@ const TIMETABLE_URLS = [
 ]
 
 const FORTUNE_LEGS = [
-  { origin: "16", destination: "17", pierId: "sun-north-point", destTc: "觀塘", destEn: "Kwun Tong" },
+  { origin: "16", destination: "17", pierId: "fortune-north-point", destTc: "觀塘", destEn: "Kwun Tong" },
   { origin: "17", destination: "16", pierId: "fortune-kwun-tong", destTc: "北角", destEn: "North Point" },
   { origin: "17", destination: "18", pierId: "fortune-kwun-tong", destTc: "啟德", destEn: "Kai Tak" },
 ]
@@ -218,13 +218,13 @@ function ferryTracks(): FerryTrack[] {
     }
   }
   for (const leg of FORTUNE_LEGS) {
-    const toId = leg.destination === "17" ? "fortune-kwun-tong" : leg.destination === "16" ? "sun-north-point" : ""
+    const toId = leg.destination === "17" ? "fortune-kwun-tong" : leg.destination === "16" ? "fortune-north-point" : "fortune-kai-tak"
     const to = toId === "fortune-kwun-tong"
       ? { tc: "觀塘", en: "Kwun Tong" }
-      : toId === "sun-north-point"
+      : toId === "fortune-north-point"
         ? { tc: "北角", en: "North Point" }
         : { tc: leg.destTc, en: leg.destEn }
-    const from = leg.pierId === "sun-north-point"
+    const from = leg.pierId === "fortune-north-point"
       ? { tc: "北角", en: "North Point" }
       : { tc: "觀塘", en: "Kwun Tong" }
     tracks.push({

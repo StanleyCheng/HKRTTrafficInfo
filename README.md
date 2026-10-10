@@ -66,6 +66,8 @@ Bus stops are always drawn as individual icons with decluttered name/route label
 
 [CORS probe results](docs/cors-probe.md) record real GET status and headers. KMB, Citybus, GMB, NLB, HKO warnings and SLP return allow-origin `*`. Both ImmD queue files return HTTP 200 without allow-origin, so boundary queues require hosting. HKeMobility requires server requests; rail sharing and mixed ferry sources also require hosting.
 
+The ferry layer draws all 16 supported sailing corridors even between departures, and estimated boats follow those same water routes. [Ferry geography sources and limitations](docs/ferry-geography.md) describe the inferred geometry and coastline checks.
+
 ## Deployment
 
 Two production targets, both updated on every push to `main` once the corresponding GitHub secret is set:

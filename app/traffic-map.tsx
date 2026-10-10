@@ -722,7 +722,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     rail.forEach(path => L.polyline(path.points, { color: '#fff', weight: 6, opacity: .9, smoothFactor: 0, interactive: false, renderer: railRenderer.current ?? undefined, className: 'rail-route-halo' }).addTo(group));
     paths?.forEach(path => {
       const isRail = /^(mtr|lrt)-/.test(path.id);
-      L.polyline(path.points, { color: path.color, weight: isRail ? 3.5 : 3, opacity: isRail ? .95 : .65, smoothFactor: isRail ? 0 : 1, interactive: false, renderer: (isRail ? railRenderer.current : segmentRenderer.current) ?? undefined, className: isRail ? 'rail-route-polyline' : undefined }).addTo(group);
+      L.polyline(path.points, { color: path.color, weight: isRail ? 3.5 : 3, opacity: isRail ? .95 : .65, smoothFactor: 0, interactive: false, renderer: (isRail ? railRenderer.current : segmentRenderer.current) ?? undefined, className: isRail ? 'rail-route-polyline' : 'ferry-route-polyline' }).addTo(group);
     });
     return () => { group.remove(); if (rail.length) m.attributionControl.removeAttribution(OSM_ATTRIBUTION); };
   }, [paths, ready]);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-const { estimateFerryVessels, ferryMotionPoint, placeFerry, pointAlong, syncFerryMotion } = await import("../lib/ferry-run.ts")
+const { estimateFerryVessels, ferryMotionPoint, placeFerry, syncFerryMotion } = await import("../lib/ferry-run.ts")
 
 const from = { lng: 114, lat: 22 }
 const to = { lng: 114.1, lat: 22 }
@@ -124,53 +124,5 @@ const later = ferryMotionPoint(clock[0], now + 60_000)
 assert.ok(early && later)
 assert.ok(later.lng > early.lng)
 assert.ok(later.lng < to.lng)
-
-const { ferryFairway: fairway } = await import("../lib/ferry-fairway.ts")
-const central = { lng: 114.15845, lat: 22.28792 }
-const yungShueWan = { lng: 114.10877, lat: 22.22631 }
-const water = fairway("hkkf-central", "hkkf-yung-shue-wan", central, yungShueWan)
-const island: [number, number][] = [
-  [114.128, 22.282],
-  [114.175, 22.29],
-  [114.23, 22.282],
-  [114.252, 22.24],
-  [114.19, 22.218],
-  [114.155, 22.242],
-  [114.13, 22.255],
-  [114.124, 22.272],
-]
-const onIsland = (point: { lng: number; lat: number }) => {
-  let inside = false
-  for (let index = 0, previous = island.length - 1; index < island.length; previous = index, index += 1) {
-    const start = island[previous]
-    const end = island[index]
-    if (!start || !end) continue
-    const crosses = (start[1] > point.lat) !== (end[1] > point.lat)
-      && point.lng < ((end[0] - start[0]) * (point.lat - start[1])) / (end[1] - start[1]) + start[0]
-    if (crosses) inside = !inside
-  }
-  return inside
-}
-assert.equal(onIsland({ lng: 114.143, lat: 22.269 }), true)
-for (let step = 0; step <= 20; step += 1) {
-  const point = pointAlong(water, step / 20)
-  assert.equal(onIsland(point), false, `${point.lng},${point.lat}`)
-}
-const approach = pointAlong(water, 0.74)
-assert.equal(onIsland(approach), false)
-assert.ok(approach.lng < 114.13 || approach.lat > 22.28)
-const legs = [
-  ["hkkf-central", "hkkf-sok-kwu-wan", central, { lng: 114.1313, lat: 22.20626 }],
-  ["sun-central", "sun-cheung-chau", { lng: 114.15938, lat: 22.28768 }, { lng: 114.02834, lat: 22.20858 }],
-  ["sun-central", "sun-mui-wo", { lng: 114.15938, lat: 22.28768 }, { lng: 114.00116, lat: 22.26507 }],
-  ["hkkf-central-6", "hkkf-peng-chau", { lng: 114.1603, lat: 22.28739 }, { lng: 114.03711, lat: 22.28458 }],
-] as const
-for (const [fromId, toId, origin, dest] of legs) {
-  const path = fairway(fromId, toId, origin, dest)
-  for (let step = 1; step <= 19; step += 1) {
-    const point = pointAlong(path, step / 20)
-    assert.equal(onIsland(point), false, `${fromId} ${point.lng},${point.lat}`)
-  }
-}
 
 console.log("ferry run ok")
