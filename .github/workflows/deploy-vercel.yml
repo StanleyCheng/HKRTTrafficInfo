@@ -47,6 +47,6 @@ jobs:
           # --yes skips the "deploy to existing project?" confirmation; the
           # project is matched from vercel.json + git remote automatically.
           if ! npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"; then
-            echo "::error::Vercel refused these credentials. The CLI resolves the account before deploying, so a token scoped to a single project fails here with 'The token provided via --token argument is not valid' even though the REST API accepts it — recreate the token with the team selected in Scope (All Projects)."
+            echo "::error::Vercel refused these credentials: the token is revoked or expired, or it is scoped to a single project. The CLI resolves the account before deploying, so a project-scoped token fails here with 'The token provided via --token argument is not valid' even though the REST API accepts it. Create a token at https://vercel.com/account/tokens with Scope set to the team (All Projects)."
             exit 1
           fi
