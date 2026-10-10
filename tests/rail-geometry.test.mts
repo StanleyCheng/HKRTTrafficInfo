@@ -65,7 +65,7 @@ test("production train estimates, dwell and refresh distance use the same drawn 
     const data = kind === "mtr" ? normalizeIntegration(kind, payload as MtrResponse) : normalizeIntegration(kind, payload as LrtResponse)
     const camera = movingCameras(kind, data, now)[0]
     assert.equal(camera.estimated, true)
-    const position = camera.railPosition!
+    const position = camera.routePosition!
     assert.ok(position)
     assert.deepEqual([camera.lng, camera.lat], routePointAtDistance(position.coordinates, position.distances, position.distance), "Refresh smoothing stays on the route")
     assert.equal(normalizeIntegration(kind, payload).paths, data.paths, "Arrival polling reuses static linework")

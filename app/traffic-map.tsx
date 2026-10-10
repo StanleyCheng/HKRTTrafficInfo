@@ -131,7 +131,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const vehicleGroup = useRef<Leaflet.LayerGroup | null>(null);
   const fittedBusRoute = useRef<string | null>(null);
   const busVehicle = useRef<{ key: string; marker: Leaflet.Marker; distance: number; feed: BusRouteResponse; correction?: { distance: number; at: number }; heading?: HTMLElement | null } | null>(null);
-  const vehicles = useRef(new Map<string, { marker: Leaflet.Marker; camera: Camera; feed: CameraData | undefined; language: Language; hoverAt: number; railDistance?: number; correction?: { lat: number; lng: number; at: number }; railCorrection?: { distance: number; at: number } }>());
+  const vehicles = useRef(new Map<string, { marker: Leaflet.Marker; camera: Camera; feed: CameraData | undefined; language: Language; hoverAt: number; routeDistance?: number; correction?: { lat: number; lng: number; at: number }; routeCorrection?: { distance: number; at: number } }>());
   const previousSegmentSelection = useRef<string | null>(null);
   const onSelectSegmentRef = useRef(onSelectSegment);
   const [ready, setReady] = useState(false);
@@ -877,15 +877,17 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       next.forEach(camera => {
         const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
         const rail = camera.kind === 'mtr' || camera.kind === 'lrt';
-        const railPosition = camera.railPosition;
+        const routePosition = camera.routePosition;
         const feed = transitFeeds?.[camera.kind as 'mtr' | 'lrt' | 'ferry'];
         const existing = entries.get(camera.id);
         if (existing) {
           const node = existing.marker.getElement();
           if (existing.feed !== feed) {
-            // Refresh corrections follow the track; latitude/longitude tweens cut across curves.
-            if (railPosition) existing.railCorrection = !reducedMotion.matches && existing.camera.railPosition?.key === railPosition.key && existing.railDistance !== undefined ? { distance: existing.railDistance - railPosition.distance, at: now } : undefined;
-            else if (!rail && !camera.estimated && !reducedMotion.matches) {
+            // Refresh corrections follow the route the vehicle is on: a distance offset walks the
+            // surveyed path, while a latitude/longitude tween would cut across a bend. Only a GPS
+            // fix without a surveyed route falls back to that tween.
+            if (routePosition) existing.routeCorrection = !reducedMotion.matches && existing.camera.routePosition?.key === routePosition.key && existing.routeDistance !== undefined ? { distance: existing.routeDistance - routePosition.distance, at: now } : undefined;
+            else if (!rail && camera.positionSource === 'gps' && !reducedMotion.matches) {
               const position = existing.marker.getLatLng();
               existing.correction = { lat: position.lat - camera.lat, lng: position.lng - camera.lng, at: now };
             } else if (!rail) existing.correction = undefined;
@@ -895,14 +897,16 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
             const destEl = node?.querySelector<HTMLElement>('.vehicle-dest');
             if (destEl && destEl.textContent !== destination) destEl.textContent = destination;
           }
-          if (!rail && (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn || existing.camera.estimated !== camera.estimated)) {
-            const icon = existing.marker.getElement(); if (icon) { icon.title = name; icon.setAttribute('aria-label', `${name} · ${camera.estimated ? integrationMessages[language].estimatedFerry : integrationMessages[language].gps}`); }
+          // An interpolated boat keeps the label of its source, so a marker projected forward from
+          // an operator GPS fix still reads as GPS rather than as a timetable estimate.
+          if (!rail && (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn || existing.camera.positionSource !== camera.positionSource)) {
+            const icon = existing.marker.getElement(); if (icon) { icon.title = name; icon.setAttribute('aria-label', `${name} · ${camera.positionSource === 'gps' ? integrationMessages[language].gps : integrationMessages[language].estimatedFerry}`); }
           }
-          const correction = railPosition ? existing.railCorrection : existing.correction;
+          const correction = routePosition ? existing.routeCorrection : existing.correction;
           const remaining = !reducedMotion.matches && correction ? Math.max(0, 1 - (now - correction.at) / 1000) ** 3 : 0;
-          const railDistance = railPosition ? railPosition.distance + (existing.railCorrection?.distance ?? 0) * remaining : undefined;
-          const railPoint = railPosition && railDistance !== undefined ? routePointAtDistance(railPosition.coordinates, railPosition.distances, railDistance) : null;
-          const point = railPoint ? L.latLng(railPoint[1], railPoint[0]) : L.latLng(camera.lat + (existing.correction?.lat ?? 0) * remaining, camera.lng + (existing.correction?.lng ?? 0) * remaining);
+          const routeDistance = routePosition ? routePosition.distance + (existing.routeCorrection?.distance ?? 0) * remaining : undefined;
+          const routePoint = routePosition && routeDistance !== undefined ? routePointAtDistance(routePosition.coordinates, routePosition.distances, routeDistance) : null;
+          const point = routePoint ? L.latLng(routePoint[1], routePoint[0]) : L.latLng(camera.lat + (existing.correction?.lat ?? 0) * remaining, camera.lng + (existing.correction?.lng ?? 0) * remaining);
           const previous = existing.marker.getLatLng();
           const dx = (point.lng - previous.lng) * Math.cos(point.lat * Math.PI / 180), dy = point.lat - previous.lat;
           const running = Math.abs(dx) + Math.abs(dy) > 1e-10;
@@ -918,8 +922,8 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
           if (art && vehicleIcon(existing.camera) !== vehicleIcon(camera)) art.src = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}${vehicleIcon(camera)}`;
           existing.camera = camera; existing.feed = feed; existing.language = language;
           if (move) {
-            if (!remaining) { existing.correction = undefined; existing.railCorrection = undefined; }
-            existing.railDistance = railDistance;
+            if (!remaining) { existing.correction = undefined; existing.routeCorrection = undefined; }
+            existing.routeDistance = routeDistance;
             existing.marker.setLatLng(point);
             // Leaflet rounds marker pixels; retain its geographic state with subpixel display motion.
             const icon = existing.marker.getElement(); if (icon) L.DomUtil.setPosition(icon, m.project(point).subtract(m.getPixelOrigin()));
@@ -935,7 +939,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
         const hover = rail ? railHoverText(camera, language, now) : name;
         const icon = L.divIcon({ className: `camera-marker vehicle-marker${rail ? ' rail-marker' : ' ferry-marker'}`, html: vehicleHtml(vehicleIcon(camera), camera.color ?? layers[camera.kind].color, vehicleDestination(camera, language, name)), iconSize: [24, 24], iconAnchor: [12, 12] });
         const marker = enableMarkerKeyboard(L.marker([camera.lat, camera.lng], { icon, title: hover, alt: name, keyboard: true }).addTo(group));
-        const vehicleLabel = rail ? hover : `${name} · ${camera.estimated ? integrationMessages[language].estimatedFerry : integrationMessages[language].gps}`;
+        const vehicleLabel = rail ? hover : `${name} · ${camera.positionSource === 'gps' ? integrationMessages[language].gps : integrationMessages[language].estimatedFerry}`;
         const node = marker.getElement();
         node?.setAttribute('aria-label', vehicleLabel); node?.setAttribute('aria-haspopup', 'dialog');
         if (node) node.dataset.markerId = camera.id;
@@ -946,7 +950,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
           setRoutePopupStop(null);
           selectRef.current(latest.camera);
         });
-        entries.set(camera.id, { marker, camera, feed, language, hoverAt: now, railDistance: railPosition?.distance });
+        entries.set(camera.id, { marker, camera, feed, language, hoverAt: now, routeDistance: routePosition?.distance });
       });
     };
     const animate = () => { tick(); frame = requestAnimationFrame(animate); };

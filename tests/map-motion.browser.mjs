@@ -275,8 +275,18 @@ try {
     await response;
     const after = await sample();
     for (const [lng, lat] of [...before, ...after]) assert.ok(Math.abs(lat - 22.292) < 1e-10 || Math.abs(lng - 114.161) < 1e-10, 'Refresh correction must not cut the route bend');
-    assert.ok(after.some(([, lat]) => lat >= 22.293), 'Refreshed GPS advances to the next route segment');
-    assert.match(await page.locator('.vehicle-marker[title="GPS fixture ferry"]').getAttribute('aria-label'), /Estimated position/);
+    await page.waitForTimeout(1200);
+    const settled = await sample();
+    assert.ok(settled.some(([, lat]) => lat >= 22.293), 'Refreshed GPS advances to the next route segment');
+    assert.ok(settled.every(([lng, lat]) => Math.abs(lat - 22.292) < 1e-10 || Math.abs(lng - 114.161) < 1e-10), 'Settled GPS sits on its corridor');
+    assert.match(await page.locator('.vehicle-marker[title="GPS fixture ferry"]').getAttribute('aria-label'), /GPS/);
+    // The boat keeps moving, so click its coordinates instead of waiting for a stable box.
+    const boat = await page.locator('.vehicle-marker[title="GPS fixture ferry"] .marker-inner').boundingBox();
+    assert.ok(boat);
+    await page.mouse.click(boat.x + boat.width / 2, boat.y + boat.height / 2);
+    const note = page.locator('.item-popup .detail-note');
+    await note.first().waitFor();
+    assert.equal(await note.first().textContent(), 'Operator GPS position', 'An interpolated GPS boat explains its position from the operator fix');
     await context.close();
   });
   await test('Mobile: tapping a vehicle opens details while map and vehicle movement remain active', async () => {

@@ -75,7 +75,9 @@ try {
   await reloadAll(page); await response;
   await page.waitForFunction(() => { let lng; window.__map.eachLayer(layer => { if (layer.getElement?.()?.title === '測試渡輪 1') lng = layer.getLatLng().lng; }); return lng > 114.173 && lng < 114.175; });
   await page.waitForTimeout(1200);
-  assert.equal(await page.evaluate(() => { let lng; window.__map.eachLayer(layer => { if (layer.getElement?.()?.title === '測試渡輪 1') lng = layer.getLatLng().lng; }); return lng; }), 114.175, 'GPS correction reaches confirmed fix');
+  const settled = await page.evaluate(() => { let point; window.__map.eachLayer(layer => { if (layer.getElement?.()?.title === '測試渡輪 1') { const p = layer.getLatLng(); point = [p.lng, p.lat]; } }); return point; });
+  assert.ok(settled[0] >= 114.175 && settled[0] <= 114.181, 'Correction reaches the confirmed fix and carries on along the corridor');
+  assert.ok(Math.abs(settled[1] - 22.292) < 1e-9, 'A corrected GPS boat stays on its corridor');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.waitForLoadState('networkidle');
   // Headless media emulation changes matches without delivering change; resume the visible tab.

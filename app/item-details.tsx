@@ -45,9 +45,11 @@ export default function ItemDetails({ camera, language, now, stale, onActivity, 
       <span className="live-label">{copy.millimetres(String(camera.rainfallMm))} · {copy.rainfallAmount}</span>
     </div>}
     {camera.kind === 'incident' && <p className="incident-text">{(language === 'en' ? camera.textEn || camera.text : camera.text || camera.textEn)?.trim()}</p>}
-    {camera.estimated && <p className="detail-note">{extra.estimated}</p>}
+    {camera.kind === 'ferry' && camera.positionType === 'vehicle'
+      ? camera.positionSource !== 'gps' && <p className="detail-note">{extra.estimated}</p>
+      : camera.estimated && <p className="detail-note">{extra.estimated}</p>}
     {routeStatus}
-    {camera.positionType === 'vehicle' && camera.kind === 'ferry' && !camera.estimated && <p className="detail-note">{extra.gps}</p>}
+    {camera.positionType === 'vehicle' && camera.kind === 'ferry' && camera.positionSource === 'gps' && <p className="detail-note">{extra.gps}</p>}
     {stale && <p className="warning-text">{extra.stale}</p>}
     {status !== 'ready' && <p className="item-detail-status" role={status === 'error' ? 'alert' : 'status'}>
       {status === 'loading' ? <><LoaderCircle size={13} className="spin"/>{copy.loadingOfficialData}</> : <>{extra.busRouteError}{onRetry && <> <button type="button" className="text-button" onClick={onRetry}>{copy.retry}</button></>}</>}

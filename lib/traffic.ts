@@ -1,6 +1,5 @@
 import { integrationLayerNames } from './i18n.ts';
 import type { BusRouteSelection } from './bus-route.ts';
-import type { RailPosition } from './rail-geometry.ts';
 export type OriginalLayerKind = 'redlight' | 'speed' | 'snapshot' | 'flow' | 'incident' | 'parking' | 'rainfall';
 export type IntegrationKind = 'crossing' | 'works' | 'toll' | 'boundary' | 'weather-warning' | 'mtr' | 'lrt' | 'kmb' | 'citybus' | 'gmb' | 'nlb' | 'ferry';
 export type LayerKind = OriginalLayerKind | IntegrationKind;
@@ -21,8 +20,14 @@ export type Camera = {
   text?: string; textEn?: string;
   dataUpdated?: string;
   nextStation?: { name: string; nameEn: string };
-  railPosition?: RailPosition;
+  // Where a moving vehicle sits along the path it follows, as [lng, lat] pairs with cumulative
+  // metre offsets. Refresh corrections travel with this distance instead of chording across a
+  // bend, and rail and ferry vehicles report it the same way.
+  routePosition?: { key: string; distance: number; coordinates: [number, number][]; distances: number[] };
   rows?: DetailRow[]; arrivals?: Arrival[]; routes?: string[]; badge?: string; estimated?: boolean; positionType?: 'station' | 'vehicle' | 'pier';
+  // Where a moving position comes from. `estimated` says whether the marker is projected forward
+  // from its last fix, so a GPS boat that is being interpolated is still sourced from operator GPS.
+  positionSource?: 'gps' | 'timetable';
   intel?: { score: number; urgent: boolean; tone: 'red' | 'amber' | 'green' | 'none' };
 };
 export type IncidentNotice = { id: string; text: string; textEn: string; time: string; located: boolean; cameraId?: string };

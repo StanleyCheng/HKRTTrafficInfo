@@ -3,6 +3,7 @@ import test from "node:test"
 import { movingCameras, normalizeIntegration, railHoverText, viewportNote } from "../lib/integration-client.ts"
 import { stationRecord } from "../lib/mtr-network.ts"
 import { railPoint } from "../lib/rail-geometry.ts"
+import { routePointAtDistance } from "../lib/bus-route-motion.ts"
 import { integrationMessages, messages } from "../lib/i18n.ts"
 import { hkTime } from "../lib/traffic.ts"
 import type { CitybusResponse, FerryResponse, LrtResponse, MtrResponse } from "../lib/types.ts"
@@ -90,6 +91,7 @@ test("ferry adapter retains scheduled pier calls and interpolates clock vessels"
   assert.equal(moving.length, 1)
   assert.ok(Math.abs(moving[0].lng - 114.05) < 0.001)
   assert.equal(moving[0].estimated, true)
+  assert.equal(moving[0].positionSource, "timetable")
   assert.deepEqual(movingCameras("ferry", data, now + 180001), [])
   assert.deepEqual(movingCameras("ferry", normalizeIntegration("ferry", { ...ferry, observedAt: "invalid" }), now), [])
 })
@@ -104,6 +106,9 @@ test("GPS ferries advance around route bends between feed refreshes", () => {
   assert.equal(later.lng, 114.05, "Travel must turn along the route rather than cutting across the bend")
   assert.ok(later.lat > 22.3 && later.lat < 22.31)
   assert.equal(later.estimated, true)
+  assert.equal(first.positionSource, "gps", "A projected GPS fix keeps its operator source")
+  const corridor = first.routePosition!
+  assert.deepEqual([first.lng, first.lat], routePointAtDistance(corridor.coordinates, corridor.distances, corridor.distance), "A GPS ferry reports the corridor distance that places its marker")
   const arrived = movingCameras("ferry", data, now + 120000)[0]!
   assert.deepEqual([arrived.lng, arrived.lat], [114.05, 22.31])
   const refreshed = normalizeIntegration("ferry", { ...payload, observedAt: new Date(now + 60000).toISOString() })

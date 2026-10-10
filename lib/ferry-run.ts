@@ -47,7 +47,7 @@ export function placeOnPath(
   departAt: number | null,
   arriveAt: number | null,
   now: number,
-): { lng: number; lat: number; minutes: number } | null {
+): { lng: number; lat: number; minutes: number; distance: number } | null {
   const origin = path[0]
   if (!origin) return null
   const length = pathMetres(path)
@@ -58,11 +58,11 @@ export function placeOnPath(
   // A later sailing stays on the pier card. The boat is drawn once it is due to leave.
   if (now < window.start && window.start - now > 30 * 60_000) return null
   const minutes = Math.max(0, Math.round((window.end - now) / 60_000))
-  if (now <= window.start || path.length < 2) return { lng: origin.lng, lat: origin.lat, minutes }
+  if (now <= window.start || path.length < 2) return { lng: origin.lng, lat: origin.lat, minutes, distance: 0 }
   const span = window.end - window.start
   const mix = span <= 0 ? 1 : Math.min(1, Math.max(0, (now - window.start) / span))
   const point = pointAlong(path, mix)
-  return { lng: point.lng, lat: point.lat, minutes }
+  return { lng: point.lng, lat: point.lat, minutes, distance: length * mix }
 }
 
 export function pathMetres(path: readonly GeoPoint[]): number {
@@ -101,7 +101,7 @@ export function pointAlong(path: readonly GeoPoint[], fraction: number): GeoPoin
   return last
 }
 
-export function ferryVesselPoint(vessel: FerryVessel, observedAt: number, now: number): { lng: number; lat: number; minutes: number | null; estimated: boolean } | null {
+export function ferryVesselPoint(vessel: FerryVessel, observedAt: number, now: number): { lng: number; lat: number; minutes: number | null; estimated: boolean; distance?: number } | null {
   const path = vessel.pathLng?.map((lng, index) => ({ lng, lat: vessel.pathLat?.[index] ?? NaN }))
     ?? [{ lng: vessel.fromLng ?? vessel.lng, lat: vessel.fromLat ?? vessel.lat }, { lng: vessel.toLng ?? vessel.lng, lat: vessel.toLat ?? vessel.lat }]
   if (path.some((point) => !Number.isFinite(point.lng) || !Number.isFinite(point.lat))) return null
@@ -111,10 +111,14 @@ export function ferryVesselPoint(vessel: FerryVessel, observedAt: number, now: n
   }
   const at = vessel.observedAt ? Date.parse(vessel.observedAt) : observedAt
   if (!Number.isFinite(at) || now - at > 180_000) return null
+  // Without a surveyed route the fix is drawn where the operator reported it, and only a
+  // latitude/longitude tween can smooth the marker when the next fix lands.
   if (path.length < 2 || pathMetres(path) === 0) return { ...vessel, estimated: false }
   let nearest = path[0]!
   let nextIndex = 1
-  let distance = Infinity
+  let nearestGap = Infinity
+  let nearestDistance = 0
+  let walked = 0
   const longitudeScale = Math.cos(vessel.lat * Math.PI / 180)
   for (let index = 1; index < path.length; index += 1) {
     const from = path[index - 1]!, to = path[index]!
@@ -122,19 +126,21 @@ export function ferryVesselPoint(vessel: FerryVessel, observedAt: number, now: n
     const lengthSquared = dx * dx + dy * dy
     const fraction = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, ((vessel.lng - from.lng) * longitudeScale * dx + (vessel.lat - from.lat) * dy) / lengthSquared))
     const point = { lng: from.lng + (to.lng - from.lng) * fraction, lat: from.lat + (to.lat - from.lat) * fraction }
+    const step = metresBetween(from, to)
     const gap = metresBetween(vessel, point)
-    if (gap < distance) { nearest = point; nextIndex = index; distance = gap }
+    if (gap < nearestGap) { nearest = point; nextIndex = index; nearestGap = gap; nearestDistance = walked + step * fraction }
+    walked += step
   }
   const arriveAt = vessel.arriveAt === undefined ? ferryInstant(vessel.eta, at) : vessel.arriveAt
   if (vessel.departAt != null && vessel.departAt > at) {
-    if (arriveAt == null || arriveAt <= vessel.departAt) return { ...path[0]!, minutes: vessel.minutes, estimated: true }
+    if (arriveAt == null || arriveAt <= vessel.departAt) return { ...path[0]!, minutes: vessel.minutes, estimated: true, distance: 0 }
     const point = placeOnPath(path, vessel.departAt, arriveAt, now)
     return point ? { ...point, estimated: true } : null
   }
   // shortcut: fairways approximate the sailing track; use surveyed routes when available.
-  if (arriveAt == null || arriveAt <= at) return { ...nearest, minutes: vessel.minutes, estimated: true }
+  if (arriveAt == null || arriveAt <= at) return { ...nearest, minutes: vessel.minutes, estimated: true, distance: nearestDistance }
   const point = placeOnPath([nearest, ...path.slice(nextIndex)], at, arriveAt, now)
-  return point ? { ...point, estimated: true } : null
+  return point ? { ...point, distance: nearestDistance + point.distance, estimated: true } : null
 }
 
 export function estimateFerryVessels(

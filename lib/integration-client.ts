@@ -1,11 +1,12 @@
 import { integrationMessages as labels, messages, boundaryNames, tollNames } from './i18n.ts';
 import { hkTime, layers, staticExport, type Arrival, type Camera, type CameraData, type DetailRow, type FlowSegment, type IntegrationKind, type Language, type MapPath } from './traffic.ts';
-import type { ApproachesResponse, ControlPointsResponse, FerryResponse, LrtResponse, MtrResponse, CitybusResponse, WarningsResponse } from './types.ts';
+import type { ApproachesResponse, ControlPointsResponse, FerryResponse, FerryVessel, LrtResponse, MtrResponse, CitybusResponse, WarningsResponse } from './types.ts';
 import { linesThrough, lineRecord, mtrStationCollection, mtrTrackCollection, projectNetworkTrain, stationRecord } from './mtr-network.ts';
 import { lrtColor, lrtStation, lrtStationCollection, lrtTrackCollection, projectLrtTrain } from './lrt-network.ts';
 import { railPosition } from './rail-geometry.ts';
 import { ferryVesselPoint } from './ferry-run.ts';
 import { ferryPaths } from './ferry-fairway.ts';
+import { routeDistances } from './bus-route-motion.ts';
 import { ferryInstant } from './ferry-clock.ts';
 import { ferryVehicleIcon } from './vehicle-icons.ts';
 import { decorateControlPoints } from './control-points.ts';
@@ -148,11 +149,31 @@ export function withBoundarySpeeds(data: CameraData | undefined, segments: FlowS
   const collection = decorateControlPoints(points, segments.map(segment => ({ roadEn: segment.nameEn || '', roadTc: segment.name, speedKmh: segment.speedKmh, band: segment.level === 'slow' ? 'congested' : segment.level === 'moderate' ? 'slow' : segment.level })));
   return { ...data, cameras: boundaryCameras(collection).map(camera => ({ ...camera, dataUpdated: data.observedAt ?? undefined })) };
 }
+// A ferry corridor is the same fixed geometry on every poll, so its cumulative metre offsets are
+// computed once per distinct path and reused by every boat that sails it.
+const ferryCorridors = new Map<string, { key: string; coordinates: [number, number][]; distances: number[] }>();
+
+function ferryCorridor(vessel: FerryVessel): { key: string; coordinates: [number, number][]; distances: number[] } | null {
+  const coordinates: [number, number][] = vessel.pathLng
+    ? vessel.pathLng.map((lng, index) => [lng, vessel.pathLat?.[index] ?? NaN])
+    : [[vessel.fromLng ?? vessel.lng, vessel.fromLat ?? vessel.lat], [vessel.toLng ?? vessel.lng, vessel.toLat ?? vessel.lat]];
+  if (coordinates.length < 2 || coordinates.some(([lng, lat]) => !Number.isFinite(lng) || !Number.isFinite(lat))) return null;
+  const first = coordinates[0]!, last = coordinates[coordinates.length - 1]!;
+  const key = `ferry-${first[0]},${first[1]}>${last[0]},${last[1]}`;
+  const cached = ferryCorridors.get(key);
+  if (cached) return cached;
+  const entry = { key, coordinates, distances: routeDistances(coordinates) };
+  ferryCorridors.set(key, entry);
+  return entry;
+}
+
 export function movingCameras(kind: 'mtr' | 'lrt' | 'ferry', data: CameraData, now: number): Camera[] {
   if (!data.payload || !data.observedAt || now - Date.parse(data.observedAt) > 180000) return [];
   if (kind === 'ferry') return (data.payload as FerryResponse).vessels.flatMap(vessel => {
     const spot = ferryVesselPoint(vessel, Date.parse(data.observedAt!), now);
-    return spot ? [{ id: `ferry-vessel-${vessel.id}`, sourceId: vessel.id, kind, vehicleIcon: ferryVehicleIcon(vessel.route, vessel.id), name: vessel.nameTc, nameEn: vessel.nameEn, lat: spot.lat, lng: spot.lng, estimated: spot.estimated, positionType: 'vehicle', dataUpdated: vessel.observedAt ?? data.observedAt ?? undefined, arrivals: [{ route: vessel.route, destination: vessel.destTc || vessel.nameTc, destinationEn: vessel.destEn || vessel.nameEn, minutes: spot.minutes, eta: vessel.eta }] }] : [];
+    if (!spot) return [];
+    const route = spot.distance === undefined ? null : ferryCorridor(vessel);
+    return [{ id: `ferry-vessel-${vessel.id}`, sourceId: vessel.id, kind, vehicleIcon: ferryVehicleIcon(vessel.route, vessel.id), name: vessel.nameTc, nameEn: vessel.nameEn, lat: spot.lat, lng: spot.lng, estimated: spot.estimated, positionType: 'vehicle', positionSource: vessel.fix === 'gps' ? 'gps' : 'timetable', ...(route ? { routePosition: { key: route.key, distance: spot.distance!, coordinates: route.coordinates, distances: route.distances } } : {}), dataUpdated: vessel.observedAt ?? data.observedAt ?? undefined, arrivals: [{ route: vessel.route, destination: vessel.destTc || vessel.nameTc, destinationEn: vessel.destEn || vessel.nameEn, minutes: spot.minutes, eta: vessel.eta }] }];
   });
   return (data.payload as MtrResponse | LrtResponse).trains.flatMap(train => {
     const spot = kind === 'mtr' ? projectNetworkTrain(train, now) : projectLrtTrain(train, now);
@@ -161,7 +182,7 @@ export function movingCameras(kind: 'mtr' | 'lrt' | 'ferry', data: CameraData, n
     const nextCode = spot.clamp !== 'none' && spot.minutes > 0 ? train.anchor : spot.to;
     const next = kind === 'mtr' ? stationRecord(nextCode) : lrtStation(nextCode);
     const position = railPosition(kind, train.line, train.path, spot.from, spot.to, spot.progress);
-    return [{ id: `${kind}-train-${train.id}`, sourceId: train.id, kind, name: `${train.line} → ${dest?.tc || train.dest}`, nameEn: `${train.line} → ${dest?.en || train.dest}`, nextStation: { name: next?.tc || nextCode, nameEn: next?.en || nextCode }, lat: spot.lat, lng: spot.lng, ...(position ? { railPosition: position } : {}), color: kind === 'mtr' ? lineRecord(train.line)?.color : lrtColor(), estimated: true, positionType: 'vehicle', dataUpdated: train.observedAt, arrivals: [{ route: train.line, destination: dest?.tc || train.dest, destinationEn: dest?.en || train.dest, minutes: spot.minutes, eta: new Date(now + spot.minutes * 60000).toISOString(), observedAt: train.observedAt, platform: train.plat }] }];
+    return [{ id: `${kind}-train-${train.id}`, sourceId: train.id, kind, name: `${train.line} → ${dest?.tc || train.dest}`, nameEn: `${train.line} → ${dest?.en || train.dest}`, nextStation: { name: next?.tc || nextCode, nameEn: next?.en || nextCode }, lat: spot.lat, lng: spot.lng, ...(position ? { routePosition: position } : {}), color: kind === 'mtr' ? lineRecord(train.line)?.color : lrtColor(), estimated: true, positionType: 'vehicle', dataUpdated: train.observedAt, arrivals: [{ route: train.line, destination: dest?.tc || train.dest, destinationEn: dest?.en || train.dest, minutes: spot.minutes, eta: new Date(now + spot.minutes * 60000).toISOString(), observedAt: train.observedAt, platform: train.plat }] }];
   });
 }
 
