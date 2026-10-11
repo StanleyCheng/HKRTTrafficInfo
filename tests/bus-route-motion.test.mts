@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { busDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '../lib/bus-route-motion.ts';
-import type { BusRouteResponse } from '../lib/bus-route.ts';
+import { busVehicleDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '../lib/bus-route-motion.ts';
+import type { BusVehicle } from '../lib/bus-route.ts';
 
 test('bus motion follows route bends, repeated vertices and stops at path endpoints', () => {
   const path: [number, number][] = [[114, 22], [114.01, 22], [114.01, 22], [114.01, 22.01]];
@@ -18,14 +18,13 @@ test('bus motion follows route bends, repeated vertices and stops at path endpoi
   assert.deepEqual(routePointAtDistance([[114, 22]], [0], 10), [114, 22]);
 });
 
-test('bus trajectory uses absolute time, holds before departure and suppresses stale or expired movement', () => {
-  const data: BusRouteResponse = { ok: true, observedAt: new Date(1000).toISOString(), stale: false, vehicle: { id: 'bus', fromDistance: 100, toDistance: 500, departureAt: 1000, arrivalAt: 5000, validUntil: 6000 } };
-  assert.equal(busDistanceAtTime(data, 3000), 300);
-  assert.equal(busDistanceAtTime(data, 5500), 500);
-  assert.equal(busDistanceAtTime(data, 999), 100, 'Before departure the bus holds at the segment start');
-  assert.equal(busDistanceAtTime(data, 6001), null);
-  assert.equal(busDistanceAtTime({ ...data, stale: true }, 3000), null);
-  assert.equal(busDistanceAtTime({ ...data, vehicle: null }, 3000), null);
+test('bus trajectory uses absolute time, holds before departure and suppresses expired movement', () => {
+  const vehicle: BusVehicle = { id: 'bus', fromDistance: 100, toDistance: 500, departureAt: 1000, arrivalAt: 5000, validUntil: 6000 };
+  assert.equal(busVehicleDistanceAtTime(vehicle, 3000), 300);
+  assert.equal(busVehicleDistanceAtTime(vehicle, 5500), 500);
+  assert.equal(busVehicleDistanceAtTime(vehicle, 999), 100, 'Before departure the bus holds at the segment start');
+  assert.equal(busVehicleDistanceAtTime(vehicle, 6001), null);
+  assert.equal(busVehicleDistanceAtTime({ ...vehicle, departureAt: Number.NaN }, 3000), null);
 });
 
 test('route heading follows travel direction and clamps at the terminus', () => {

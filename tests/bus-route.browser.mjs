@@ -24,15 +24,23 @@ const variants = [
 ];
 const routeStops = [0, 3, 5].map((index, seq) => ({ id: `RSTOP${seq}`, seq: seq + 1, nameTc: ['測試起點（上層乘車位置）', '測試完整長名稱轉乘車站', '測試車站3'][seq], nameEn: ['Fixture origin, Upper boarding area', 'Fixture interchange with a complete long stop name', 'Fixture terminus'][seq], lng: coordinates[index][0], lat: coordinates[index][1], distance: distance[index] }));
 const operatorColors = { kmb: 'rgb(163, 62, 31)', citybus: 'rgb(194, 138, 11)', gmb: 'rgb(47, 143, 91)', nlb: 'rgb(59, 110, 165)' };
-function response(selection, mode = 'live', correction = 0) {
+function response(selection, mode = 'live', correction = 0, reverse = false) {
   const now = Date.now();
   const key = JSON.stringify(selection);
-  return { ok: true, observedAt: new Date(now).toISOString(), stale: mode === 'stale', route: { key, operator: selection.operator, company: selection.company, route: selection.route, geometry: mode === 'approximate' ? 'stops' : 'road', coordinates, stops: routeStops }, vehicle: ['empty', 'stale', 'approximate'].includes(mode) ? null : { id: key, fromDistance: 0, toDistance: distance[3], departureAt: now - 60000 - correction, arrivalAt: now + 120000 - correction, validUntil: now + 180000 } };
+  const moving = !['empty', 'stale', 'approximate'].includes(mode);
+  // Two buses share the selected bound — the fleet view — and the opposite
+  // bound runs its own muted line with one more.
+  const vehicles = moving ? [
+    { id: `${key}:1`, fromDistance: 0, toDistance: distance[3], departureAt: now - 60000 - correction, arrivalAt: now + 120000 - correction, validUntil: now + 180000 },
+    { id: `${key}:2`, fromDistance: 0, toDistance: distance[3], departureAt: now - 30000, arrivalAt: now + 150000, validUntil: now + 180000 },
+  ] : [];
+  const opposite = reverse && moving ? [{ route: { key: `${key}:reverse`, operator: selection.operator, company: selection.company, route: selection.route, geometry: 'road', coordinates: [...coordinates].reverse(), stops: [...routeStops].reverse().map((stop, index) => ({ ...stop, seq: index + 1 })) }, vehicles: [{ id: `${key}:r1`, fromDistance: 0, toDistance: distance[3], departureAt: now - 30000, arrivalAt: now + 150000, validUntil: now + 180000 }] }] : [];
+  return { ok: true, observedAt: new Date(now).toISOString(), stale: mode === 'stale', route: { key, operator: selection.operator, company: selection.company, route: selection.route, geometry: mode === 'approximate' ? 'stops' : 'road', coordinates, stops: routeStops }, vehicles, reverse: opposite };
 }
 async function create({ mobile = false, reducedMotion = 'no-preference' } = {}) {
   const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, reducedMotion, hasTouch: mobile });
   contexts.push(context);
-  const requests = [], arrivalRequests = [], controls = { mode: 'live', correction: 0, delay: 0, arrivalDelay: 0, arrivalMode: 'live' };
+  const requests = [], arrivalRequests = [], controls = { mode: 'live', correction: 0, delay: 0, arrivalDelay: 0, arrivalMode: 'live', reverse: false };
   await context.route('**/api/**', async route => {
     const url = new URL(route.request().url());
     const kind = url.pathname.split('/')[2];
@@ -46,7 +54,7 @@ async function create({ mobile = false, reducedMotion = 'no-preference' } = {}) 
         return route.fulfill({ json: payload }).catch(() => {});
       }
       requests.push(selection);
-      const payload = response(selection, controls.mode, controls.correction);
+      const payload = response(selection, controls.mode, controls.correction, controls.reverse);
       if (controls.delay) await new Promise(resolve => setTimeout(resolve, controls.delay));
       return route.fulfill({ json: payload }).catch(() => {});
     }
@@ -85,7 +93,7 @@ async function select(fixture, variant) {
   const button = page.locator(`.item-popup .bus-route-button[aria-label^="Show route ${variant.route} ·"]`).first();
   await page.evaluate(() => { window.__busRouteFitComplete = false; window.__map.once('zoomend', () => { window.__busRouteFitComplete = true; }); });
   await button.click();
-  await page.locator('.bus-route-polyline').waitFor();
+  await page.locator('.bus-route-polyline').first().waitFor();
   await page.waitForFunction(() => window.__busRouteFitComplete);
 }
 async function samples(page, count = 14) {
@@ -136,9 +144,9 @@ try {
       await select(f, variant);
       const actual = f.requests.at(-1);
       for (const [key, value] of Object.entries(variant)) assert.equal(actual[key], String(value), `${variant.operator} ${key}`);
-      await f.page.locator('.bus-route-marker').waitFor();
+      await f.page.locator('.bus-route-marker').first().waitFor();
       await f.page.waitForFunction(() => { const image = document.querySelector('.bus-route-marker .vehicle-art'); return image?.complete && image.naturalWidth > 0; });
-      const artwork = await f.page.locator('.bus-route-marker').evaluate(element => {
+      const artwork = await f.page.locator('.bus-route-marker').first().evaluate(element => {
         const image = element.querySelector('.vehicle-art'), target = element.getBoundingClientRect(), art = image.getBoundingClientRect();
         return {
           src: image.getAttribute('src'), heading: element.querySelector('.vehicle-heading').style.transform,
@@ -178,6 +186,20 @@ try {
     }
     assert.deepEqual(await f.page.evaluate(() => window.__errors), []);
     await f.page.screenshot({ path: path.join(evidence, 'desktop-route.png') });
+    await f.context.close();
+  });
+  await test('Both directions draw at once, each with its own moving fleet', async () => {
+    const f = await create(); f.controls.reverse = true; await select(f, variants[0]);
+    await f.page.waitForFunction(() => document.querySelectorAll('.bus-route-marker').length === 3, null, { timeout: 15000 }).catch(() => {});
+    assert.equal(await f.page.locator('.bus-route-marker').count(), 3, 'Two buses on the selected bound plus one on the opposite bound');
+    assert.equal(await f.page.locator('.bus-route-polyline').count(), 2, 'Selected and opposite bounds both draw');
+    assert.equal(await f.page.locator('.bus-route-polyline.bus-route-reverse').count(), 1, 'The opposite bound is one muted line');
+    const motion = await f.page.evaluate(() => new Promise(resolve => { const frames = []; function frame() { frames.push([...document.querySelectorAll('.bus-route-marker')].map(element => element.style.transform)); if (frames.length >= 14) resolve(frames); else requestAnimationFrame(frame); } requestAnimationFrame(frame); }));
+    assert.ok(new Set(motion.map(frame => frame[0])).size >= 10, 'The lead selected-bound bus keeps moving');
+    assert.ok(new Set(motion.map(frame => frame[1])).size >= 10, 'The second selected-bound bus keeps moving');
+    assert.ok(new Set(motion.map(frame => frame[2])).size >= 10, 'The opposite-bound bus keeps moving');
+    assert.deepEqual(await f.page.evaluate(() => window.__errors), []);
+    await f.page.screenshot({ path: path.join(evidence, 'desktop-route-both-bounds.png') });
     await f.context.close();
   });
   await test('Full-route stop names follow app language and keyboard opens exact arrivals', async () => {
@@ -242,7 +264,7 @@ try {
     await f.context.close();
   });
   await test('Refresh keeps marker identity, smoothly corrects position, handles stale data and close cleanup', async () => {
-    const f = await create(); await select(f, variants[0]); await f.page.locator('.bus-route-marker').waitFor();
+    const f = await create(); await select(f, variants[0]); await f.page.locator('.bus-route-marker').first().waitFor();
     await f.page.evaluate(() => { window.__originalBus = document.querySelector('.bus-route-marker'); });
     await f.page.evaluate(() => { window.__map.setView([22.285, 113.95], 16, { animate: false }); });
     f.controls.correction = 20000; const before = f.requests.length; await refresh(f.page);
@@ -253,7 +275,7 @@ try {
     assert.ok(new Set(await samples(f.page)).size >= 10);
     assert.equal(await f.page.evaluate(() => window.__map.getZoom()), 16, 'Refresh must preserve the user camera');
     f.controls.mode = 'stale'; await refresh(f.page);
-    await f.page.locator('.bus-route-marker').waitFor({ state: 'detached' });
+    await f.page.waitForFunction(() => !document.querySelector('.bus-route-marker'));
     assert.equal(await f.page.locator('.bus-route-polyline').count(), 1, 'Stale route stays visible without misleading movement');
     await assertRouteLabels(f.page, 'kmb', 'en', false);
     await openLayers(f.page);
@@ -266,7 +288,7 @@ try {
   await test('Stop-label toggle clears names while route, circles and the moving bus remain, and exists only with a route', async () => {
     const f = await create();
     assert.equal(await f.page.locator('.map-tools .route-labels-button').count(), 0, 'No toggle before a route is selected');
-    await select(f, variants[0]); await f.page.locator('.bus-route-marker').waitFor();
+    await select(f, variants[0]); await f.page.locator('.bus-route-marker').first().waitFor();
     const toggle = f.page.locator('.map-tools .route-labels-button');
     await toggle.waitFor();
     assert.equal(await toggle.getAttribute('aria-pressed'), 'true', 'Station labels are on by default');
@@ -297,7 +319,7 @@ try {
     await f.context.close();
   });
   await test('Reduced motion, hidden documents, selection cleanup and layer disable', async () => {
-    const f = await create({ reducedMotion: 'reduce' }); await select(f, variants[0]); await f.page.locator('.bus-route-marker').waitFor();
+    const f = await create({ reducedMotion: 'reduce' }); await select(f, variants[0]); await f.page.locator('.bus-route-marker').first().waitFor();
     assert.equal(new Set(await samples(f.page)).size, 1, 'Reduced motion keeps a static location');
     await f.page.emulateMedia({ reducedMotion: 'no-preference' });
     assert.ok(new Set(await samples(f.page)).size >= 10);
@@ -306,7 +328,7 @@ try {
     await f.page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' }); document.dispatchEvent(new Event('visibilitychange')); });
     await openLayers(f.page);
     await f.page.locator('.layer-card.kmb [role="switch"]').click();
-    await f.page.locator('.bus-route-marker').waitFor({ state: 'detached' });
+    await f.page.waitForFunction(() => !document.querySelector('.bus-route-marker'));
     await f.page.locator('.bus-route-polyline').waitFor({ state: 'detached' });
     await f.page.locator('.layer-card.kmb [role="switch"]').click();
     f.controls.delay = 700;
@@ -321,7 +343,7 @@ try {
     await f.context.close();
   });
   await test('Mobile selection reveals map, fits full route and keeps route controls accessible', async () => {
-    const f = await create({ mobile: true }); await select(f, variants[3]); await f.page.locator('.bus-route-marker').waitFor();
+    const f = await create({ mobile: true }); await select(f, variants[3]); await f.page.locator('.bus-route-marker').first().waitFor();
     assert.equal(await f.page.locator('.map-area').getAttribute('inert'), null, 'Route selection must reveal active map on mobile');
     assert.equal(await f.page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.ok(new Set(await samples(f.page)).size >= 10);

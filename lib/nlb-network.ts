@@ -32,3 +32,14 @@ export function nearestNlbStops(lng: number, lat: number, limit: number): NlbSto
     .slice(0, limit)
     .map((item) => item.point)
 }
+
+// Every NLB route number runs as one routeId per direction and variant. The
+// stop records list the services that call there, so the union across all
+// stops recovers the full set of routeIds behind one signed route code.
+export function nlbRouteIds(code: string): string[] {
+  const ids = new Set<string>();
+  for (const stop of Object.values(network.stops)) {
+    for (const service of stop.services) if (service.code === code) ids.add(service.id);
+  }
+  return [...ids];
+}

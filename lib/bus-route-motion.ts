@@ -1,4 +1,4 @@
-import type { BusRouteResponse } from './bus-route.ts';
+import type { BusVehicle } from './bus-route.ts';
 
 export function routeDistances(coordinates: [number, number][]): number[] {
   const radians = Math.PI / 180;
@@ -47,11 +47,11 @@ export function routeHeadingAtDistance(coordinates: [number, number][], distance
   return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
 }
 
-export function busDistanceAtTime(data: BusRouteResponse, now: number): number | null {
-  const vehicle = data.vehicle;
-  // Before departure the bus holds at the segment start — the route origin for
-  // inferred approaches — instead of vanishing.
-  if (!data.ok || data.stale || !vehicle || now > vehicle.validUntil) return null;
+// A vehicle entry describes one bus running fromDistance→toDistance between
+// departureAt→arrivalAt. Before departure it holds at the segment start — the
+// route origin for inferred approaches — instead of vanishing.
+export function busVehicleDistanceAtTime(vehicle: BusVehicle, now: number): number | null {
+  if (now > vehicle.validUntil) return null;
   if (now < vehicle.departureAt) return vehicle.fromDistance;
   const duration = vehicle.arrivalAt - vehicle.departureAt;
   if (duration <= 0 || ![vehicle.fromDistance, vehicle.toDistance, vehicle.departureAt, vehicle.arrivalAt, vehicle.validUntil].every(Number.isFinite)) return null;

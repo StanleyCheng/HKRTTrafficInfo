@@ -51,6 +51,11 @@ export function linesThrough(station: string): string[] {
   return linesThroughStation.get(station) ?? []
 }
 
+// The line picker lists every heavy-rail line with its official colour.
+export function mtrLineList(): { code: string; en: string; tc: string; color: string }[] {
+  return Object.entries(network.lines).map(([code, meta]) => ({ code, en: meta.en, tc: meta.tc, color: meta.color }));
+}
+
 export function stationPoint(code: string): GeoPoint | null {
   const station = network.stations[code]
   if (!station) return null

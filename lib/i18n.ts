@@ -25,6 +25,10 @@ type AppMessages = {
   mapLayers: string;
   showingLocations: (count: string) => string;
   layerSwitch: (name: string) => string;
+  railLines: string;
+  railLinesAll: string;
+  railLinesNone: string;
+  railLinesShown: (shown: number, total: number) => string;
   layerUpdateFailed: string;
   dataLoadFailed: string;
   retry: string;
@@ -169,6 +173,7 @@ export const messages: Record<Language, AppMessages> = {
     overviewEyebrow: '香港 · 交通概覽', overviewTitle: '全港交通概覽', publishedLocations: '個已公布位置',
     completeInventory: '完整名冊', mapLayers: '地圖圖層', showingLocations: count => `顯示 ${count} 個`,
     layerSwitch: name => `${name}圖層`, layerUpdateFailed: '更新失敗，現顯示上次成功載入的名冊。', dataLoadFailed: '資料載入失敗。',
+    railLines: '鐵路綫', railLinesAll: '全選', railLinesNone: '全部取消', railLinesShown: (shown, total) => `已顯示 ${shown} / ${total} 條綫`,
     retry: '重試', noOfficialLocations: '官方名冊暫無位置資料。',
     layerNote: '數字代表官方公布的位置數目，並非正在運作的相機數量。偵速機箱名冊不包括政府隧道及管制區。',
     cameraDetails: '詳情', closeCameraDetails: '關閉詳情', clearSelection: '清除選取', selectedLocation: '已選位置',
@@ -248,13 +253,14 @@ export const messages: Record<Language, AppMessages> = {
     languageControl: 'Language', english: 'English', chinese: 'Chinese',
     collapseTopbar: 'Collapse the top bar to free up map space', expandTopbar: 'Expand the top bar',
     collapseSidebar: 'Collapse the layers panel to free up map space', expandSidebar: 'Expand the layers panel',
-    brandTitle: 'HK Real-Time Traffic Info', brandCompactTitle: 'HK Traffic',
+    brandTitle: 'HK RT Traffic Info', brandCompactTitle: 'HK RT Traffic',
     mapStyle: 'Map style', mapStyleStreet: 'Street', mapStyleLight: 'Light',
     switchToPositron: 'Switch to the OpenFreeMap Positron light-gray basemap', switchToOsm: 'Switch to the OpenStreetMap basemap',
     officialData: 'Official open data', sources: 'Sources', sidebarLabel: 'Layers and details',
     overviewEyebrow: 'HONG KONG · TRAFFIC OVERVIEW', overviewTitle: 'Traffic overview', publishedLocations: 'published locations',
     completeInventory: 'Complete list', mapLayers: 'Map layers', showingLocations: count => `Showing ${count}`,
     layerSwitch: name => `${name} layer`, layerUpdateFailed: 'Update failed. Showing the last successfully loaded list.', dataLoadFailed: 'Data could not be loaded.',
+    railLines: 'Rail lines', railLinesAll: 'All', railLinesNone: 'None', railLinesShown: (shown, total) => `${shown} of ${total} lines shown`,
     retry: 'Retry', noOfficialLocations: 'The official list currently has no location data.',
     layerNote: 'Counts are published locations, not cameras confirmed to be operating. The speed-camera list excludes government tunnels and control areas.',
     cameraDetails: 'Details', closeCameraDetails: 'Close details', clearSelection: 'Clear selection', selectedLocation: 'Selected location',
@@ -365,7 +371,7 @@ export const integrationMessages = {
     arrivals: 'Next arrivals', nextTrainEta: 'Next train ETA', destination: 'Destination', platform: 'Platform', minutes: 'min', scheduled: 'Scheduled', live: 'Live', noArrivals: 'No upcoming arrivals reported.', stopArrivals: 'Stop arrivals',
     ferryDepartures: 'Ferry departures', firstFerry: 'First ferry', lastFerry: 'Last ferry', nextFerry: 'Next ferry', ferryNextIn: (minutes: number) => `Next in ${minutes} min`, ferryTimes: 'Hong Kong time · scheduled / estimated departures', noFerryDepartures: 'Departure information unavailable.',
     estimated: 'Position estimated from published arrival times; not live GPS.', estimatedFerry: 'Estimated position · timetable / arrival data', gps: 'Operator GPS position', stale: 'Retained data · refresh failed or overdue',
-    showBusRoute: 'Show route', selectedBusRoute: 'Route on map', loadingBusRoute: 'Loading full route…', busRouteError: 'Route or arrival data could not update.', noBusPosition: 'No current position estimate available.', busRouteStops: 'Route connects published stops; road geometry is unavailable.', busRouteTracking: 'Next bus · estimated position', closeBusRoute: 'Close route',
+    showBusRoute: 'Show route', selectedBusRoute: 'Route on map', loadingBusRoute: 'Loading full route…', busRouteError: 'Route or arrival data could not update.', noBusPosition: 'No current position estimate available.', busRouteStops: 'Route connects published stops; road geometry is unavailable.', estimatedBuses: (n: number) => `${n} estimated ${n === 1 ? 'bus' : 'buses'} on the route`, closeBusRoute: 'Close route',
     age: (n: number) => n === 0 ? 'Updated just now' : `Updated ${n} min ago`, noTimestamp: 'Source time unavailable', notLoaded: 'Not loaded', disabled: 'Off', enabled: 'On',
     viewportBus: 'Zoom to level 13 or closer to load nearby stops.', viewportGmb: 'Zoom to level 17 or closer to load minibus stops.', viewportNlb: 'Move the map to Lantau Island to load stops.',
     route: 'Route', status: 'Status', place: 'Location', road: 'Road', direction: 'Direction', lane: 'Lane', start: 'Start', end: 'End',
@@ -384,7 +390,7 @@ export const integrationMessages = {
     arrivals: '即將到站', nextTrainEta: '下一班列車預計到站', destination: '目的地', platform: '月台', minutes: '分鐘', scheduled: '時間表', live: '實時', noArrivals: '暫無即將到站資料。', stopArrivals: '車站到站時間',
     ferryDepartures: '渡輪開出時間', firstFerry: '頭班船', lastFerry: '尾班船', nextFerry: '下一班船', ferryNextIn: (minutes: number) => `${minutes} 分鐘後開出`, ferryTimes: '香港時間 · 時間表／預計開出時間', noFerryDepartures: '暫無開出時間資料。',
     estimated: '位置按公布的到站時間推算，並非實時 GPS。', estimatedFerry: '估算位置 · 時間表／到站資料', gps: '營辦商 GPS 位置', stale: '保留上次資料 · 更新失敗或逾時',
-    showBusRoute: '顯示路線', selectedBusRoute: '地圖上的路線', loadingBusRoute: '正在載入完整路線…', busRouteError: '未能更新路線或到站時間。', noBusPosition: '暫無可用的即時位置估算。', busRouteStops: '路線連接公布的車站，暫無道路路線資料。', busRouteTracking: '下一班車 · 估算位置', closeBusRoute: '關閉路線',
+    showBusRoute: '顯示路線', selectedBusRoute: '地圖上的路線', loadingBusRoute: '正在載入完整路線…', busRouteError: '未能更新路線或到站時間。', noBusPosition: '暫無可用的即時位置估算。', busRouteStops: '路線連接公布的車站，暫無道路路線資料。', estimatedBuses: (n: number) => `路線上共有 ${n} 部估算巴士`, closeBusRoute: '關閉路線',
     age: (n: number) => n === 0 ? '剛剛更新' : `${n} 分鐘前更新`, noTimestamp: '來源未提供更新時間', notLoaded: '尚未載入', disabled: '已關閉', enabled: '已開啟',
     viewportBus: '放大至第 13 級或以上以載入附近車站。', viewportGmb: '放大至第 17 級或以上以載入小巴站。', viewportNlb: '把地圖移至大嶼山以載入車站。',
     route: '路線', status: '狀態', place: '位置', road: '道路', direction: '方向', lane: '行車線', start: '開始', end: '結束',

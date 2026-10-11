@@ -22,7 +22,7 @@ function payload(kind, generation, at, complete = true) {
   if (kind === 'mtr') return { ...base, trains: [], boards: [{ line: 'TWL', station: 'ADM', observedAt, message: '', trains: [{ dest: 'TSW', plat: '1', ttnt: generation + 1, delay: false, timeType: 'A' }] }] };
   if (kind === 'lrt') return { ...base, trains: [], boards: [{ station: '1', observedAt, calls: [{ route: '610', dest: '2', destTc: '兆康', destEn: 'Siu Hong', plat: '1', ttnt: generation + 1, timeType: 'A' }] }] };
   if (kind === 'ferry') return { ...base, vessels: [], piers: [{ id: 'fixture', nameTc: `碼頭 ${generation}`, nameEn: `Ferry generation ${generation}`, lng: 113.951, lat: 22.284, calls: [call] }] };
-  if (kind === 'bus-route') return { ...base, stale: false, route: { key: JSON.stringify(selection), operator: 'kmb', company: 'KMB', route: '1', geometry: 'road', coordinates: [[113.949, 22.282], [113.955, 22.282]], stops: [{ id: 'fixture', seq: 1, nameTc: '起點', nameEn: 'Origin', lng: 113.949, lat: 22.282, distance: 0 }, { id: 'terminus', seq: 2, nameTc: '終點', nameEn: 'Terminus', lng: 113.955, lat: 22.282, distance: 618 }] }, vehicle: { id: 'fixture', fromDistance: generation * 50, toDistance: 618, departureAt: at, arrivalAt: at + 120000, validUntil: at + 180000 } };
+  if (kind === 'bus-route') return { ...base, stale: false, route: { key: JSON.stringify(selection), operator: 'kmb', company: 'KMB', route: '1', geometry: 'road', coordinates: [[113.949, 22.282], [113.955, 22.282]], stops: [{ id: 'fixture', seq: 1, nameTc: '起點', nameEn: 'Origin', lng: 113.949, lat: 22.282, distance: 0 }, { id: 'terminus', seq: 2, nameTc: '終點', nameEn: 'Terminus', lng: 113.955, lat: 22.282, distance: 618 }] }, vehicles: [{ id: 'fixture', fromDistance: generation * 50, toDistance: 618, departureAt: at, arrivalAt: at + 120000, validUntil: at + 180000 }], reverse: [] };
   return { ...base, stops: [{ id: 'fixture', nameTc: `${kind} 車站 ${generation}`, nameEn: `${kind} generation ${generation}`, lng: 113.95 + buses.indexOf(kind) * .0007, lat: 22.282, routes: ['1'], calls: [{ ...call, company: 'KMB', ...(kind === 'kmb' ? { tracking: selection } : {}) }] }] };
 }
 
@@ -67,7 +67,7 @@ async function create({ incomplete = false, gated = false, hold = false } = {}) 
     const generation = calls[kind].push({ at, url: route.request().url() });
     const json = payload(kind, generation, at, mode[kind] !== 'incomplete');
     if (mode[kind] === 'hold') { held.push({ kind, route, json }); return; }
-    if (mode[kind] === 'api-fail') return route.fulfill({ json: { ok: false, error: 'Fixture route upstream unavailable', observedAt: null, stale: false, vehicle: null } });
+    if (mode[kind] === 'api-fail') return route.fulfill({ json: { ok: false, error: 'Fixture route upstream unavailable', observedAt: null, stale: false, vehicles: [], reverse: [] } });
     if (mode[kind] === 'fail') return route.fulfill({ status: 503, body: 'Fixture feed failure' });
     return route.fulfill({ json });
   });

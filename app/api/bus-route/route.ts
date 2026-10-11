@@ -1,7 +1,7 @@
 import { loadBusRoute, loadBusStopArrivals, validBusSelection, type BusRouteSelection, type BusRouteResponse, type BusStopArrivalsResponse } from '../../../lib/bus-route.ts'
 import { selectionCachedGet } from '../../../lib/view-cache.ts'
 
-const EMPTY_ROUTE = (error: string): BusRouteResponse => ({ ok: false, error, vehicle: null, observedAt: null, stale: false })
+const EMPTY_ROUTE = (error: string): BusRouteResponse => ({ ok: false, error, vehicles: [], reverse: [], observedAt: null, stale: false })
 
 function parseSelection(request: Request): { stopArrivals: boolean; selection: BusRouteSelection } | null {
   const query = new URL(request.url).searchParams

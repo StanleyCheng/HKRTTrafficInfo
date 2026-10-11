@@ -1,60 +1,74 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { inferBusVehicle, loadBusRoute, validBusSelection, type BusRouteResponse, type BusRouteStop } from '../lib/bus-route.ts'
-import { busDistanceAtTime } from '../lib/bus-route-motion.ts'
+import { inferBusVehicles, loadBusRoute, validBusSelection, type BusRouteStop } from '../lib/bus-route.ts'
+import { busVehicleDistanceAtTime } from '../lib/bus-route-motion.ts'
 import { matchBusGeometry } from '../lib/bus-route-geometry.ts'
 import { GET } from '../app/api/bus-route/route.ts'
 
 const now = Date.parse('2026-10-06T10:00:00Z')
 const stops: BusRouteStop[] = [0, 1, 2].map((index) => ({ id: String(index + 1), seq: index + 1, nameTc: '', nameEn: '', lng: 114 + index * 0.001, lat: 22.3, distance: index * 100 }))
 
-test('ETA inference is bounded and rejects stale, impossible and missing observations', () => {
-  const eta = { seq: 2, at: now + 10_000, observed: now - 10_000, scheduled: false }
-  const vehicle = inferBusVehicle(stops, [eta], 2, now, 'route')!
-  assert.equal(vehicle.fromDistance, 0)
-  assert.equal(vehicle.toDistance, 100)
-  assert.ok(vehicle.departureAt <= now && vehicle.validUntil <= eta.observed + 180_000)
+test('fleet inference is bounded and rejects stale, past and missing observations', () => {
+  const eta = { seq: 2, rank: 1, at: now + 10_000, observed: now - 10_000, scheduled: false }
+  const fleet = inferBusVehicles(stops, [eta], now, 'route')
+  assert.equal(fleet.length, 1)
+  assert.equal(fleet[0]!.fromDistance, 0)
+  assert.equal(fleet[0]!.toDistance, 100)
+  assert.ok(fleet[0]!.departureAt <= now && fleet[0]!.validUntil <= eta.observed + 180_000)
   // Timetable-only service still anchors the estimated bus.
-  const timetable = inferBusVehicle(stops, [{ ...eta, scheduled: true }], 2, now, 'route')!
-  assert.equal(timetable.toDistance, 100, 'A scheduled (timetable) ETA still places the bus')
-  for (const row of [{ ...eta, observed: now - 180_000 }, { ...eta, observed: now + 60_000 }, { ...eta, at: NaN }]) assert.equal(inferBusVehicle(stops, [row], 2, now, 'route'), null)
-  assert.equal(inferBusVehicle(stops, [eta], 1, now, 'route'), null)
-  assert.equal(inferBusVehicle(stops, [eta, { ...eta, seq: 3, at: eta.at + 100 }], 2, now, 'route'), null)
-  assert.equal(inferBusVehicle(stops, [], 2, now, 'route'), null)
-  // A distant ETA is still a live bus: it holds at the origin until its cruise starts.
-  const distant = inferBusVehicle(stops, [{ ...eta, at: now + 600_000 }], 2, now, 'route')!
+  const timetable = inferBusVehicles(stops, [{ ...eta, scheduled: true }], now, 'route')
+  assert.equal(timetable.length, 1, 'A scheduled (timetable) ETA still places the bus')
+  for (const row of [{ ...eta, observed: now - 180_000 }, { ...eta, observed: now + 60_000 }, { ...eta, at: NaN }, { ...eta, at: now - 1000 }]) assert.deepEqual(inferBusVehicles(stops, [row], now, 'route'), [], 'Stale or already-arrived ETAs place no bus')
+  assert.deepEqual(inferBusVehicles(stops, [{ ...eta, seq: 1 }], now, 'route'), [], 'A first-stop ETA is a departure bracket, not a vehicle')
+  assert.deepEqual(inferBusVehicles(stops, [], now, 'route'), [])
+  assert.deepEqual(inferBusVehicles(stops, [eta, { ...eta, seq: 3, at: eta.at + 100 }], now, 'route'), [], 'An impossible bracket speed rejects the chain')
+  const distant = inferBusVehicles(stops, [{ ...eta, at: now + 600_000 }], now, 'route')[0]!
   assert.equal(distant.fromDistance, 0)
   assert.ok(distant.departureAt > now, 'The cruise has not started yet')
 })
 
 test('Long headways still move a bus back-projected from the next stop ETA', () => {
   const route: BusRouteStop[] = [0, 1, 2, 3].map((index) => ({ id: String(index), seq: index + 1, nameTc: '', nameEn: '', lng: 114 + index * .02, lat: 22.3, distance: index * 1500 }))
-  const eta = { seq: 3, at: now + 480_000, observed: now - 10_000, scheduled: false }
-  const vehicle = inferBusVehicle(route, [eta], 4, now, 'route')!
+  const eta = { seq: 3, rank: 1, at: now + 480_000, observed: now - 10_000, scheduled: false }
+  const [vehicle] = inferBusVehicles(route, [eta], now, 'route')
   assert.equal(vehicle.fromDistance, 0)
   assert.equal(vehicle.toDistance, 3000)
-  const feed: BusRouteResponse = { ok: true, observedAt: null, stale: false, vehicle }
-  assert.ok(busDistanceAtTime(feed, now)! > 0, 'The bus is already mid-route')
-  assert.ok(busDistanceAtTime(feed, now + 60_000)! > busDistanceAtTime(feed, now)!, 'It keeps moving toward its next stop')
+  assert.ok(busVehicleDistanceAtTime(vehicle, now)! > 0, 'The bus is already mid-route')
+  assert.ok(busVehicleDistanceAtTime(vehicle, now + 60_000)! > busVehicleDistanceAtTime(vehicle, now)!, 'It keeps moving toward its next stop')
 })
 
 test('A live first-stop ETA anchors the departure and keeps the bus moving', () => {
   const route: BusRouteStop[] = [0, 1, 2, 3].map((index) => ({ id: String(index), seq: index + 1, nameTc: '', nameEn: '', lng: 114 + index * .02, lat: 22.3, distance: index * 1500 }))
   const observed = now - 10_000
   // The bus is still at the origin: it departs at its first-stop ETA and reaches stop 3 on time.
-  const waiting = inferBusVehicle(route, [{ seq: 1, at: now + 120_000, observed, scheduled: false }, { seq: 3, at: now + 480_000, observed, scheduled: false }], 4, now, 'route')!
+  const [waiting] = inferBusVehicles(route, [{ seq: 1, rank: 1, at: now + 120_000, observed, scheduled: false }, { seq: 3, rank: 1, at: now + 480_000, observed, scheduled: false }], now, 'route')
   assert.equal(waiting.departureAt, now + 120_000, 'The bus waits for its real departure ETA')
   assert.equal(waiting.arrivalAt, now + 480_000)
-  const feed: BusRouteResponse = { ok: true, observedAt: null, stale: false, vehicle: waiting }
-  assert.equal(busDistanceAtTime(feed, now), 0, 'Before departure the bus holds at the origin')
-  assert.ok(Math.abs(busDistanceAtTime(feed, now + 160_000)! - 1000 / 3) < 1e-6, 'Inside the freshness window the bus is under way')
+  assert.equal(busVehicleDistanceAtTime(waiting, now), 0, 'Before departure the bus holds at the origin')
+  assert.ok(Math.abs(busVehicleDistanceAtTime(waiting, now + 160_000)! - 1000 / 3) < 1e-6, 'Inside the freshness window the bus is under way')
   // Once the departure ETA is past, the same anchor places the bus mid-route.
-  const running = inferBusVehicle(route, [{ seq: 1, at: now - 60_000, observed, scheduled: false }, { seq: 3, at: now + 480_000, observed, scheduled: false }], 4, now, 'route')!
+  const [running] = inferBusVehicles(route, [{ seq: 1, rank: 1, at: now - 60_000, observed, scheduled: false }, { seq: 3, rank: 1, at: now + 480_000, observed, scheduled: false }], now, 'route')
   assert.equal(running.departureAt, now - 60_000)
-  assert.ok(busDistanceAtTime({ ok: true, observedAt: null, stale: false, vehicle: running }, now)! > 0, 'A departed bus is already moving along the route')
+  assert.ok(busVehicleDistanceAtTime(running, now)! > 0, 'A departed bus is already moving along the route')
   // A first-stop ETA after the next stop belongs to another bus: the cruise model applies.
-  const other = inferBusVehicle(route, [{ seq: 1, at: now + 500_000, observed, scheduled: false }, { seq: 3, at: now + 480_000, observed, scheduled: false }], 4, now, 'route')!
+  const [other] = inferBusVehicles(route, [{ seq: 1, rank: 1, at: now + 500_000, observed, scheduled: false }, { seq: 3, rank: 1, at: now + 480_000, observed, scheduled: false }], now, 'route')
   assert.ok(other.departureAt < now, 'Fallback cruise departs in the past')
+})
+
+test('every published rank chains into its own bus across stops', () => {
+  const route: BusRouteStop[] = [0, 1, 2, 3].map((index) => ({ id: String(index), seq: index + 1, nameTc: '', nameEn: '', lng: 114 + index * .02, lat: 22.3, distance: index * 1500 }))
+  const observed = now - 10_000
+  // Two ranks at one stop are two buses; the same rank seen from a downstream
+  // stop chains onto one bus and must not double it.
+  const fleet = inferBusVehicles(route, [
+    { seq: 2, rank: 1, at: now + 240_000, observed, scheduled: false },
+    { seq: 2, rank: 2, at: now + 600_000, observed, scheduled: false },
+    { seq: 3, rank: 1, at: now + 360_000, observed, scheduled: false },
+  ], now, 'route')
+  assert.equal(fleet.length, 2, 'One bus per rank; the seq-3 sighting of rank 1 chains onto the same bus')
+  assert.deepEqual(fleet.map(vehicle => vehicle.toDistance), [1500, 1500], 'Before the first observed arrival each bus cruises toward its first stop')
+  assert.deepEqual(fleet.map(vehicle => vehicle.departureAt - now), [120_000, 350_000], 'The rank-1 pair paces its cruise; the lone rank-2 entry uses the network default')
+  assert.deepEqual(fleet.map(vehicle => vehicle.id), ['route:1:2', 'route:2:2'])
 })
 
 test('road geometry matches whole ordered route and rejects reverse/disconnected/far-off shapes', () => {
@@ -76,7 +90,7 @@ test('selection requires exact operator direction/variant and rejects unsafe or 
   assert.equal((await GET(new Request('https://test/api/bus-route?operator=kmb&route=1A&stopId=ABC'))).status, 400)
 })
 
-test('full NLB route survives ETA failure and scheduled-only data has no vehicle', async () => {
+test('full NLB route survives ETA failure and scheduled-only data has no vehicles', async () => {
   const original = globalThis.fetch
   globalThis.fetch = async (input) => {
     const url = String(input)
@@ -90,7 +104,7 @@ test('full NLB route survives ETA failure and scheduled-only data has no vehicle
     assert.equal(result.route?.stops.length, 3)
     assert.equal(result.route?.geometry, 'stops')
     assert.equal(result.stale, true)
-    assert.equal(result.vehicle, null)
+    assert.equal(result.vehicles.length, 0)
   } finally { globalThis.fetch = original }
 })
 

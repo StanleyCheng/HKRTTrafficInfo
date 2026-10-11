@@ -160,36 +160,52 @@ export function estimateFerryVessels(
     const arrivals = instants(marks.filter((mark) => isArrival(mark, track)), now)
     const path = to ? ferryFairway(track.fromId, track.toId, from, to) : [from]
     const duration = track.crossingMinutes ? track.crossingMinutes * 60_000 : path.length >= 2 ? ferryCrossingMs(pathMetres(path)) : null
+    // Every sailing still on the water gets its own boat: a route runs more
+    // boats than the next departure whenever the crossing outlasts the headway.
+    const windows: { start: number; end: number }[] = []
+    // The destination clock's countdown anchors the boat it is waiting for.
     const arriveAt = arrivals.find((time) => time >= now - 2 * 60_000) ?? null
-    const departAt = arriveAt == null
-      ? [...departures].reverse().find((time) => time <= now && duration != null && time + duration >= now)
-        ?? departures.find((time) => time >= now) ?? null
-      : [...departures].reverse().find((time) => time < arriveAt) ?? null
-    const window = sailingWindow(departAt, arriveAt, duration)
-    if (!window) continue
-    const place = placeOnPath(path, window.start, window.end, now)
-    if (!place) continue
-    vessels.push({
-      id: `run-${track.route}-${track.fromId}-${track.toId || track.toEn}-${window.start}`,
-      nameTc: `${track.fromTc} – ${track.toTc}`,
-      nameEn: `${track.fromEn} – ${track.toEn}`,
-      lng: place.lng,
-      lat: place.lat,
-      route: track.route,
-      eta: new Date(window.end).toISOString(),
-      minutes: place.minutes,
-      destTc: track.toTc,
-      destEn: track.toEn,
-      fix: "clock",
-      fromLng: from.lng,
-      fromLat: from.lat,
-      toLng: to?.lng ?? from.lng,
-      toLat: to?.lat ?? from.lat,
-      departAt: window.start,
-      arriveAt: window.end,
-      pathLng: path.map((point) => point.lng),
-      pathLat: path.map((point) => point.lat),
-    })
+    if (arriveAt != null) {
+      const start = [...departures].reverse().find((time) => time < arriveAt) ?? (duration != null ? arriveAt - duration : null)
+      if (start != null) windows.push({ start, end: arriveAt })
+    }
+    for (const departure of departures) {
+      if (departure > now || duration == null || departure + duration + 2 * 60_000 < now) continue
+      // The live clock and the timetable describe one departure slot together.
+      if (windows.some((window) => Math.abs(window.start - departure) < 5 * 60_000)) continue
+      windows.push({ start: departure, end: departure + duration })
+    }
+    // The next due departure keeps its pier card only while no boat of this
+    // track is already sailing.
+    if (!windows.length) {
+      const next = departures.find((time) => time >= now) ?? null
+      if (next != null) windows.push(duration != null ? { start: next, end: next + duration } : { start: next, end: next })
+    }
+    for (const window of windows.sort((a, b) => a.start - b.start)) {
+      const place = placeOnPath(path, window.start, window.end, now)
+      if (!place) continue
+      vessels.push({
+        id: `run-${track.route}-${track.fromId}-${track.toId || track.toEn}-${window.start}`,
+        nameTc: `${track.fromTc} – ${track.toTc}`,
+        nameEn: `${track.fromEn} – ${track.toEn}`,
+        lng: place.lng,
+        lat: place.lat,
+        route: track.route,
+        eta: new Date(window.end).toISOString(),
+        minutes: place.minutes,
+        destTc: track.toTc,
+        destEn: track.toEn,
+        fix: "clock",
+        fromLng: from.lng,
+        fromLat: from.lat,
+        toLng: to?.lng ?? from.lng,
+        toLat: to?.lat ?? from.lat,
+        departAt: window.start,
+        arriveAt: window.end,
+        pathLng: path.map((point) => point.lng),
+        pathLat: path.map((point) => point.lat),
+      })
+    }
   }
   return vessels
 }

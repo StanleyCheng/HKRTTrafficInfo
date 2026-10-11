@@ -9,9 +9,9 @@ import type { TrafficSearchItem } from '@/lib/traffic-view';
 import { ferryDepartures, movingCameras, railHoverText, type MapViewport } from '@/lib/integration-client';
 import { stopPlate } from '@/lib/stop-plate';
 import { STOP_LABEL_WIDTH, declutterLabels, stopLabelHeight, type StopLabelItem, type StopLabelPlacement } from '@/lib/stop-labels';
-import type { BusRouteResponse, BusRouteSelection, BusRouteStop } from '@/lib/bus-route';
-import { getBusStopArrivals } from '@/lib/bus-route-client';
-import { busDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '@/lib/bus-route-motion';
+import type { BusRouteData, BusRouteResponse, BusRouteSelection, BusRouteStop, BusVehicle } from '@/lib/bus-route';
+ import { getBusStopArrivals } from '@/lib/bus-route-client';
+import { busVehicleDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '@/lib/bus-route-motion';
 import { markerOffsets, type MarkerPoint } from '@/lib/marker-layout';
 import { vehicleIcon, vehicleIconHeadingOffset } from '@/lib/vehicle-icons';
 import { ferryBadge } from '@/lib/ferry-routes';
@@ -144,7 +144,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const segmentPolylines = useRef(new Map<string, Leaflet.Polyline>());
   const vehicleGroup = useRef<Leaflet.LayerGroup | null>(null);
   const fittedBusRoute = useRef<string | null>(null);
-  const busVehicle = useRef<{ key: string; marker: Leaflet.Marker; distance: number; feed: BusRouteResponse; correction?: { distance: number; at: number }; heading?: HTMLElement | null } | null>(null);
+  const busVehicles = useRef(new Map<string, { marker: Leaflet.Marker; distance: number; feed: BusRouteResponse; direction: { route: BusRouteData }; correction?: { distance: number; at: number }; heading: HTMLElement | null }>());
   const vehicles = useRef(new Map<string, { marker: Leaflet.Marker; camera: Camera; feed: CameraData | undefined; language: Language; hoverAt: number; routeDistance?: number; correction?: { lat: number; lng: number; at: number }; routeCorrection?: { distance: number; at: number } }>());
   const previousSegmentSelection = useRef<string | null>(null);
   const onSelectSegmentRef = useRef(onSelectSegment);
@@ -247,7 +247,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       setReady(true);
       locate();
     })().catch(() => { if (!disposed) setMapError(true); }).finally(finishActivity);
-    return () => { disposed = true; finishActivity(); observer?.disconnect(); stopLocating(); map.current?.remove(); map.current = null; markerGroup.current = null; basemapLayer.current = null; locationLayer.current = null; vehicleGroup.current = null; busVehicle.current = null; fittedBusRoute.current = null; vehicleEntries.clear(); staticEntries.clear(); staticData.clear(); };
+    return () => { disposed = true; finishActivity(); observer?.disconnect(); stopLocating(); map.current?.remove(); map.current = null; markerGroup.current = null; basemapLayer.current = null; locationLayer.current = null; vehicleGroup.current = null; busVehicles.current.clear(); fittedBusRoute.current = null; vehicleEntries.clear(); staticEntries.clear(); staticData.clear(); };
   }, [onActivity, locate, stopLocating]);
   useEffect(() => {
     const L = library.current, m = map.current;
@@ -763,6 +763,13 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     const color = layers[route.operator].color;
     L.polyline(points, { color: '#fff', weight: 8, opacity: .95, interactive: false }).addTo(group);
     L.polyline(points, { color, weight: 4, opacity: 1, interactive: false, dashArray: route.geometry === 'stops' ? '7 7' : undefined, className: 'bus-route-polyline' }).addTo(group);
+    // The opposite bound(s) of the same service draw muted, without stops or
+    // labels: the rider's own bound keeps the interactive stop catalogue.
+    const reversePoints = (busRoute?.reverse ?? []).map(direction => direction.route.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]));
+    reversePoints.forEach(reverse => {
+      L.polyline(reverse, { color: '#fff', weight: 8, opacity: .55, interactive: false }).addTo(group);
+      L.polyline(reverse, { color, weight: 4, opacity: .75, interactive: false, dashArray: '3 9', className: 'bus-route-polyline bus-route-reverse' }).addTo(group);
+    });
     const compact = window.matchMedia('(max-width:700px),(max-height:520px) and (orientation:landscape)').matches;
     const labels: { button: HTMLButtonElement; marker: Leaflet.CircleMarker }[] = [];
     route.stops.forEach((stop, index) => {
@@ -798,7 +805,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     if (!inactive && fittedBusRoute.current !== route.key && points.length > 1) {
       fittedBusRoute.current = route.key;
       const labelHalfHeight = Math.max(0, ...labels.map(({ button }) => button.offsetHeight / 2));
-      m.fitBounds(points, { paddingTopLeft: [compact ? 60 : 90, 80 + labelHalfHeight], paddingBottomRight: [compact ? 70 : 85, (compact ? 170 : 125) + labelHalfHeight], maxZoom: 16, animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
+      m.fitBounds(points.concat(...reversePoints), { paddingTopLeft: [compact ? 60 : 90, 80 + labelHalfHeight], paddingBottomRight: [compact ? 70 : 85, (compact ? 170 : 125) + labelHalfHeight], maxZoom: 16, animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
     }
     return () => { m.off('moveend resize', positionLabels); group.remove(); };
   }, [busRoute, ready, inactive, language, routeStopLabels]);
@@ -822,73 +829,88 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     const L = library.current, m = map.current;
     if (!ready || !L || !m) return;
     const route = busRoute?.route;
-    const remove = () => { busVehicle.current?.marker.remove(); busVehicle.current = null; };
-    if (!route || !busRoute) { remove(); return; }
-    const distances = routeDistances(route.coordinates);
+    const entries = busVehicles.current;
+    const remove = (id: string) => { entries.get(id)?.marker.remove(); entries.delete(id); };
+    const clear = () => { entries.forEach(entry => entry.marker.remove()); entries.clear(); };
+    if (!route || !busRoute) { clear(); return; }
+    // Both bounds of the service carry their own fleet; every vehicle id is
+    // prefixed with its direction key, so markers never mix bounds.
+    const directions: { route: BusRouteData; vehicles: BusVehicle[] }[] = [{ route, vehicles: busRoute.vehicles }, ...(busRoute.reverse ?? []).map(direction => ({ route: direction.route, vehicles: direction.vehicles }))];
+    const geometry = new Map(directions.map(direction => [direction.route.key, { coordinates: direction.route.coordinates, distances: routeDistances(direction.route.coordinates) }]));
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let frame: number | undefined;
-    let timer: ReturnType<typeof setInterval> | undefined;
+    let timer: number | undefined;
     let zooming = m.getContainer().classList.contains('leaflet-zoom-anim');
     const name = `${route.route} · ${language === 'en' ? 'Estimated bus position' : '估算巴士位置'}`;
-    const terminus = route.stops[route.stops.length - 1];
-    const destination = `${route.route} → ${language === 'en' ? terminus?.nameEn || terminus?.nameTc || route.route : terminus?.nameTc || route.route}`;
-    if (busVehicle.current) {
-      const destEl = busVehicle.current.marker.getElement()?.querySelector<HTMLElement>('.vehicle-dest');
-      if (destEl) destEl.textContent = destination;
-      const icon = busVehicle.current.marker.getElement();
+    const destinationOf = (direction: { route: BusRouteData }) => {
+      const terminus = direction.route.stops[direction.route.stops.length - 1];
+      return `${direction.route.route} → ${language === 'en' ? terminus?.nameEn || terminus?.nameTc || direction.route.route : terminus?.nameTc || direction.route.route}`;
+    };
+    // Language changes keep every marker; only their labels follow.
+    entries.forEach(entry => {
+      const destEl = entry.marker.getElement()?.querySelector<HTMLElement>('.vehicle-dest');
+      if (destEl) destEl.textContent = destinationOf(entry.direction);
+      const icon = entry.marker.getElement();
       if (icon) { icon.title = name; icon.setAttribute('aria-label', name); }
-    }
+    });
     const tick = (move = true) => {
       const now = Date.now();
-      const distance = busDistanceAtTime(busRoute, now);
-      if (distance === null) { remove(); return; }
-      let entry = busVehicle.current;
-      if (entry && entry.key !== route.key) { remove(); entry = null; }
-      if (entry && entry.feed !== busRoute) {
-        entry.correction = reducedMotion.matches ? undefined : { distance: entry.distance - distance, at: now };
-        entry.feed = busRoute;
+      const live = new Map<string, { direction: { route: BusRouteData }; distance: number }>();
+      for (const direction of directions) {
+        for (const vehicle of direction.vehicles) {
+          const distance = busVehicleDistanceAtTime(vehicle, now);
+          if (distance !== null) live.set(vehicle.id, { direction, distance });
+        }
       }
-      const remaining = !reducedMotion.matches && entry?.correction ? Math.max(0, 1 - (now - entry.correction.at) / 2000) ** 3 : 0;
-      const displayDistance = distance + (entry?.correction?.distance ?? 0) * remaining;
-      const coordinate = routePointAtDistance(route.coordinates, distances, displayDistance);
-      if (!coordinate) { remove(); return; }
-      const point = L.latLng(coordinate[1], coordinate[0]);
-      if (!entry) {
-        const icon = L.divIcon({ className: 'camera-marker vehicle-marker bus-route-marker', html: vehicleHtml(vehicleIcon({ kind: route.operator, route: route.route, company: route.company }), layers[route.operator].color, destination), iconSize: [24, 24], iconAnchor: [12, 12] });
-        const marker = enableMarkerKeyboard(L.marker(point, { icon, title: name, alt: name, keyboard: true, zIndexOffset: 500 }).addTo(m));
-        marker.getElement()?.setAttribute('aria-label', name);
-        busVehicle.current = entry = { key: route.key, marker, distance: displayDistance, feed: busRoute, heading: marker.getElement()?.querySelector<HTMLElement>('.vehicle-heading') ?? null };
-      }
-      // Rotate inside the marker; Leaflet owns its outer transform.
-      const heading = routeHeadingAtDistance(route.coordinates, distances, displayDistance);
-      if (heading !== null) {
-        entry.heading ??= entry.marker.getElement()?.querySelector<HTMLElement>('.vehicle-heading') ?? null;
-        if (entry.heading) entry.heading.style.transform = `rotate(${heading + vehicleIconHeadingOffset}deg)`;
-      }
-      if (move) {
-        entry.distance = displayDistance;
-        if (!remaining) entry.correction = undefined;
-        entry.marker.setLatLng(point);
-        const icon = entry.marker.getElement();
-        if (icon) L.DomUtil.setPosition(icon, m.project(point).subtract(m.getPixelOrigin()));
+      for (const id of [...entries.keys()]) if (!live.has(id)) remove(id);
+      for (const [id, target] of live) {
+        const shape = geometry.get(target.direction.route.key)!;
+        let entry = entries.get(id);
+        if (entry && entry.feed !== busRoute) {
+          entry.correction = reducedMotion.matches ? undefined : { distance: entry.distance - target.distance, at: now };
+          entry.feed = busRoute;
+        }
+        const remaining = !reducedMotion.matches && entry?.correction ? Math.max(0, 1 - (now - entry.correction.at) / 2000) ** 3 : 0;
+        const displayDistance = target.distance + (entry?.correction?.distance ?? 0) * remaining;
+        const coordinate = routePointAtDistance(shape.coordinates, shape.distances, displayDistance);
+        if (!coordinate) { remove(id); continue; }
+        const point = L.latLng(coordinate[1], coordinate[0]);
+        if (!entry) {
+          const icon = L.divIcon({ className: 'camera-marker vehicle-marker bus-route-marker', html: vehicleHtml(vehicleIcon({ kind: target.direction.route.operator, route: target.direction.route.route, company: target.direction.route.company }), layers[target.direction.route.operator].color, destinationOf(target.direction)), iconSize: [24, 24], iconAnchor: [12, 12] });
+          const marker = enableMarkerKeyboard(L.marker(point, { icon, title: name, alt: name, keyboard: true, zIndexOffset: 500 }).addTo(m));
+          marker.getElement()?.setAttribute('aria-label', name);
+          entries.set(id, entry = { marker, distance: displayDistance, feed: busRoute, direction: target.direction, heading: marker.getElement()?.querySelector<HTMLElement>('.vehicle-heading') ?? null });
+        }
+        // Rotate inside the marker; Leaflet owns its outer transform.
+        const heading = routeHeadingAtDistance(shape.coordinates, shape.distances, displayDistance);
+        if (heading !== null) {
+          entry.heading ??= entry.marker.getElement()?.querySelector<HTMLElement>('.vehicle-heading') ?? null;
+          if (entry.heading) entry.heading.style.transform = `rotate(${heading + vehicleIconHeadingOffset}deg)`;
+        }
+        if (move) {
+          entry.distance = displayDistance;
+          if (!remaining) entry.correction = undefined;
+          entry.marker.setLatLng(point);
+          const icon = entry.marker.getElement();
+          if (icon) L.DomUtil.setPosition(icon, m.project(point).subtract(m.getPixelOrigin()));
+        }
       }
     };
     const animate = () => { tick(); frame = requestAnimationFrame(animate); };
     const visible = () => {
       if (frame !== undefined) cancelAnimationFrame(frame); frame = undefined;
-      if (timer) clearInterval(timer); timer = undefined;
+      clearInterval(timer); timer = undefined;
       const paused = inactive || zooming || document.visibilityState !== 'visible';
       element.current?.classList.toggle('map-motion-paused', paused || reducedMotion.matches);
       if (paused) return;
       tick();
-      if (reducedMotion.matches) timer = setInterval(() => tick(false), 1000);
+      if (reducedMotion.matches) timer = window.setInterval(() => tick(false), 1000);
       else frame = requestAnimationFrame(animate);
     };
     const startZoom = () => { zooming = true; visible(); };
     const endZoom = () => { zooming = false; visible(); };
-    if (busVehicle.current?.key !== route.key || busDistanceAtTime(busRoute, Date.now()) === null) remove();
     visible(); document.addEventListener('visibilitychange', visible); reducedMotion.addEventListener('change', visible); m.on('zoomstart', startZoom); m.on('zoomend', endZoom);
-    return () => { if (frame !== undefined) cancelAnimationFrame(frame); if (timer) clearInterval(timer); document.removeEventListener('visibilitychange', visible); reducedMotion.removeEventListener('change', visible); m.off('zoomstart', startZoom); m.off('zoomend', endZoom); };
+    return () => { if (frame !== undefined) cancelAnimationFrame(frame); clearInterval(timer); document.removeEventListener('visibilitychange', visible); reducedMotion.removeEventListener('change', visible); m.off('zoomstart', startZoom); m.off('zoomend', endZoom); };
   }, [busRoute, ready, language, inactive]);
   useEffect(() => {
     const L = library.current, m = map.current;

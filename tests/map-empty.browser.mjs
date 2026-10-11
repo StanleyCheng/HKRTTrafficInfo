@@ -32,7 +32,7 @@ async function create({ mobile = false, routeScenario = false } = {}) {
     const url = new URL(route.request().url());
     const kind = url.pathname.split('/')[2];
     if (routeScenario && kind === 'bus-route' && url.searchParams.get('stopArrivals') !== '1') {
-      return route.fulfill({ json: { ok: true, observedAt, stale: false, route: { key: JSON.stringify(tracking), operator: 'kmb', company: 'KMB', route: '1', geometry: 'road', coordinates, stops: routeStops }, vehicle: { id: 'fixture-bus', fromDistance: 0, toDistance: 19000, departureAt: Date.now() - 60000, arrivalAt: Date.now() + 240000, validUntil: Date.now() + 300000 } } });
+      return route.fulfill({ json: { ok: true, observedAt, stale: false, route: { key: JSON.stringify(tracking), operator: 'kmb', company: 'KMB', route: '1', geometry: 'road', coordinates, stops: routeStops }, vehicles: [{ id: 'fixture-bus', fromDistance: 0, toDistance: 19000, departureAt: Date.now() - 60000, arrivalAt: Date.now() + 240000, validUntil: Date.now() + 300000 }], reverse: [] } });
     }
     if (routeScenario && kind === 'bus-route') return route.fulfill({ json: { ok: true, observedAt, stale: false, arrivals: [] } });
     if (routeScenario && kind === 'kmb') return route.fulfill({ json: { ok: true, observedAt, stops: [{ id: 'FIXSTOP', nameTc: '固定車站', nameEn: 'Fixture stop', lng: 113.9, lat: 22.32, routes: ['1'], calls: [{ route: '1', company: 'KMB', destTc: '固定終點', destEn: 'Fixture terminus', minutes: 4, eta: new Date(Date.now() + 240000).toISOString(), scheduled: false, remarkTc: '', remarkEn: '', tracking }] }] } });

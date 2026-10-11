@@ -5,7 +5,7 @@ export type IntegrationKind = 'crossing' | 'works' | 'toll' | 'boundary' | 'weat
 export type LayerKind = OriginalLayerKind | IntegrationKind;
 export type DetailRow = { label: string; labelEn: string; value: string; valueEn?: string };
 export type Arrival = { route: string; destination: string; destinationEn: string; minutes: number | null; eta?: string; firstFerry?: string; lastFerry?: string; observedAt?: string; timeType?: 'A' | 'D'; platform?: string; scheduled?: boolean; remark?: string; remarkEn?: string; tracking?: BusRouteSelection };
-export type MapPath = { id: string; color: string; points: [number, number][] };
+export type MapPath = { id: string; color: string; points: [number, number][]; line?: string };
 export type Language = 'en' | 'zh';
 export type SpeedLevel = 'free' | 'moderate' | 'slow' | 'unknown';
 // The car park API reports each of these separately; private car is simply the first one.

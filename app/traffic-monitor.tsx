@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import Image from 'next/image';
-import { Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, Search, ShieldCheck, SlidersHorizontal, SquareParking, TrafficCone, TriangleAlert, Video, X } from 'lucide-react';
+import { Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, Search, ShieldCheck, SlidersHorizontal, SquareParking, TrafficCone, TrainFront, TriangleAlert, Video, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { messages, integrationMessages } from '@/lib/i18n';
 import { getCameraData } from '@/lib/traffic-client';
@@ -15,9 +15,10 @@ import TrafficSearch from './traffic-search';
 import TrafficStatus from './traffic-status';
 import IntelPanel from './intel-panel';
 import { getIntegrationData, initialViewport, pollingMs, viewportNote, withBoundarySpeeds, movingCameras, type MapViewport } from '@/lib/integration-client';
+import { linesThrough, mtrLineList } from '@/lib/mtr-network';
+import type { MtrResponse } from '@/lib/types';
 import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
 import { getBusRoute } from '@/lib/bus-route-client';
-import { busDistanceAtTime } from '@/lib/bus-route-motion';
 import { ETA_FRESH_MS } from '@/lib/place-arrivals';
 
 type LayerState = { data?: CameraData; loading: boolean; error: boolean };
@@ -123,6 +124,90 @@ function setStoredBasemap(basemap: Basemap) {
   basemapListeners.forEach(listener => listener());
 }
 
+
+const mtrLines = mtrLineList();
+// The Light Rail network has no per-line split, so it rides along as one row.
+const railLineKeys: string[] = [...mtrLines.map(line => line.code), 'lrt'];
+
+// Stored boolean maps (rail lines, enabled layers) follow the language/basemap
+// subscription pattern: no hydration mismatch, no cross-tab drift, and a write
+// to worn-out storage still updates this tab. An absent record means "defaults".
+function createStoredRecord(storageKey: string) {
+  const listeners = new Set<() => void>();
+  // A stable empty record: useSyncExternalStore re-renders forever if the
+  // "no stored value" snapshot is a fresh object every call.
+  const empty: Record<string, boolean> = {};
+  let fallback: Record<string, boolean> | undefined;
+  let fallbackRaw: string | null = null;
+  let writeFailed = false;
+  function parse(value: string | null): Record<string, boolean> | undefined {
+    if (!value) return undefined;
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+      const entries = Object.entries(parsed as Record<string, unknown>).filter(([, on]) => typeof on === 'boolean');
+      return entries.length ? Object.fromEntries(entries) as Record<string, boolean> : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  function getSnapshot(): Record<string, boolean> {
+    if (writeFailed && fallback) return fallback;
+    try {
+      // Re-parse only when the stored text changes; a fresh object per call
+      // would loop useSyncExternalStore.
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw !== fallbackRaw) {
+        fallbackRaw = raw;
+        fallback = parse(raw);
+      }
+    } catch {
+      // Storage can be unavailable in locked-down browser contexts; keep the in-memory choice.
+    }
+    return fallback ?? empty;
+  }
+  function getServerSnapshot(): Record<string, boolean> {
+    return empty;
+  }
+  function subscribe(listener: () => void) {
+    listeners.add(listener);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === storageKey || event.key === null) {
+        writeFailed = false;
+        fallbackRaw = event.newValue;
+        fallback = parse(event.newValue);
+        listener();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      listeners.delete(listener);
+      window.removeEventListener('storage', onStorage);
+    };
+  }
+  function write(value: Record<string, boolean>) {
+    fallback = value;
+    fallbackRaw = JSON.stringify(value);
+    try {
+      window.localStorage.setItem(storageKey, fallbackRaw);
+      writeFailed = false;
+    } catch {
+      writeFailed = true;
+      // The in-memory subscription still updates the current tab when storage is unavailable.
+    }
+    listeners.forEach(listener => listener());
+  }
+  return { getSnapshot, getServerSnapshot, subscribe, write };
+}
+
+const railLinesStore = createStoredRecord('hk-traffic-rail-lines-v1');
+const layerSelectionStore = createStoredRecord('hk-traffic-layers-v1');
+
+// First-visit layers; a restored selection replaces this whole map.
+function defaultEnabled(): Record<LayerKind, boolean> {
+  return Object.fromEntries(kinds.map(kind => [kind, kind === 'flow' || kind === 'incident' || (kind === 'mtr' && layerAvailable(kind))])) as Record<LayerKind, boolean>;
+}
+
 // The top bar display preference follows the
 // same stored subscription pattern as the language: no hydration mismatch, no
 // cross-tab drift, and a write to worn-out storage still updates this tab.
@@ -181,7 +266,15 @@ export default function TrafficMonitor() {
   const copy = messages[language];
   const extra = integrationMessages[language];
   const numberLocale = language === 'en' ? 'en-HK' : 'zh-HK';
-  const [enabled, setEnabled] = useState<Record<LayerKind, boolean>>(() => Object.fromEntries(kinds.map(kind => [kind, kind === 'flow' || kind === 'incident' || (kind === 'mtr' && layerAvailable(kind))])) as Record<LayerKind, boolean>);
+  const railLines = useSyncExternalStore(railLinesStore.subscribe, railLinesStore.getSnapshot, railLinesStore.getServerSnapshot);
+  const railLineOn = useCallback((key: string) => railLines[key] !== false, [railLines]);
+  const railHidden = railLineKeys.filter(key => railLines[key] === false);
+  const railControlLabel = `${copy.railLines}: ${copy.railLinesShown(railLineKeys.length - railHidden.length, railLineKeys.length)}`;
+  // Restored layer choices persist across launches; unavailable layers stay off.
+  const enabledSelection = useSyncExternalStore(layerSelectionStore.subscribe, layerSelectionStore.getSnapshot, layerSelectionStore.getServerSnapshot);
+  const enabled = useMemo<Record<LayerKind, boolean>>(() => Object.keys(enabledSelection).length
+    ? Object.fromEntries(kinds.map(kind => [kind, enabledSelection[kind] === true && layerAvailable(kind)])) as Record<LayerKind, boolean>
+    : defaultEnabled(), [enabledSelection]);
   const [states, setStates] = useState<Record<LayerKind, LayerState>>(() => Object.fromEntries(kinds.map(kind => [kind, { loading: originalKinds.includes(kind as OriginalLayerKind) || (kind === 'mtr' && layerAvailable(kind)), error: false }])) as Record<LayerKind, LayerState>);
   const [pendingActivity, setPendingActivity] = useState(0);
   const beginActivity = useCallback(() => {
@@ -203,7 +296,7 @@ export default function TrafficMonitor() {
   const [busRouteRetry, setBusRouteRetry] = useState(0);
   const busRouteCache = useRef(new Map<string, { promise: Promise<BusRouteState>; pending: boolean }>());
   const [showDetectors, setShowDetectors] = useState(false);
-  const [openControl, setOpenControl] = useState<'search' | 'layers' | null>(null);
+  const [openControl, setOpenControl] = useState<'search' | 'layers' | 'rail' | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [focusTarget, setFocusTarget] = useState<TrafficSearchItem | null>(null);
   const topbarCollapsed = useSyncExternalStore(topbarFlag.subscribe, topbarFlag.getSnapshot, topbarFlag.getServerSnapshot);
@@ -339,18 +432,32 @@ export default function TrafficMonitor() {
   const displayStates = useMemo(() => ({ ...states, boundary: { ...states.boundary, data: boundaryData } }), [states, boundaryData]);
   const intelInput = useMemo(() => ({ states: Object.fromEntries(kinds.filter(kind => enabled[kind] && layerAvailable(kind)).map(kind => [kind, displayStates[kind]])), segments: enabled.flow ? segments : [], now }), [displayStates, enabled, segments, now]);
   const mtrData = enabled.mtr ? states.mtr.data : undefined;
-  const lrtData = enabled.lrt ? states.lrt.data : undefined;
+  // The rail-line picker filters every MTR surface — tracks, station boards and
+  // moving trains — plus the Light Rail layer as one switch. An interchange
+  // station stays visible while any of its lines is selected.
+  const railMtrData = useMemo(() => {
+    if (!mtrData || !railHidden.length) return mtrData;
+    const payload = mtrData.payload as MtrResponse | undefined;
+    return {
+      ...mtrData,
+      payload: payload ? { ...payload, trains: payload.trains.filter(train => railLineOn(train.line)), boards: payload.boards.filter(board => railLineOn(board.line)) } : undefined,
+      paths: (mtrData.paths ?? []).filter(path => path.line === undefined || railLineOn(path.line)),
+      cameras: mtrData.cameras.filter(camera => linesThrough(camera.sourceId).some(railLineOn)),
+    };
+  }, [mtrData, railHidden.length, railLineOn]);
+  const lrtData = enabled.lrt && railLineOn('lrt') ? states.lrt.data : undefined;
   const ferryData = enabled.ferry ? states.ferry.data : undefined;
-  const transitFeeds = useMemo(() => ({ mtr: mtrData, lrt: lrtData, ferry: ferryData }), [mtrData, lrtData, ferryData]);
-  const paths = useMemo(() => [mtrData, lrtData, ferryData].flatMap(data => data?.paths ?? []), [mtrData, lrtData, ferryData]);
+  const transitFeeds = useMemo(() => ({ mtr: railMtrData, lrt: lrtData, ferry: ferryData }), [railMtrData, lrtData, ferryData]);
+  const paths = useMemo(() => [railMtrData, lrtData, ferryData].flatMap(data => data?.paths ?? []), [railMtrData, lrtData, ferryData]);
+  const viewStates = useMemo(() => ({ ...displayStates, mtr: { ...displayStates.mtr, data: railMtrData }, lrt: { ...displayStates.lrt, data: lrtData } }), [displayStates, railMtrData, lrtData]);
   const flowFresh = isLiveTrafficDataFresh(states.flow.data?.segmentsUpdated, now);
   const cameras = useMemo(() => kinds.flatMap(kind => {
     if (!enabled[kind]) return [];
     if (kind === 'flow') return showDetectors ? (states.flow.data?.cameras ?? []).map(camera => flowFresh ? camera : { ...camera, speedKmh: null, level: 'unknown' as const, color: speedLevelColors.unknown }) : [];
     if (viewportNote(kind, viewport)) return [];
-    const data = displayStates[kind].data;
+    const data = viewStates[kind].data;
     return (data?.cameras ?? []).map(camera => isFeedDataStale(kind, data, now) || isCameraDataStale(camera, now) ? { ...camera, color: speedLevelColors.unknown } : camera);
-  }), [states, displayStates, enabled, showDetectors, flowFresh, viewport, now]);
+  }), [states, viewStates, enabled, showDetectors, flowFresh, viewport, now]);
   const selected = useMemo(() => {
     if (selectedSnapshot?.positionType === 'vehicle') {
       const kind = selectedSnapshot.kind as 'mtr' | 'lrt' | 'ferry';
@@ -383,7 +490,7 @@ export default function TrafficMonitor() {
           return { selection, data, error: Boolean(data.error || data.stale), loading: false };
         }).catch(async () => {
           const retained = await previous?.promise;
-          return { selection, data: retained?.data ? { ...retained.data, stale: true, vehicle: null } : undefined, error: true, loading: false };
+          return { selection, data: retained?.data ? { ...retained.data, stale: true, vehicles: [], reverse: retained.data.reverse.map(direction => ({ ...direction, vehicles: [] })) } : undefined, error: true, loading: false };
         });
         const entry = { promise, pending: true };
         void promise.then(() => { entry.pending = false; });
@@ -404,8 +511,8 @@ export default function TrafficMonitor() {
   }, [activeBusSelection, busRouteRetry]);
   const searchItems = useMemo<TrafficSearchItem[]>(() => [
     ...segments.map(segment => ({ camera: cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated), segment })),
-    ...kinds.filter(kind => kind !== 'flow' && layerAvailable(kind) && !viewportNote(kind, viewport)).flatMap(kind => (displayStates[kind].data?.cameras ?? []).map(camera => ({ camera }))),
-  ], [segments, states, displayStates, viewport]);
+    ...kinds.filter(kind => kind !== 'flow' && layerAvailable(kind) && !viewportNote(kind, viewport)).flatMap(kind => (viewStates[kind].data?.cameras ?? []).map(camera => ({ camera }))),
+  ], [segments, states, viewStates, viewport]);
   const total = kinds.reduce((count, kind) => count + (states[kind].data?.count ?? 0), 0);
   const loading = kinds.some(kind => (originalKinds.includes(kind as OriginalLayerKind) || enabled[kind]) && states[kind].loading);
   const appBusy = pendingActivity > 0;
@@ -430,7 +537,7 @@ export default function TrafficMonitor() {
     if (!layerAvailable(kind)) return;
     if (enabled[kind]) setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false } }));
     if (enabled[kind] && busSelection?.operator === kind) setBusSelection(null);
-    setEnabled(current => ({ ...current, [kind]: !current[kind] }));
+    layerSelectionStore.write({ ...enabled, [kind]: !enabled[kind] });
     if (selected?.kind === kind && enabled[kind]) setSelectedSnapshot(null);
   }
 
@@ -456,14 +563,14 @@ export default function TrafficMonitor() {
 
   const showBusRoute = useCallback((camera: Camera, tracking: BusRouteSelection) => {
     pendingDetailsFocus.current = false;
-    setEnabled(current => ({ ...current, [camera.kind]: true }));
+    layerSelectionStore.write({ ...enabled, [camera.kind]: true });
     setBusSelection(tracking);
     setSelectedSnapshot(null);
     setOpenControl(null);
-  }, []);
+  }, [enabled]);
 
   function selectSearchItem(item: TrafficSearchItem) {
-    setEnabled(current => ({ ...current, [item.camera.kind]: true }));
+    layerSelectionStore.write({ ...enabled, [item.camera.kind]: true });
     setFocusTarget({ ...item });
     choose(item.camera);
   }
@@ -473,13 +580,14 @@ export default function TrafficMonitor() {
 
   const routeLoading = Boolean(activeBusSelection && (busRouteState?.selection !== activeBusSelection || busRouteState.loading));
   const routeError = Boolean(activeBusSelection && busRouteState?.selection === activeBusSelection && busRouteState.error);
+  const busCount = busRoute ? busRoute.vehicles.length + busRoute.reverse.reduce((count, direction) => count + direction.vehicles.length, 0) : 0;
   const routeControlLabel = activeBusSelection ? `${copy.mapLayers} · ${extra.selectedBusRoute} ${activeBusSelection.route}${routeLoading ? ` · ${extra.loadingBusRoute}` : routeError ? ` · ${extra.busRouteError}` : ''}` : copy.mapLayers;
   const routeStatus = activeBusSelection && <section className="bus-route-status" aria-label={`${extra.selectedBusRoute} ${activeBusSelection.route}`}>
     <div className="bus-route-heading"><strong>{extra.selectedBusRoute} · {activeBusSelection.route}</strong><button type="button" className="text-button" onClick={() => setBusSelection(null)}>{extra.closeBusRoute}</button></div>
     <div role="status" aria-live="polite">
       {routeLoading && <p><LoaderCircle size={13} className="spin"/>{extra.loadingBusRoute}</p>}
       {routeError && <p className="warning-text">{extra.busRouteError} <button type="button" className="text-button" onClick={() => setBusRouteRetry(value => value + 1)}>{copy.retry}</button></p>}
-      {busRoute?.route && <><p>{busDistanceAtTime(busRoute, now) === null ? extra.noBusPosition : extra.busRouteTracking}</p><p>{extra.estimated}</p>{busRoute.route.geometry === 'stops' && <p>{extra.busRouteStops}</p>}{busRoute.stale && <p className="warning-text">{extra.stale}</p>}</>}
+      {busRoute?.route && <><p>{busCount ? extra.estimatedBuses(busCount) : extra.noBusPosition}</p><p>{extra.estimated}</p>{busRoute.route.geometry === 'stops' && <p>{extra.busRouteStops}</p>}{busRoute.stale && <p className="warning-text">{extra.stale}</p>}</>}
     </div>
   </section>;
 
@@ -571,7 +679,32 @@ export default function TrafficMonitor() {
             </div>
           </PopoverContent>
         </Popover>
-        {activeBusSelection && <span className="sr-only" role="status">{extra.selectedBusRoute} {activeBusSelection.route} · {routeLoading ? extra.loadingBusRoute : routeError ? extra.busRouteError : extra.busRouteTracking}</span>}
+        <Popover open={openControl === 'rail'} onOpenChange={open => setOpenControl(open ? 'rail' : null)}>
+          <PopoverTrigger asChild><button type="button" className={`toolbar-button ${railHidden.length ? 'filtered' : ''}`} aria-label={railControlLabel} title={railControlLabel}><TrainFront size={20}/></button></PopoverTrigger>
+          <PopoverContent className="map-control-popover rail-lines-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="rail-lines-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
+            <div className="control-popover-head"><h2 id="rail-lines-popover-title">{copy.railLines}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
+            <div className="control-popover-body">
+              <div className="rail-lines-actions">
+                <button type="button" onClick={() => railLinesStore.write(Object.fromEntries(railLineKeys.map(key => [key, true])))}>{copy.railLinesAll}</button>
+                <button type="button" onClick={() => railLinesStore.write(Object.fromEntries(railLineKeys.map(key => [key, false])))}>{copy.railLinesNone}</button>
+                <span className="rail-lines-count">{copy.railLinesShown(railLineKeys.length - railHidden.length, railLineKeys.length)}</span>
+              </div>
+              <ul className="rail-lines-list">
+                {mtrLines.map(line => <li key={line.code}>
+                  <button type="button" className={`rail-line-row ${railLineOn(line.code) ? 'active' : ''}`} role="switch" aria-checked={railLineOn(line.code)} aria-label={`${copy.layerSwitch(language === 'en' ? line.en : line.tc)}`} onClick={() => railLinesStore.write({ ...railLines, [line.code]: !railLineOn(line.code) })}>
+                    <span className="rail-line-chip" style={{ background: line.color }}/><span className="rail-line-name">{language === 'en' ? line.en : line.tc}</span><span className="switch"/>
+                  </button>
+                </li>)}
+                <li>
+                  <button type="button" className={`rail-line-row lrt ${railLineOn('lrt') ? 'active' : ''}`} role="switch" aria-checked={railLineOn('lrt')} aria-label={copy.layerSwitch(layerText('lrt', language).name)} onClick={() => railLinesStore.write({ ...railLines, lrt: !railLineOn('lrt') })}>
+                    <span className="rail-line-chip" style={{ background: layers.lrt.color }}/><span className="rail-line-name">{layerText('lrt', language).name}</span><span className="switch"/>
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </PopoverContent>
+        </Popover>
+        {activeBusSelection && <span className="sr-only" role="status">{extra.selectedBusRoute} {activeBusSelection.route} · {routeLoading ? extra.loadingBusRoute : routeError ? extra.busRouteError : extra.estimatedBuses(busCount)}</span>}
       </div>
       <TooltipProvider delayDuration={180} skipDelayDuration={100}>
         <div className="layer-group-picker" role="group" aria-label={copy.mapLayers}>{layerGroups.map(group => <button type="button" key={group.id} aria-pressed={dockGroup === group.id} onClick={() => setDockGroup(group.id)}>{extra.groups[group.id]}</button>)}</div>

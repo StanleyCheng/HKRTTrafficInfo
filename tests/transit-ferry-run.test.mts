@@ -59,7 +59,9 @@ const nextSailing = estimateFerryVessels([{ ...track, crossingMinutes: 9 }], [
   { route: "1", pierId: "a", arriving: false, eta: "2026-10-03T09:55:00+08:00", destTc: "乙" },
   { route: "1", pierId: "a", arriving: false, eta: "2026-10-03T10:02:00+08:00", destTc: "乙" },
 ], new Set(), locate, now + 2 * 60_000)
-assert.notEqual(nextSailing[0]?.id, scheduled[0]?.id, "A new sailing must not move the previous boat back to its origin")
+assert.equal(nextSailing.length, 2, "A headway shorter than the crossing keeps both boats on the water")
+assert.equal(nextSailing[0]?.id, scheduled[0]?.id, "The sailing boat keeps its identity instead of snapping back to its origin")
+assert.equal(nextSailing[1]?.lng, from.lng, "The newly departed sailing appears at the origin pier")
 
 const nextOnly = estimateFerryVessels(
   [{ ...track, route: "富裕", toId: "", toTc: "啟德", toEn: "Kai Tak", destTc: "啟德" }],

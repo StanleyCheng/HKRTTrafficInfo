@@ -1,6 +1,6 @@
 {
-  "name": "香港實時交通資訊",
-  "short_name": "香港實時交通資訊",
+  "name": "HK RT Traffic Info",
+  "short_name": "HK RT Traffic",
   "description": "Official Hong Kong government open-data traffic info: live road-segment speeds, traffic snapshots, camera locations, incidents, parking vacancy and rainfall.",
   "start_url": "./",
   "display": "standalone",

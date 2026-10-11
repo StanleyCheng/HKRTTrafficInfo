@@ -1,13 +1,13 @@
 import { kmbStop } from './kmb-network.ts'
 import { citybusStop } from './citybus-network.ts'
 import { gmbStop } from './gmb-reach.ts'
-import { nlbStop } from './nlb-network.ts'
-import { nlbArrivalMs } from './nlb-clock.ts'
-import { fetchUpstream } from './upstream.ts'
-import { etaQueue } from './polite-fetch.ts'
-import { ETA_FRESH_MS } from './place-arrivals.ts'
-import { pool } from './pool.ts'
-import { routeDistances } from './bus-route-motion.ts'
+import { nlbRouteIds, nlbStop } from './nlb-network.ts'
+ import { nlbArrivalMs } from './nlb-clock.ts'
+ import { fetchUpstream } from './upstream.ts'
+ import { etaQueue } from './polite-fetch.ts'
+ import { ETA_FRESH_MS } from './place-arrivals.ts'
+ import { pool } from './pool.ts'
+import { busVehicleDistanceAtTime, routeDistances } from './bus-route-motion.ts'
 import { busRoadGeometry } from './bus-route-geometry.ts'
 import { busCompany } from './bus-company.ts'
 import type { Arrival } from './traffic.ts'
@@ -24,16 +24,20 @@ export type BusRouteSelection = {
   stopSeq?: number
 }
 export type BusRouteStop = { id: string; seq: number; nameTc: string; nameEn: string; lng: number; lat: number; distance: number }
+export type BusRouteData = { key: string; operator: BusRouteSelection['operator']; company?: string; route: string; stops: BusRouteStop[]; coordinates: [number, number][]; geometry: 'road' | 'stops' }
+export type BusVehicle = { id: string; fromDistance: number; toDistance: number; departureAt: number; arrivalAt: number; validUntil: number }
+export type BusRouteDirection = { route: BusRouteData; vehicles: BusVehicle[] }
 export type BusRouteResponse = {
   ok: boolean
   error?: string
-  route?: { key: string; operator: BusRouteSelection['operator']; company?: string; route: string; stops: BusRouteStop[]; coordinates: [number, number][]; geometry: 'road' | 'stops' }
-  vehicle: { id: string; fromDistance: number; toDistance: number; departureAt: number; arrivalAt: number; validUntil: number } | null
+  route?: BusRouteData
+  vehicles: BusVehicle[]
+  reverse: BusRouteDirection[]
   observedAt: string | null
   stale: boolean
 }
 export type BusStopArrivalsResponse = { ok: boolean; arrivals: Arrival[]; observedAt: string | null; stale: boolean; error?: string }
-export type BusEta = { seq: number; at: number; observed: number; scheduled: boolean }
+export type BusEta = { seq: number; rank: number; at: number; observed: number; scheduled: boolean }
 type Row = Record<string, unknown>
 const DAY = 86_400_000
 const FRESH = 180_000
@@ -112,7 +116,7 @@ export async function loadBusStopArrivals(selection: BusRouteSelection, now = Da
   }
 }
 
-async function routeStops(selection: BusRouteSelection): Promise<BusRouteStop[]> {
+async function routeStops(selection: BusRouteSelection, requireSelectedStop = true): Promise<BusRouteStop[]> {
   const { operator, route, bound, routeId, routeSeq, serviceType } = selection
   const direction = bound === 'I' ? 'inbound' : 'outbound'
   const url = operator === 'kmb' ? `${KMB}/route-stop/${route}/${direction}/${serviceType}`
@@ -141,82 +145,197 @@ async function routeStops(selection: BusRouteSelection): Promise<BusRouteStop[]>
     stops.push({ id, seq, lng: lng!, lat: lat!, nameTc: operator === 'kmb' ? kmbStopName(nameTc) : nameTc, nameEn: operator === 'kmb' ? kmbStopName(nameEn) : nameEn, distance: 0 })
   })
   stops.sort((a, b) => a.seq - b.seq)
-  if (stops.some((stop, index) => stop.seq !== index + 1) || !stops.some((stop) => stop.id === selection.stopId && (selection.stopSeq == null || stop.seq === selection.stopSeq))) throw new Error('Selected stop does not match this route')
+  if (stops.some((stop, index) => stop.seq !== index + 1)) throw new Error('Bus route stop sequence is incomplete')
+  // Reverse-bound loads carry the forward selection's stop id; only the
+  // rider's own bound must contain it.
+  if (requireSelectedStop && !stops.some((stop) => stop.id === selection.stopId && (selection.stopSeq == null || stop.seq === selection.stopSeq))) throw new Error('Selected stop does not match this route')
   return stops
 }
 
 async function routeEtas(selection: BusRouteSelection, stops: BusRouteStop[]): Promise<BusEta[]> {
   if (selection.operator === 'kmb') {
     const { body, fetched } = await json(`${KMB}/route-eta/${selection.route}/${selection.serviceType}`, ETA_FRESH_MS)
-    return array(body.data).filter((row) => row.dir === selection.bound && String(row.service_type) === selection.serviceType && row.eta_seq === 1).map((row) => ({ seq: Number(row.seq), at: Date.parse(text(row.eta)), observed: Date.parse(text(row.data_timestamp)) || fetched, scheduled: scheduled(row) }))
+    return array(body.data).filter((row) => row.dir === selection.bound && String(row.service_type) === selection.serviceType && Number(row.eta_seq) >= 1 && Number(row.eta_seq) <= 3).map((row) => ({ seq: Number(row.seq), rank: Number(row.eta_seq), at: Date.parse(text(row.eta)), observed: Date.parse(text(row.data_timestamp)) || fetched, scheduled: scheduled(row) }))
   }
-  const selectedIndex = stops.findIndex((stop) => stop.id === selection.stopId && (selection.stopSeq == null || selection.stopSeq === stop.seq))
-  // ponytail: twelve upstream samples bound ETA traffic; denser sampling needs a route-level feed.
-  const indexes = new Set(Array.from({ length: Math.min(12, selectedIndex + 1) }, (_, index) => Math.round(index * selectedIndex / Math.max(1, Math.min(12, selectedIndex + 1) - 1))))
-  if (selectedIndex + 1 < stops.length) indexes.add(selectedIndex + 1)
+  // The whole-route fleet view back-projects every published bus, so every
+  // stop is sampled at every published rank (KMB alone has a route-level
+  // feed). The shared ETA cache bounds upstream traffic: the 30-second map
+  // refresh re-reads a stop at most once per freshness window.
   const etas: BusEta[] = []
-  await pool([...indexes], 4, async (index) => {
-    const stop = stops[index]
+  await pool(stops, 6, async (stop) => {
     const url = selection.operator === 'citybus' ? `${CTB}/eta/CTB/${stop.id}/${selection.route}`
       : selection.operator === 'gmb' ? `${GMB}/eta/route-stop/${selection.routeId}/${selection.routeSeq}/${stop.seq}`
         : `${NLB}?action=estimatedArrivals&routeId=${selection.routeId}&stopId=${stop.id}&lang=en`
     const { body, fetched } = await json(url, ETA_FRESH_MS)
     if (selection.operator === 'nlb') {
       const row = array(body.estimatedArrivals)[0]
-      if (row) etas.push({ seq: stop.seq, at: nlbArrivalMs(text(row.estimatedArrivalTime)), observed: nlbArrivalMs(text(row.generateTime)), scheduled: String(row.departed) !== '1' || String(row.noGPS) !== '0' })
+      if (row) etas.push({ seq: stop.seq, rank: 1, at: nlbArrivalMs(text(row.estimatedArrivalTime)), observed: nlbArrivalMs(text(row.generateTime)), scheduled: String(row.departed) !== '1' || String(row.noGPS) !== '0' })
     } else if (selection.operator === 'gmb') {
       const data = record(body.data)
-      const row = array(data.eta).find((item) => item.eta_seq === 1)
-      if (data.enabled !== false && row) etas.push({ seq: stop.seq, at: Date.parse(text(row.timestamp)), observed: Date.parse(text(body.generated_timestamp)) || fetched, scheduled: scheduled(row) })
+      if (data.enabled === false) return
+      array(data.eta).forEach((row, index) => {
+        const at = Date.parse(text(row.timestamp))
+        if (Number.isFinite(at)) etas.push({ seq: stop.seq, rank: Number(row.eta_seq) || index + 1, at, observed: Date.parse(text(body.generated_timestamp)) || fetched, scheduled: scheduled(row) })
+      })
     } else {
-      const row = array(body.data).find((item) => item.dir === selection.bound && Number(item.seq) === stop.seq && item.eta_seq === 1)
-      if (row) etas.push({ seq: stop.seq, at: Date.parse(text(row.eta)), observed: Date.parse(text(row.data_timestamp)) || fetched, scheduled: scheduled(row) })
+      array(body.data).filter((item) => item.dir === selection.bound && Number(item.seq) === stop.seq && Number(item.eta_seq) >= 1 && Number(item.eta_seq) <= 3).forEach((row) => {
+        const at = Date.parse(text(row.eta))
+        if (Number.isFinite(at)) etas.push({ seq: stop.seq, rank: Number(row.eta_seq), at, observed: Date.parse(text(row.data_timestamp)) || fetched, scheduled: scheduled(row) })
+      })
     }
   })
   return etas
 }
 
-export function inferBusVehicle(stops: BusRouteStop[], etas: BusEta[], selectedSeq: number, now: number, id: string): BusRouteResponse['vehicle'] {
-  // Timetable (scheduled) rows anchor the estimate just like GPS ones: without
-  // vehicle IDs any fresh arrival estimate is the best position evidence there is.
-  const fresh = etas.filter((eta) => Number.isFinite(eta.at) && Number.isFinite(eta.observed) && now - eta.observed < FRESH && eta.observed <= now + 30_000)
-  const next = fresh.filter((eta) => eta.seq > 1 && eta.seq <= selectedSeq && eta.at > now).sort((a, b) => a.at - b.at)[0]
-  if (!next) return null
-  const to = stops.find((stop) => stop.seq === next.seq)
-  if (!to || to.distance <= 0) return null
-  const after = fresh.find((eta) => eta.seq === next.seq + 1 && eta.at > next.at)
-  const afterStop = after && stops.find((stop) => stop.seq === after.seq)
-  // ponytail: ETAs have no vehicle IDs. Back-project one approach from the next
-  // stop's ETA: the bus runs from the route origin to that stop exactly on
-  // time. A live first-stop ETA is the real departure bracket — the bus waits
-  // at the origin until it should depart, then keeps moving the whole way. GPS
-  // would replace this heuristic.
-  const speed = after && afterStop && afterStop.distance > to.distance ? (afterStop.distance - to.distance) / ((after.at - next.at) / 1000) : 6
-  if (!Number.isFinite(speed) || speed < 0.5 || speed > 25) return null
-  const origin = fresh.find((eta) => eta.seq === 1)
-  if (origin && Number.isFinite(origin.at) && origin.at < next.at) {
-    const pace = to.distance / ((next.at - origin.at) / 1000)
-    if (pace >= 0.5 && pace <= 25) return { id, fromDistance: 0, toDistance: to.distance, departureAt: origin.at, arrivalAt: next.at, validUntil: next.observed + FRESH }
+// Timetable (scheduled) rows anchor the estimate just like GPS ones: without
+// vehicle IDs any fresh arrival estimate is the best position evidence there
+// is. Buses do not overtake, so within one ETA rank the ordered stops chain
+// into a single bus progressing along the route; the bracketing pair of
+// arrivals pins its current segment, and before the first observed arrival the
+// bus back-projects a cruise from the route origin. A rank chain that breaks
+// in space or time means the feed's rank shifted (list truncation) and a new
+// bus starts there.
+// ponytail: ETAs carry no vehicle IDs; a rank shift can still describe one bus
+// twice, so near-coincident positions collapse. A GPS vehicle feed would
+// replace this heuristic.
+export function inferBusVehicles(stops: BusRouteStop[], etas: BusEta[], now: number, idPrefix: string): BusVehicle[] {
+  const bySeq = new Map(stops.map((stop) => [stop.seq, stop]));
+  // Fresh observations only; arrival times may be past — a bus the feed still
+  // lists has already reached that stop, which anchors the chain behind `now`.
+  const byEntry = new Map<string, BusEta>();
+  for (const eta of etas.filter((eta) => Number.isFinite(eta.at) && Number.isFinite(eta.observed) && now - eta.observed < FRESH && eta.observed <= now + 30_000)) {
+    const key = `${eta.seq}:${eta.rank}`;
+    const existing = byEntry.get(key);
+    if (!existing || eta.at < existing.at) byEntry.set(key, eta);
   }
-  const cruiseMs = (to.distance / speed) * 1000
-  return { id, fromDistance: 0, toDistance: to.distance, departureAt: next.at - cruiseMs, arrivalAt: next.at, validUntil: next.observed + FRESH }
+  const byRank = new Map<number, BusEta[]>();
+  for (const eta of byEntry.values()) {
+    const list = byRank.get(eta.rank) ?? [];
+    list.push(eta);
+    byRank.set(eta.rank, list);
+  }
+  const vehicles: BusVehicle[] = [];
+  for (const [rank, entries] of byRank) {
+    entries.sort((a, b) => a.seq - b.seq);
+    let chain: BusEta[] = [];
+    const flush = () => {
+      if (!chain.length) return;
+      const vehicle = vehicleFromChain(chain, bySeq, now, `${idPrefix}:${rank}:${chain[0]!.seq}`);
+      if (vehicle) vehicles.push(vehicle);
+      chain = [];
+    };
+    for (const eta of entries) {
+      const stop = bySeq.get(eta.seq);
+      if (!stop || !(stop.distance >= 0)) continue;
+      const previous = chain.at(-1);
+      const previousStop = previous ? bySeq.get(previous.seq) : undefined;
+      if (previous && previousStop && (stop.distance <= previousStop.distance || eta.at <= previous.at)) flush();
+      chain.push(eta);
+    }
+    flush();
+  }
+  const kept: { vehicle: BusVehicle; position: number }[] = [];
+  for (const vehicle of vehicles.sort((a, b) => a.departureAt - b.departureAt)) {
+    const position = busVehicleDistanceAtTime(vehicle, now) ?? 0;
+    // Two buses still holding at the origin are distinct when their departures
+    // differ; once underway, near-coincident positions collapse.
+    const duplicate = kept.some((entry) => now < vehicle.departureAt && now < entry.vehicle.departureAt
+      ? Math.abs(entry.vehicle.departureAt - vehicle.departureAt) < 120_000
+      : Math.abs(entry.position - position) < 200);
+    if (!duplicate) kept.push({ vehicle, position });
+  }
+  return kept.map((entry) => entry.vehicle);
+}
+
+function vehicleFromChain(chain: BusEta[], bySeq: Map<number, BusRouteStop>, now: number, id: string): BusVehicle | null {
+  const first = chain[0]!, last = chain.at(-1)!;
+  const firstStop = bySeq.get(first.seq)!, lastStop = bySeq.get(last.seq)!;
+  const validUntil = chain.reduce((latest, eta) => Math.max(latest, eta.observed), 0) + FRESH;
+  if (now >= last.at) {
+    // The bus reached the last observed stop; it holds there until the feed
+    // refreshes, carried by its final segment.
+    if (chain.length < 2 || now >= validUntil) return null;
+    const from = chain.at(-2)!, fromStop = bySeq.get(from.seq)!;
+    const pace = (lastStop.distance - fromStop.distance) / ((last.at - from.at) / 1000);
+    if (!Number.isFinite(pace) || pace < 0.5 || pace > 25) return null;
+    return { id, fromDistance: fromStop.distance, toDistance: lastStop.distance, departureAt: from.at, arrivalAt: last.at, validUntil };
+  }
+  if (now < first.at) {
+    if (firstStop.distance <= 0) {
+      // The chain anchors at the origin: the first pair is the departure leg,
+      // with the first-stop ETA as the real departure bracket.
+      if (chain.length < 2) return null;
+      const second = chain[1]!, secondStop = bySeq.get(second.seq)!;
+      if (secondStop.distance <= 0 || second.at <= first.at) return null;
+      const pace = secondStop.distance / ((second.at - first.at) / 1000);
+      if (!Number.isFinite(pace) || pace < 0.5 || pace > 25) return null;
+      return { id, fromDistance: 0, toDistance: secondStop.distance, departureAt: first.at, arrivalAt: second.at, validUntil };
+    }
+    // Back-project a cruise from the origin, paced by the chain's first pair
+    // when there is one.
+    const pair = chain.length > 1 ? bySeq.get(chain[1]!.seq) : undefined;
+    const speed = pair && pair.distance > firstStop.distance && chain[1]!.at > first.at ? (pair.distance - firstStop.distance) / ((chain[1]!.at - first.at) / 1000) : 6;
+    if (!Number.isFinite(speed) || speed < 0.5 || speed > 25) return null;
+    const cruiseMs = (firstStop.distance / speed) * 1000;
+    return { id, fromDistance: 0, toDistance: firstStop.distance, departureAt: first.at - cruiseMs, arrivalAt: first.at, validUntil };
+  }
+  // Inside the chain: the bracketing pair of arrivals pins the current segment.
+  for (let index = 0; index < chain.length - 1; index += 1) {
+    const from = chain[index]!, to = chain[index + 1]!;
+    if (from.at > now || now >= to.at) continue;
+    const fromStop = bySeq.get(from.seq)!, toStop = bySeq.get(to.seq)!;
+    const pace = (toStop.distance - fromStop.distance) / ((to.at - from.at) / 1000);
+    if (!Number.isFinite(pace) || pace < 0.5 || pace > 25) return null;
+    return { id, fromDistance: fromStop.distance, toDistance: toStop.distance, departureAt: from.at, arrivalAt: to.at, validUntil };
+  }
+  return null;
+}
+
+type DirectionLoad = { route: BusRouteData; vehicles: BusVehicle[]; observed: number; failed: boolean }
+
+async function loadDirection(selection: BusRouteSelection, now: number, requireSelectedStop: boolean): Promise<DirectionLoad> {
+  const stops = await routeStops(selection, requireSelectedStop)
+  const key = [selection.operator, selection.route, selection.bound, selection.serviceType, selection.routeId, selection.routeSeq].join(':')
+  const [road, etaResult] = await Promise.all([busRoadGeometry(selection, stops).catch(() => null), routeEtas(selection, stops).then((etas) => ({ etas, failed: false })).catch(() => ({ etas: [] as BusEta[], failed: true }))])
+  const coordinates: [number, number][] = road?.coordinates ?? stops.map((stop) => [stop.lng, stop.lat])
+  const distances = road?.stopDistances ?? routeDistances(coordinates)
+  stops.forEach((stop, index) => { stop.distance = distances[index] })
+  const route: BusRouteData = { key, operator: selection.operator, company: selection.company, route: selection.route, stops, coordinates, geometry: road ? 'road' : 'stops' }
+  return {
+    route,
+    vehicles: inferBusVehicles(stops, etaResult.etas, now, key),
+    observed: Math.max(0, ...etaResult.etas.map((eta) => Number.isFinite(eta.observed) ? eta.observed : 0)),
+    failed: etaResult.failed,
+  }
+}
+
+// The opposite bound of the same signed service. NLB signs one routeId per
+// direction and variant, so every other id behind the same route code runs.
+function reverseSelections(selection: BusRouteSelection): BusRouteSelection[] {
+  if (selection.operator === 'kmb' || selection.operator === 'citybus') return [{ ...selection, bound: selection.bound === 'I' ? 'O' : 'I', stopSeq: undefined }]
+  if (selection.operator === 'gmb') return [{ ...selection, routeSeq: selection.routeSeq === 1 ? 2 : 1, stopSeq: undefined }]
+  return nlbRouteIds(selection.route).filter((routeId) => routeId !== selection.routeId).map((routeId) => ({ ...selection, routeId, stopSeq: undefined }))
 }
 
 export async function loadBusRoute(selection: BusRouteSelection, now = Date.now()): Promise<BusRouteResponse> {
-  if (!validBusSelection(selection)) return { ok: false, error: 'Invalid bus route selection', vehicle: null, observedAt: null, stale: false }
+  if (!validBusSelection(selection)) return { ok: false, error: 'Invalid bus route selection', vehicles: [], reverse: [], observedAt: null, stale: false }
   try {
-    const stops = await routeStops(selection)
-    const key = [selection.operator, selection.route, selection.bound, selection.serviceType, selection.routeId, selection.routeSeq].join(':')
-    const [road, etaResult] = await Promise.all([busRoadGeometry(selection, stops).catch(() => null), routeEtas(selection, stops).then((etas) => ({ etas, failed: false })).catch(() => ({ etas: [] as BusEta[], failed: true }))])
-    const coordinates: [number, number][] = road?.coordinates ?? stops.map((stop) => [stop.lng, stop.lat])
-    const distances = road?.stopDistances ?? routeDistances(coordinates)
-    stops.forEach((stop, index) => { stop.distance = distances[index] })
-    const route: NonNullable<BusRouteResponse['route']> = { key, operator: selection.operator, company: selection.company, route: selection.route, stops, coordinates, geometry: road ? 'road' : 'stops' }
-    const selected = stops.find((stop) => stop.id === selection.stopId && (selection.stopSeq == null || stop.seq === selection.stopSeq))!
-    const observed = Math.max(0, ...etaResult.etas.map((eta) => Number.isFinite(eta.observed) ? eta.observed : 0))
-    const stale = etaResult.failed || (observed > 0 && now - observed >= FRESH)
-    return { ok: true, route, vehicle: stale ? null : inferBusVehicle(stops, etaResult.etas, selected.seq, now, key), observedAt: observed ? new Date(observed).toISOString() : null, stale, ...(etaResult.failed ? { error: 'Arrival estimates could not refresh' } : {}) }
+    const [forward, ...reverseLoads] = await Promise.all([loadDirection(selection, now, true), ...reverseSelections(selection).map((reverse) => loadDirection(reverse, now, false).catch(() => null))])
+    const observed = Math.max(0, forward.observed, ...reverseLoads.flatMap((load) => (load ? [load.observed] : [])))
+    // Staleness follows the rider's own bound; a reverse bound that fails to
+    // load simply drops out of the view.
+    const stale = forward.failed || (forward.observed > 0 && now - forward.observed >= FRESH)
+    const keep = (load: DirectionLoad): BusRouteDirection => ({ route: load.route, vehicles: stale ? [] : load.vehicles })
+    return {
+      ok: true,
+      route: forward.route,
+      vehicles: stale ? [] : forward.vehicles,
+      reverse: reverseLoads.filter((load): load is DirectionLoad => Boolean(load)).map(keep),
+      observedAt: observed ? new Date(observed).toISOString() : null,
+      stale,
+      ...(forward.failed ? { error: 'Arrival estimates could not refresh' } : {}),
+    }
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Bus route unavailable', vehicle: null, observedAt: null, stale: false }
+    return { ok: false, error: error instanceof Error ? error.message : 'Bus route unavailable', vehicles: [], reverse: [], observedAt: null, stale: false }
   }
 }

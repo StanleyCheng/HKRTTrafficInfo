@@ -69,7 +69,8 @@ function row(key: keyof typeof labels.en, value: string, valueEn = value): Detai
 export function pathsFromFeatures(collection: GeoJSON.FeatureCollection, prefix: string): MapPath[] {
   return collection.features.flatMap((feature, i) => {
     const paths = feature.geometry.type === 'LineString' ? [feature.geometry.coordinates] : feature.geometry.type === 'MultiLineString' ? feature.geometry.coordinates : [];
-    return paths.map((points, j) => ({ id: `${prefix}-${i}-${j}`, color: text(feature.properties?.color) || '#8a6d3b', points: points.map(point => [point[1], point[0]] as [number, number]) }));
+    // Rail features carry their line code so the line picker can filter them.
+    return paths.map((points, j) => ({ id: `${prefix}-${i}-${j}`, color: text(feature.properties?.color) || '#8a6d3b', points: points.map(point => [point[1], point[0]] as [number, number]), ...(text(feature.properties?.line) ? { line: text(feature.properties?.line) } : {}) }));
   });
 }
 function featureCameras(kind: IntegrationKind, collection: GeoJSON.FeatureCollection): Camera[] {
