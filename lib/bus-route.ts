@@ -181,18 +181,17 @@ export function inferBusVehicle(stops: BusRouteStop[], etas: BusEta[], selectedS
   const next = live.filter((eta) => eta.seq > 1 && eta.seq <= selectedSeq && eta.at > now).sort((a, b) => a.at - b.at)[0]
   if (!next) return null
   const to = stops.find((stop) => stop.seq === next.seq)
-  const from = stops.find((stop) => stop.seq === next.seq - 1)
-  if (!to || !from || to.distance <= from.distance) return null
+  if (!to || to.distance <= 0) return null
   const after = live.find((eta) => eta.seq === next.seq + 1 && eta.at > next.at)
   const afterStop = after && stops.find((stop) => stop.seq === after.seq)
-  // ponytail: ETAs have no vehicle IDs. Infer one approach at constant speed, capped to
-  // the preceding stop and three-minute observation lifetime; GPS would replace this heuristic.
+  // ponytail: ETAs have no vehicle IDs. Back-project one approach from the next
+  // stop's ETA: the bus cruises from the route origin at a plausible pace so it
+  // arrives on time, holding at the origin until that cruise should start. GPS
+  // would replace this heuristic.
   const speed = after && afterStop && afterStop.distance > to.distance ? (afterStop.distance - to.distance) / ((after.at - next.at) / 1000) : 6
   if (!Number.isFinite(speed) || speed < 0.5 || speed > 25) return null
-  const duration = Math.min(600_000, Math.max(15_000, (to.distance - from.distance) / speed * 1000))
-  const departureAt = next.at - duration
-  if (departureAt > now || next.at - now > FRESH) return null
-  return { id, fromDistance: from.distance, toDistance: to.distance, departureAt, arrivalAt: next.at, validUntil: Math.min(next.at + 15_000, next.observed + FRESH) }
+  const cruiseMs = (to.distance / speed) * 1000
+  return { id, fromDistance: 0, toDistance: to.distance, departureAt: next.at - cruiseMs, arrivalAt: next.at, validUntil: Math.min(next.at + 15_000, next.observed + FRESH) }
 }
 
 export async function loadBusRoute(selection: BusRouteSelection, now = Date.now()): Promise<BusRouteResponse> {

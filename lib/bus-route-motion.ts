@@ -49,7 +49,10 @@ export function routeHeadingAtDistance(coordinates: [number, number][], distance
 
 export function busDistanceAtTime(data: BusRouteResponse, now: number): number | null {
   const vehicle = data.vehicle;
-  if (!data.ok || data.stale || !vehicle || now > vehicle.validUntil || now < vehicle.departureAt) return null;
+  // Before departure the bus holds at the segment start — the route origin for
+  // inferred approaches — instead of vanishing.
+  if (!data.ok || data.stale || !vehicle || now > vehicle.validUntil) return null;
+  if (now < vehicle.departureAt) return vehicle.fromDistance;
   const duration = vehicle.arrivalAt - vehicle.departureAt;
   if (duration <= 0 || ![vehicle.fromDistance, vehicle.toDistance, vehicle.departureAt, vehicle.arrivalAt, vehicle.validUntil].every(Number.isFinite)) return null;
   const progress = Math.min(1, (now - vehicle.departureAt) / duration);

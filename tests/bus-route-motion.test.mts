@@ -18,11 +18,11 @@ test('bus motion follows route bends, repeated vertices and stops at path endpoi
   assert.deepEqual(routePointAtDistance([[114, 22]], [0], 10), [114, 22]);
 });
 
-test('bus trajectory uses absolute time and suppresses stale, expired or future movement', () => {
+test('bus trajectory uses absolute time, holds before departure and suppresses stale or expired movement', () => {
   const data: BusRouteResponse = { ok: true, observedAt: new Date(1000).toISOString(), stale: false, vehicle: { id: 'bus', fromDistance: 100, toDistance: 500, departureAt: 1000, arrivalAt: 5000, validUntil: 6000 } };
   assert.equal(busDistanceAtTime(data, 3000), 300);
   assert.equal(busDistanceAtTime(data, 5500), 500);
-  assert.equal(busDistanceAtTime(data, 999), null);
+  assert.equal(busDistanceAtTime(data, 999), 100, 'Before departure the bus holds at the segment start');
   assert.equal(busDistanceAtTime(data, 6001), null);
   assert.equal(busDistanceAtTime({ ...data, stale: true }, 3000), null);
   assert.equal(busDistanceAtTime({ ...data, vehicle: null }, 3000), null);

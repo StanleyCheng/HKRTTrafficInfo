@@ -1,22 +1,38 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { inferBusVehicle, loadBusRoute, validBusSelection, type BusRouteStop } from '../lib/bus-route.ts'
+import { inferBusVehicle, loadBusRoute, validBusSelection, type BusRouteResponse, type BusRouteStop } from '../lib/bus-route.ts'
+import { busDistanceAtTime } from '../lib/bus-route-motion.ts'
 import { matchBusGeometry } from '../lib/bus-route-geometry.ts'
 import { GET } from '../app/api/bus-route/route.ts'
 
 const now = Date.parse('2026-10-06T10:00:00Z')
 const stops: BusRouteStop[] = [0, 1, 2].map((index) => ({ id: String(index + 1), seq: index + 1, nameTc: '', nameEn: '', lng: 114 + index * 0.001, lat: 22.3, distance: index * 100 }))
 
-test('ETA inference is bounded and rejects schedule, stale, distant, impossible and missing observations', () => {
+test('ETA inference is bounded and rejects schedule, stale, impossible and missing observations', () => {
   const eta = { seq: 2, at: now + 10_000, observed: now - 10_000, scheduled: false }
   const vehicle = inferBusVehicle(stops, [eta], 2, now, 'route')!
   assert.equal(vehicle.fromDistance, 0)
   assert.equal(vehicle.toDistance, 100)
   assert.ok(vehicle.departureAt <= now && vehicle.validUntil <= eta.observed + 180_000)
-  for (const row of [{ ...eta, scheduled: true }, { ...eta, observed: now - 180_000 }, { ...eta, observed: now + 60_000 }, { ...eta, at: now + 600_000 }, { ...eta, at: NaN }]) assert.equal(inferBusVehicle(stops, [row], 2, now, 'route'), null)
+  for (const row of [{ ...eta, scheduled: true }, { ...eta, observed: now - 180_000 }, { ...eta, observed: now + 60_000 }, { ...eta, at: NaN }]) assert.equal(inferBusVehicle(stops, [row], 2, now, 'route'), null)
   assert.equal(inferBusVehicle(stops, [eta], 1, now, 'route'), null)
   assert.equal(inferBusVehicle(stops, [eta, { ...eta, seq: 3, at: eta.at + 100 }], 2, now, 'route'), null)
   assert.equal(inferBusVehicle(stops, [], 2, now, 'route'), null)
+  // A distant ETA is still a live bus: it holds at the origin until its cruise starts.
+  const distant = inferBusVehicle(stops, [{ ...eta, at: now + 600_000 }], 2, now, 'route')!
+  assert.equal(distant.fromDistance, 0)
+  assert.ok(distant.departureAt > now, 'The cruise has not started yet')
+})
+
+test('Long headways still move a bus back-projected from the next stop ETA', () => {
+  const route: BusRouteStop[] = [0, 1, 2, 3].map((index) => ({ id: String(index), seq: index + 1, nameTc: '', nameEn: '', lng: 114 + index * .02, lat: 22.3, distance: index * 1500 }))
+  const eta = { seq: 3, at: now + 480_000, observed: now - 10_000, scheduled: false }
+  const vehicle = inferBusVehicle(route, [eta], 4, now, 'route')!
+  assert.equal(vehicle.fromDistance, 0)
+  assert.equal(vehicle.toDistance, 3000)
+  const feed: BusRouteResponse = { ok: true, observedAt: null, stale: false, vehicle }
+  assert.ok(busDistanceAtTime(feed, now)! > 0, 'The bus is already mid-route')
+  assert.ok(busDistanceAtTime(feed, now + 60_000)! > busDistanceAtTime(feed, now)!, 'It keeps moving toward its next stop')
 })
 
 test('road geometry matches whole ordered route and rejects reverse/disconnected/far-off shapes', () => {
