@@ -15,17 +15,30 @@ const results = [];
 const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || 'chrome', headless: true });
 const contexts = [];
 
-async function create({ mobile = false } = {}) {
+async function create({ mobile = false, routeScenario = false } = {}) {
   const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, hasTouch: mobile });
   contexts.push(context);
   const observedAt = new Date().toISOString();
+  // One KMB stop with a tracked arrival, and a route so wide that fitting it
+  // drops the map below the zoom-13 bus gate.
+  const tracking = { operator: 'kmb', company: 'KMB', route: '1', bound: 'O', serviceType: '1', stopId: 'FIXSTOP', stopSeq: 2 };
+  const routeStops = [
+    { id: 'FIXSTOP', seq: 1, nameTc: '固定起點', nameEn: 'Fixture origin', lng: 113.9, lat: 22.32, distance: 0 },
+    { id: 'FIXSTOP2', seq: 2, nameTc: '固定中途站', nameEn: 'Fixture mid stop', lng: 114.08, lat: 22.30, distance: 19000 },
+    { id: 'FIXSTOP3', seq: 3, nameTc: '固定終點', nameEn: 'Fixture terminus', lng: 114.25, lat: 22.34, distance: 37000 },
+  ];
+  const coordinates = routeStops.map(stop => [stop.lng, stop.lat]);
   await context.route('**/api/**', route => {
     const url = new URL(route.request().url());
     const kind = url.pathname.split('/')[2];
-    // Healthy bus envelope with no stops: loads fine, places nothing.
-    if (['kmb', 'citybus', 'gmb', 'nlb'].includes(kind)) return route.fulfill({ json: { ok: true, observedAt, stops: [] } });
-    return route.fulfill({ json: { ok: true, observedAt, fetchedAt: observedAt, boards: [], trains: [], stops: [], piers: [], vessels: [], warnings: [], notices: [], features: [], segments: [] } });
+    if (routeScenario && kind === 'bus-route' && url.searchParams.get('stopArrivals') !== '1') {
+      return route.fulfill({ json: { ok: true, observedAt, stale: false, route: { key: JSON.stringify(tracking), operator: 'kmb', company: 'KMB', route: '1', geometry: 'road', coordinates, stops: routeStops }, vehicle: { id: 'fixture-bus', fromDistance: 0, toDistance: 19000, departureAt: Date.now() - 60000, arrivalAt: Date.now() + 240000, validUntil: Date.now() + 300000 } } });
+    }
+    if (routeScenario && kind === 'bus-route') return route.fulfill({ json: { ok: true, observedAt, stale: false, arrivals: [] } });
+    if (routeScenario && kind === 'kmb') return route.fulfill({ json: { ok: true, observedAt, stops: [{ id: 'FIXSTOP', nameTc: '固定車站', nameEn: 'Fixture stop', lng: 113.9, lat: 22.32, routes: ['1'], calls: [{ route: '1', company: 'KMB', destTc: '固定終點', destEn: 'Fixture terminus', minutes: 4, eta: new Date(Date.now() + 240000).toISOString(), scheduled: false, remarkTc: '', remarkEn: '', tracking }] }] } });
+    return route.fulfill({ json: { ok: true, observedAt, fetchedAt: observedAt, boards: [], trains: [], stops: [], piers: [], vessels: [], warnings: [], notices: [], features: [], segments: [], points: [] } });
   });
+  await context.route(url => url.hostname.endsWith('.gov.hk'), route => route.fulfill({ status: 503, body: 'Fixture: original feeds are excluded from this scenario' }));
   await context.route('**tile.openstreetmap.org**', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgQIAI7mY6QAAAABJRU5ErkJggg==', 'base64') }));
   await context.addInitScript(() => {
     localStorage.setItem('hk-traffic-language-v1', 'en');
@@ -120,6 +133,36 @@ try {
     const notice = page.locator('.map-empty');
     await notice.waitFor();
     assert.match(await notice.innerText(), /All layers are off/, 'The all-off hint stays available on mobile');
+    await context.close();
+  });
+  await test('A displayed bus route is map content: no empty notice, moving bus stays', async () => {
+    const { page, context } = await create({ routeScenario: true });
+    await page.evaluate(() => { window.__map.setView([22.32, 113.9], 14, { animate: false }); });
+    await openLayers(page);
+    for (const kind of ['flow', 'incident', 'mtr']) await toggle(page, kind, false);
+    await toggle(page, 'kmb', true);
+    await toggle(page, 'crossing', true);
+    await settle(page);
+    await page.locator('.camera-marker[data-marker-id="kmb-FIXSTOP"]').waitFor({ timeout: 20000 });
+    await page.locator('.camera-marker[data-marker-id="kmb-FIXSTOP"]').evaluate(marker => marker.click());
+    await page.locator('.item-popup .bus-route-button[aria-label^="Show route 1"]').click({ timeout: 15000 });
+    await page.locator('.bus-route-polyline').waitFor({ timeout: 30000 });
+    await page.locator('.bus-route-marker').waitFor({ timeout: 10000 });
+    // Fitting the whole route drops below the zoom-13 bus gate; the crossing
+    // layer stays drawable but empty, so without a route the notice returns.
+    await page.waitForFunction(() => window.__map.getZoom() < 13, null, { timeout: 20000 });
+    await page.waitForTimeout(800);
+    assert.equal(await page.locator('.map-empty').count(), 0, 'The empty notice must not cover a displayed route');
+    const moving = await page.evaluate(count => new Promise(resolve => { const frames = []; function frame() { const element = document.querySelector('.bus-route-marker'); frames.push(element?.style.transform); if (frames.length >= count) resolve(new Set(frames).size); else requestAnimationFrame(frame); } requestAnimationFrame(frame); }), 20);
+    assert.ok(moving >= 10, 'The estimated bus keeps moving on the displayed route');
+    await page.screenshot({ path: path.join(evidence, 'route-display-no-notice.png') });
+    await openLayers(page);
+    await page.getByRole('button', { name: 'Close route', exact: true }).click();
+    await page.locator('.bus-route-polyline').waitFor({ state: 'detached' });
+    await settle(page);
+    const notice = page.locator('.map-empty');
+    await notice.waitFor();
+    assert.match(await notice.innerText(), /No camera location data is available/, 'Without a route the honest notice returns');
     await context.close();
   });
 } finally {

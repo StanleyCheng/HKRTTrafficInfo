@@ -1078,7 +1078,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     {locationError && <div className={`map-error location-error${mapError ? ' with-map-error' : ''}`} role="alert">{locationErrorMessage}<button type="button" className="map-retry" onClick={() => setLocationError(null)}>{copy.dismissLocationError}</button></div>}
     {mapError && <div className="map-error" role="alert">{copy.mapLoadFailed}<button type="button" className="map-retry" onClick={() => ready ? setBasemapRetry(value => value + 1) : window.location.reload()}><RefreshCw size={14}/>{copy.retry}</button></div>}
     {!ready && !mapError && <div className="map-loading"><LoaderCircle className="spin" size={20}/> {copy.mapLoading}</div>}
-    {ready && !loading && cameras.length === 0 && !segments?.length && (allDisabled || hasDrawableLayers) && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
+    {ready && !loading && !busRoute?.route && cameras.length === 0 && !segments?.length && (allDisabled || hasDrawableLayers) && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
     {popupElement && popupCamera && createPortal(renderItemDetails(popupCamera, selected ? undefined : {
       status: routePopupData && routePopupData.stop === routePopupStop?.stop && routePopupData.language === language ? routePopupData.status : 'loading',
       onRetry: () => setRoutePopupStop(current => current ? { ...current } : null),

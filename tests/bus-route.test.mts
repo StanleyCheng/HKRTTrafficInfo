@@ -8,13 +8,16 @@ import { GET } from '../app/api/bus-route/route.ts'
 const now = Date.parse('2026-10-06T10:00:00Z')
 const stops: BusRouteStop[] = [0, 1, 2].map((index) => ({ id: String(index + 1), seq: index + 1, nameTc: '', nameEn: '', lng: 114 + index * 0.001, lat: 22.3, distance: index * 100 }))
 
-test('ETA inference is bounded and rejects schedule, stale, impossible and missing observations', () => {
+test('ETA inference is bounded and rejects stale, impossible and missing observations', () => {
   const eta = { seq: 2, at: now + 10_000, observed: now - 10_000, scheduled: false }
   const vehicle = inferBusVehicle(stops, [eta], 2, now, 'route')!
   assert.equal(vehicle.fromDistance, 0)
   assert.equal(vehicle.toDistance, 100)
   assert.ok(vehicle.departureAt <= now && vehicle.validUntil <= eta.observed + 180_000)
-  for (const row of [{ ...eta, scheduled: true }, { ...eta, observed: now - 180_000 }, { ...eta, observed: now + 60_000 }, { ...eta, at: NaN }]) assert.equal(inferBusVehicle(stops, [row], 2, now, 'route'), null)
+  // Timetable-only service still anchors the estimated bus.
+  const timetable = inferBusVehicle(stops, [{ ...eta, scheduled: true }], 2, now, 'route')!
+  assert.equal(timetable.toDistance, 100, 'A scheduled (timetable) ETA still places the bus')
+  for (const row of [{ ...eta, observed: now - 180_000 }, { ...eta, observed: now + 60_000 }, { ...eta, at: NaN }]) assert.equal(inferBusVehicle(stops, [row], 2, now, 'route'), null)
   assert.equal(inferBusVehicle(stops, [eta], 1, now, 'route'), null)
   assert.equal(inferBusVehicle(stops, [eta, { ...eta, seq: 3, at: eta.at + 100 }], 2, now, 'route'), null)
   assert.equal(inferBusVehicle(stops, [], 2, now, 'route'), null)

@@ -177,12 +177,14 @@ async function routeEtas(selection: BusRouteSelection, stops: BusRouteStop[]): P
 }
 
 export function inferBusVehicle(stops: BusRouteStop[], etas: BusEta[], selectedSeq: number, now: number, id: string): BusRouteResponse['vehicle'] {
-  const live = etas.filter((eta) => !eta.scheduled && Number.isFinite(eta.at) && Number.isFinite(eta.observed) && now - eta.observed < FRESH && eta.observed <= now + 30_000)
-  const next = live.filter((eta) => eta.seq > 1 && eta.seq <= selectedSeq && eta.at > now).sort((a, b) => a.at - b.at)[0]
+  // Timetable (scheduled) rows anchor the estimate just like GPS ones: without
+  // vehicle IDs any fresh arrival estimate is the best position evidence there is.
+  const fresh = etas.filter((eta) => Number.isFinite(eta.at) && Number.isFinite(eta.observed) && now - eta.observed < FRESH && eta.observed <= now + 30_000)
+  const next = fresh.filter((eta) => eta.seq > 1 && eta.seq <= selectedSeq && eta.at > now).sort((a, b) => a.at - b.at)[0]
   if (!next) return null
   const to = stops.find((stop) => stop.seq === next.seq)
   if (!to || to.distance <= 0) return null
-  const after = live.find((eta) => eta.seq === next.seq + 1 && eta.at > next.at)
+  const after = fresh.find((eta) => eta.seq === next.seq + 1 && eta.at > next.at)
   const afterStop = after && stops.find((stop) => stop.seq === after.seq)
   // ponytail: ETAs have no vehicle IDs. Back-project one approach from the next
   // stop's ETA: the bus runs from the route origin to that stop exactly on
@@ -191,7 +193,7 @@ export function inferBusVehicle(stops: BusRouteStop[], etas: BusEta[], selectedS
   // would replace this heuristic.
   const speed = after && afterStop && afterStop.distance > to.distance ? (afterStop.distance - to.distance) / ((after.at - next.at) / 1000) : 6
   if (!Number.isFinite(speed) || speed < 0.5 || speed > 25) return null
-  const origin = live.find((eta) => eta.seq === 1)
+  const origin = fresh.find((eta) => eta.seq === 1)
   if (origin && Number.isFinite(origin.at) && origin.at < next.at) {
     const pace = to.distance / ((next.at - origin.at) / 1000)
     if (pace >= 0.5 && pace <= 25) return { id, fromDistance: 0, toDistance: to.distance, departureAt: origin.at, arrivalAt: next.at, validUntil: next.observed + FRESH }
