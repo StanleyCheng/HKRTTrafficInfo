@@ -55,3 +55,19 @@ test('full NLB route survives ETA failure and scheduled-only data has no vehicle
     assert.equal(result.vehicle, null)
   } finally { globalThis.fetch = original }
 })
+
+test('KMB route stop names drop the pole code but keep parenthetical place notes', async () => {
+  const original = globalThis.fetch
+  globalThis.fetch = async (input) => {
+    const url = String(input)
+    if (url.includes('/route-stop/')) return Response.json({ data: [{ stop: 'EE3EA981F3D6485D', seq: 1 }, { stop: '6C15579CA43DF72E', seq: 2 }] })
+    if (url.includes('FeatureServer')) return Response.json({ features: [] })
+    throw new Error('ETA outage')
+  }
+  try {
+    const result = await loadBusRoute({ operator: 'kmb', company: 'KMB', route: '1A', stopId: 'EE3EA981F3D6485D', bound: 'O', serviceType: '1' }, now)
+    assert.equal(result.ok, true)
+    assert.deepEqual(result.route?.stops.map((stop) => stop.nameTc), ['書院道', '黃大仙總站 (落客站)'], 'Labels show the station name without the KMB pole code')
+    assert.deepEqual(result.route?.stops.map((stop) => stop.nameEn), ['COLLEGE ROAD', 'WONG TAI SIN BUS TERMINUS (ALIGHTING STOP)'], 'English names lose only the code, never the place note')
+  } finally { globalThis.fetch = original }
+})

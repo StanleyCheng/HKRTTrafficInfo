@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed } from 'lucide-react';
+import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed, Tags } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import { integrationMessages, messages } from '@/lib/i18n';
 import { Camera, CameraData, FlowSegment, Language, MapPath, hkTime, layerText, layers, parkingCounts, readableInk, speedLevelColors } from '@/lib/traffic';
@@ -132,6 +132,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const detailsOpenRef = useRef(onDetailsOpen);
   const popupLanguage = useRef(language);
   const [revealedRouteKey, setRevealedRouteKey] = useState<string | null>(null);
+  const [routeStopLabels, setRouteStopLabels] = useState(true);
   const routeFocusRef = useRef(false);
   const previousSelection = useRef<string | null>(null);
   const selectRef = useRef(onSelect);
@@ -766,6 +767,10 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     const labels: { button: HTMLButtonElement; marker: Leaflet.CircleMarker }[] = [];
     route.stops.forEach((stop, index) => {
       const endpoint = index === 0 || index === route.stops.length - 1;
+      const marker = L.circleMarker([stop.lat, stop.lng], { radius: endpoint ? 5 : 3, color, weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false, className: 'bus-route-stop' }).addTo(group);
+      // The toggle strips every name while the route line, stop circles and the
+      // moving bus stay, so riders can follow the vehicle without the clutter.
+      if (!routeStopLabels) return;
       const button = document.createElement('button');
       button.type = 'button'; button.className = 'bus-route-stop-label'; button.textContent = language === 'en' ? stop.nameEn || stop.nameTc : stop.nameTc || stop.nameEn;
       button.dataset.stopId = stop.id; button.dataset.stopSeq = String(stop.seq); button.style.setProperty('--route-color', color);
@@ -777,8 +782,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
         closeDetailsRef.current();
         setRoutePopupStop({ key: route.key, stop });
       });
-      const marker = L.circleMarker([stop.lat, stop.lng], { radius: endpoint ? 5 : 3, color, weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false, className: 'bus-route-stop' }).addTo(group)
-        .bindTooltip(button, { permanent: true, direction: 'auto', offset: [8, 0], interactive: true, opacity: 1, className: 'bus-route-stop-tooltip' });
+      marker.bindTooltip(button, { permanent: true, direction: 'auto', offset: [8, 0], interactive: true, opacity: 1, className: 'bus-route-stop-tooltip' });
       marker.getTooltip()?.getElement()?.removeAttribute('role');
       labels.push({ button, marker });
     });
@@ -797,7 +801,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       m.fitBounds(points, { paddingTopLeft: [compact ? 60 : 90, 80 + labelHalfHeight], paddingBottomRight: [compact ? 70 : 85, (compact ? 170 : 125) + labelHalfHeight], maxZoom: 16, animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
     }
     return () => { m.off('moveend resize', positionLabels); group.remove(); };
-  }, [busRoute, ready, inactive, language]);
+  }, [busRoute, ready, inactive, language, routeStopLabels]);
   // Route-focus hides every bus stop (CSS on the container — markers stay
   // mounted) until the rider clicks blank map space; the route, stop circles
   // and vehicle are unaffected. Clearing the route re-shows stops for free.
@@ -1069,7 +1073,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const locationErrorMessage = locationError === 'denied' ? copy.locationDenied : locationError === 'timeout' ? copy.locationTimeout : locationError === 'unsupported' ? copy.locationUnsupported : copy.locationUnavailable;
   return <section className="map-area" aria-label={copy.mapLabel} aria-hidden={inactive || undefined} inert={inactive || undefined}>
     <div ref={element} className="map-canvas" data-basemap={basemap} role="group" aria-label={copy.mapKeyboardHelp} />
-    <div className="map-tools"><div className="zoom-buttons"><button aria-label={copy.zoomIn} title={copy.zoomIn} onClick={() => map.current?.zoomIn()}><Plus size={19}/></button><button aria-label={copy.zoomOut} title={copy.zoomOut} onClick={() => map.current?.zoomOut()}><Minus size={19}/></button></div><button aria-label={copy.showAll} title={copy.returnToHongKong} onClick={fit}><Maximize size={20}/></button><button type="button" className="gps-button" aria-label={followingLocation ? copy.stopFollowing : copy.locateMe} title={followingLocation ? copy.stopFollowing : copy.locateMe} aria-pressed={followingLocation} aria-busy={locating} disabled={!ready} onClick={followingLocation ? stopLocating : locate}>{locating ? <LoaderCircle className="spin" size={20}/> : <LocateFixed size={20}/>}</button></div>
+    <div className="map-tools"><div className="zoom-buttons"><button aria-label={copy.zoomIn} title={copy.zoomIn} onClick={() => map.current?.zoomIn()}><Plus size={19}/></button><button aria-label={copy.zoomOut} title={copy.zoomOut} onClick={() => map.current?.zoomOut()}><Minus size={19}/></button></div><button aria-label={copy.showAll} title={copy.returnToHongKong} onClick={fit}><Maximize size={20}/></button><button type="button" className="gps-button" aria-label={followingLocation ? copy.stopFollowing : copy.locateMe} title={followingLocation ? copy.stopFollowing : copy.locateMe} aria-pressed={followingLocation} aria-busy={locating} disabled={!ready} onClick={followingLocation ? stopLocating : locate}>{locating ? <LoaderCircle className="spin" size={20}/> : <LocateFixed size={20}/>}</button>{busRoute?.route && <button type="button" className="route-labels-button" aria-label={routeStopLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} title={routeStopLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} aria-pressed={routeStopLabels} onClick={() => setRouteStopLabels(value => !value)}><Tags size={20}/></button>}</div>
     <span className="sr-only" role="status">{locating ? copy.locating : locationFound ? copy.locationFound : ''}</span>
     {locationError && <div className={`map-error location-error${mapError ? ' with-map-error' : ''}`} role="alert">{locationErrorMessage}<button type="button" className="map-retry" onClick={() => setLocationError(null)}>{copy.dismissLocationError}</button></div>}
     {mapError && <div className="map-error" role="alert">{copy.mapLoadFailed}<button type="button" className="map-retry" onClick={() => ready ? setBasemapRetry(value => value + 1) : window.location.reload()}><RefreshCw size={14}/>{copy.retry}</button></div>}

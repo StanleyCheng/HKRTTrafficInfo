@@ -263,6 +263,31 @@ try {
     assert.equal(await f.page.locator('.bus-route-stop-label').count(), 0, 'Closing the route removes its stop labels');
     await f.context.close();
   });
+  await test('Stop-label toggle clears names while route, circles and the moving bus remain, and exists only with a route', async () => {
+    const f = await create();
+    assert.equal(await f.page.locator('.map-tools .route-labels-button').count(), 0, 'No toggle before a route is selected');
+    await select(f, variants[0]); await f.page.locator('.bus-route-marker').waitFor();
+    const toggle = f.page.locator('.map-tools .route-labels-button');
+    await toggle.waitFor();
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'true', 'Station labels are on by default');
+    assert.equal(await toggle.getAttribute('aria-label'), 'Hide route stop labels');
+    await assertRouteLabels(f.page, 'kmb');
+    await toggle.click();
+    await f.page.waitForFunction(() => document.querySelectorAll('.bus-route-stop-label').length === 0);
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'false', 'Toggle reads as off');
+    assert.equal(await toggle.getAttribute('aria-label'), 'Show route stop labels');
+    assert.equal(await f.page.locator('.bus-route-polyline').count(), 1, 'The route line stays');
+    assert.equal(await f.page.locator('.bus-route-stop').count(), routeStops.length, 'Stop circles stay');
+    assert.ok(new Set(await samples(f.page)).size >= 10, 'The estimated bus keeps moving without label clutter');
+    await toggle.click();
+    await f.page.waitForFunction(count => document.querySelectorAll('.bus-route-stop-label').length === count, routeStops.length);
+    await assertRouteLabels(f.page, 'kmb');
+    await openLayers(f.page);
+    await f.page.getByRole('button', { name: 'Close route', exact: true }).click();
+    await f.page.locator('.route-labels-button').waitFor({ state: 'detached' }, { timeout: 10_000 });
+    assert.deepEqual(await f.page.evaluate(() => window.__errors), []);
+    await f.context.close();
+  });
   await test('Missing position and unavailable road geometry remain explicit without invented movement', async () => {
     const f = await create(); f.controls.mode = 'approximate'; await select(f, variants[2]);
     assert.equal(await f.page.locator('.bus-route-marker').count(), 0);

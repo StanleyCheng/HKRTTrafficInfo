@@ -45,6 +45,10 @@ const array = (value: unknown): Row[] => Array.isArray(value) ? value.filter((ro
 const record = (value: unknown): Row => value && typeof value === 'object' ? value as Row : {}
 const text = (value: unknown): string => typeof value === 'string' || typeof value === 'number' ? String(value) : ''
 const scheduled = (row: Row) => /scheduled|未開出|原定班次/i.test(`${row.rmk_en ?? ''} ${row.rmk_tc ?? ''} ${row.remarks_en ?? ''} ${row.remarks_tc ?? ''}`)
+// The KMB stop list embeds the pole code in every stop name, e.g. "書院道 (KC550)".
+// Route labels show the station name only; parenthetical place notes such as
+// "(落客站)" or "(西翼)" never match the code shape and are kept.
+const kmbStopName = (name: string) => name.replace(/\s*\([A-Z]{2}\d{3,4}[A-Za-z]?\)$/, '').trim() || name
 
 export function validBusSelection(value: BusRouteSelection, requireStopSeq = false): boolean {
   if (!value || !['kmb', 'citybus', 'gmb', 'nlb'].includes(value.operator) || !/^[A-Za-z0-9-]{1,12}$/.test(value.route) || !/^[A-Za-z0-9]{1,20}$/.test(value.stopId)) return false
@@ -132,7 +136,9 @@ async function routeStops(selection: BusRouteSelection): Promise<BusRouteStop[]>
     const lng = operator === 'nlb' ? Number(row.longitude) : place?.lng
     const lat = operator === 'nlb' ? Number(row.latitude) : place?.lat
     if (!Number.isInteger(seq) || !Number.isFinite(lng) || !Number.isFinite(lat) || lng! < 113 || lng! > 115 || lat! < 22 || lat! > 23) throw new Error('Bus route contains incomplete stops')
-    stops.push({ id, seq, lng: lng!, lat: lat!, nameTc: text(row.stopName_c ?? row.name_tc ?? place?.tc), nameEn: text(row.stopName_e ?? row.name_en ?? place?.en), distance: 0 })
+    const nameTc = text(row.stopName_c ?? row.name_tc ?? place?.tc)
+    const nameEn = text(row.stopName_e ?? row.name_en ?? place?.en)
+    stops.push({ id, seq, lng: lng!, lat: lat!, nameTc: operator === 'kmb' ? kmbStopName(nameTc) : nameTc, nameEn: operator === 'kmb' ? kmbStopName(nameEn) : nameEn, distance: 0 })
   })
   stops.sort((a, b) => a.seq - b.seq)
   if (stops.some((stop, index) => stop.seq !== index + 1) || !stops.some((stop) => stop.id === selection.stopId && (selection.stopSeq == null || stop.seq === selection.stopSeq))) throw new Error('Selected stop does not match this route')

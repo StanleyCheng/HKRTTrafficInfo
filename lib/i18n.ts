@@ -139,6 +139,8 @@ type AppMessages = {
   returnToHongKong: string;
   locateMe: string;
   stopFollowing: string;
+  showRouteStopLabels: string;
+  hideRouteStopLabels: string;
   locating: string;
   locationFound: string;
   locationDenied: string;
@@ -232,6 +234,7 @@ export const messages: Record<Language, AppMessages> = {
     zoomIn: '放大地圖', zoomOut: '縮小地圖',
     showAll: '顯示全港交通', returnToHongKong: '返回全港',
     locateMe: '顯示我的位置', stopFollowing: '停止跟隨我的位置', locating: '正在取得位置…', locationFound: '已找到你的位置，地圖會持續跟隨你的位置。',
+    showRouteStopLabels: '顯示沿途車站標籤', hideRouteStopLabels: '隱藏沿途車站標籤',
     locationDenied: '未獲准使用你的位置。請在瀏覽器設定中允許位置存取，再按定位按鈕。',
     locationUnavailable: '暫時無法取得你的位置。請確認裝置已開啟定位服務，再按定位按鈕重試。',
     locationTimeout: '取得位置逾時。請移至訊號較佳的位置，再按定位按鈕重試。',
@@ -317,6 +320,7 @@ export const messages: Record<Language, AppMessages> = {
     zoomIn: 'Zoom in', zoomOut: 'Zoom out',
     showAll: 'Show all Hong Kong traffic', returnToHongKong: 'Return to all Hong Kong',
     locateMe: 'Show my location', stopFollowing: 'Stop following my location', locating: 'Finding your location…', locationFound: 'Location found. The map is following your location.',
+    showRouteStopLabels: 'Show route stop labels', hideRouteStopLabels: 'Hide route stop labels',
     locationDenied: 'Location access was denied. Allow location access in your browser settings, then press the location button again.',
     locationUnavailable: 'Your location is unavailable. Check that your device’s location services are on, then press the location button to retry.',
     locationTimeout: 'Finding your location timed out. Move somewhere with a better signal, then press the location button to retry.',
