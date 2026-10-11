@@ -410,6 +410,11 @@ export default function TrafficMonitor() {
   const loading = kinds.some(kind => (originalKinds.includes(kind as OriginalLayerKind) || enabled[kind]) && states[kind].loading);
   const appBusy = pendingActivity > 0;
   const errors = kinds.some(kind => enabled[kind] && states[kind].error);
+  // Map content is genuinely expected only while an enabled layer can still
+  // draw: flow's speed segments, or a camera layer outside its viewport gate.
+  // Gated bus feeds and layers that never place cameras (weather warnings)
+  // leave the map empty by design, so the centre notice must stay away.
+  const hasDrawableLayers = kinds.some(kind => enabled[kind] && layerAvailable(kind) && (kind === 'flow' || (kind !== 'weather-warning' && !viewportNote(kind, viewport))));
   const complete = kinds.filter(kind => enabled[kind]).every(kind => states[kind].data?.complete) && !errors;
   const activeKinds = kinds.filter(kind => enabled[kind]);
   const activeErrors = activeKinds.some(kind => states[kind].error);
@@ -503,7 +508,7 @@ export default function TrafficMonitor() {
     </header>
     <div className="workspace">
       <div className="map-workspace">
-      <TrafficMap onActivity={beginActivity} busRoute={busRoute} paths={paths} transitFeeds={transitFeeds} onViewport={setViewport} cameras={cameras} segments={enabled.flow ? segments : undefined} selected={selected} selectedSegmentId={selected?.id && selected.id.startsWith('flow-segment-') ? selected.id : null} onSelect={choose} onSelectSegment={onSelectSegment} focusTarget={focusTarget} loading={loading} allDisabled={kinds.every(kind => !enabled[kind])} hasErrors={errors} language={language} basemap={basemap} now={now} busSelection={activeBusSelection} renderItemDetails={renderItemDetails} onCloseDetails={closeDetails} onDetailsOpen={focusDetails}/>
+      <TrafficMap onActivity={beginActivity} busRoute={busRoute} paths={paths} transitFeeds={transitFeeds} onViewport={setViewport} cameras={cameras} segments={enabled.flow ? segments : undefined} selected={selected} selectedSegmentId={selected?.id && selected.id.startsWith('flow-segment-') ? selected.id : null} onSelect={choose} onSelectSegment={onSelectSegment} focusTarget={focusTarget} loading={loading} allDisabled={kinds.every(kind => !enabled[kind])} hasErrors={errors} hasDrawableLayers={hasDrawableLayers} language={language} basemap={basemap} now={now} busSelection={activeBusSelection} renderItemDetails={renderItemDetails} onCloseDetails={closeDetails} onDetailsOpen={focusDetails}/>
       <IntelPanel input={intelInput} language={language} onSelect={selectSearchItem}/>
       <TrafficStatus feeds={kinds.filter(kind => enabled[kind]).map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={refreshAllLayers}/>
       <div className="map-toolbar" role="group" aria-label={copy.openControls}>
