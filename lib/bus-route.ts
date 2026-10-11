@@ -185,13 +185,19 @@ export function inferBusVehicle(stops: BusRouteStop[], etas: BusEta[], selectedS
   const after = live.find((eta) => eta.seq === next.seq + 1 && eta.at > next.at)
   const afterStop = after && stops.find((stop) => stop.seq === after.seq)
   // ponytail: ETAs have no vehicle IDs. Back-project one approach from the next
-  // stop's ETA: the bus cruises from the route origin at a plausible pace so it
-  // arrives on time, holding at the origin until that cruise should start. GPS
+  // stop's ETA: the bus runs from the route origin to that stop exactly on
+  // time. A live first-stop ETA is the real departure bracket — the bus waits
+  // at the origin until it should depart, then keeps moving the whole way. GPS
   // would replace this heuristic.
   const speed = after && afterStop && afterStop.distance > to.distance ? (afterStop.distance - to.distance) / ((after.at - next.at) / 1000) : 6
   if (!Number.isFinite(speed) || speed < 0.5 || speed > 25) return null
+  const origin = live.find((eta) => eta.seq === 1)
+  if (origin && Number.isFinite(origin.at) && origin.at < next.at) {
+    const pace = to.distance / ((next.at - origin.at) / 1000)
+    if (pace >= 0.5 && pace <= 25) return { id, fromDistance: 0, toDistance: to.distance, departureAt: origin.at, arrivalAt: next.at, validUntil: next.observed + FRESH }
+  }
   const cruiseMs = (to.distance / speed) * 1000
-  return { id, fromDistance: 0, toDistance: to.distance, departureAt: next.at - cruiseMs, arrivalAt: next.at, validUntil: Math.min(next.at + 15_000, next.observed + FRESH) }
+  return { id, fromDistance: 0, toDistance: to.distance, departureAt: next.at - cruiseMs, arrivalAt: next.at, validUntil: next.observed + FRESH }
 }
 
 export async function loadBusRoute(selection: BusRouteSelection, now = Date.now()): Promise<BusRouteResponse> {

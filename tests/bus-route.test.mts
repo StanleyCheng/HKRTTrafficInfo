@@ -35,6 +35,25 @@ test('Long headways still move a bus back-projected from the next stop ETA', () 
   assert.ok(busDistanceAtTime(feed, now + 60_000)! > busDistanceAtTime(feed, now)!, 'It keeps moving toward its next stop')
 })
 
+test('A live first-stop ETA anchors the departure and keeps the bus moving', () => {
+  const route: BusRouteStop[] = [0, 1, 2, 3].map((index) => ({ id: String(index), seq: index + 1, nameTc: '', nameEn: '', lng: 114 + index * .02, lat: 22.3, distance: index * 1500 }))
+  const observed = now - 10_000
+  // The bus is still at the origin: it departs at its first-stop ETA and reaches stop 3 on time.
+  const waiting = inferBusVehicle(route, [{ seq: 1, at: now + 120_000, observed, scheduled: false }, { seq: 3, at: now + 480_000, observed, scheduled: false }], 4, now, 'route')!
+  assert.equal(waiting.departureAt, now + 120_000, 'The bus waits for its real departure ETA')
+  assert.equal(waiting.arrivalAt, now + 480_000)
+  const feed: BusRouteResponse = { ok: true, observedAt: null, stale: false, vehicle: waiting }
+  assert.equal(busDistanceAtTime(feed, now), 0, 'Before departure the bus holds at the origin')
+  assert.ok(Math.abs(busDistanceAtTime(feed, now + 160_000)! - 1000 / 3) < 1e-6, 'Inside the freshness window the bus is under way')
+  // Once the departure ETA is past, the same anchor places the bus mid-route.
+  const running = inferBusVehicle(route, [{ seq: 1, at: now - 60_000, observed, scheduled: false }, { seq: 3, at: now + 480_000, observed, scheduled: false }], 4, now, 'route')!
+  assert.equal(running.departureAt, now - 60_000)
+  assert.ok(busDistanceAtTime({ ok: true, observedAt: null, stale: false, vehicle: running }, now)! > 0, 'A departed bus is already moving along the route')
+  // A first-stop ETA after the next stop belongs to another bus: the cruise model applies.
+  const other = inferBusVehicle(route, [{ seq: 1, at: now + 500_000, observed, scheduled: false }, { seq: 3, at: now + 480_000, observed, scheduled: false }], 4, now, 'route')!
+  assert.ok(other.departureAt < now, 'Fallback cruise departs in the past')
+})
+
 test('road geometry matches whole ordered route and rejects reverse/disconnected/far-off shapes', () => {
   const paths = [[[114, 22.3], [114.001, 22.3]], [[114.001, 22.3], [114.002, 22.3]]]
   const shape = matchBusGeometry(paths, stops)!
