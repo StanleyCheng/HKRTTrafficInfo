@@ -4,8 +4,8 @@
   "description": "Official Hong Kong government open-data traffic info: live road-segment speeds, traffic snapshots, camera locations, incidents, parking vacancy and rainfall.",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#130f0a",
-  "theme_color": "#130f0a",
+  "background_color": "#08244d",
+  "theme_color": "#08244d",
   "icons": [
     {
       "src": "app-icon-192.png",

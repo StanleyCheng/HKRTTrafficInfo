@@ -27,7 +27,7 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 
 .app-shell {
   --bar-top: 12px; --bar-left: 14px; --bar-right: 14px; --bar-height: 60px;
-  --bar-padding: 16px; --brand-icon-width: 43px; --brand-icon-height: 43px; --brand-icon-radius: 12px;
+  --bar-padding: 16px; --brand-icon-width: 43px; --brand-icon-height: 43px; --brand-icon-radius: 5px;
   --bar-offset: calc(var(--bar-top) + var(--bar-height) + 12px);
   height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
 }

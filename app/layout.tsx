@@ -5,10 +5,10 @@ import "./globals.css";
 // absolute metadata asset URLs, so prefix them explicitly for that build.
 const assetBase = process.env.STATIC_EXPORT === "1" ? "/HKRTTrafficInfo" : "";
 
-// Matches the app-icon plate colour so installed-app chrome, the PWA splash
-// screen and the browser toolbar blend into the icon instead of clashing.
+// Matches the app icon so installed-app chrome, the PWA splash screen and the
+// browser toolbar blend into the logo instead of clashing.
 export const viewport: Viewport = {
-  themeColor: "#130f0a",
+  themeColor: "#08244d",
   viewportFit: "cover",
 };
 
@@ -26,6 +26,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
+      { url: `${assetBase}/favicon.svg`, sizes: "any", type: "image/svg+xml" },
       { url: `${assetBase}/favicon-32x32.png`, sizes: "32x32", type: "image/png" },
       { url: `${assetBase}/app-icon-192.png`, sizes: "192x192", type: "image/png" },
       { url: `${assetBase}/app-icon-512.png`, sizes: "512x512", type: "image/png" },

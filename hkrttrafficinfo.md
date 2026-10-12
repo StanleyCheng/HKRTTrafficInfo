@@ -12,7 +12,7 @@ Live/deployed URLs (`README.md` "Live site"):
 
 i18n: two languages, `zh` (Traditional Chinese, default) and `en`, implemented as a hand-rolled message table `messages: Record<Language, AppMessages>` in `lib/i18n.ts` (~315 lines, typed keys, function-valued formatters). Language choice persists in `localStorage` key `hk-traffic-language-v1` via a `useSyncExternalStore` subscription with cross-tab `storage` events and an in-memory fallback when storage is unavailable (`app/traffic-monitor.tsx` `getLanguageSnapshot`/`subscribeLanguage`). Server snapshot is always `'zh'`; `<html lang>` is `zh-HK` statically (`app/layout.tsx`) and updated client-side on toggle. No next-i18n/library; `next-themes` is a dependency but unused by app code (only referenced inside vendored `components/ui/sonner.tsx`).
 
-The app is also a PWA: `public/site.webmanifest` (name `HK RT Traffic Info`, short name `HK RT Traffic`, `display: standalone`, theme `#130f0a`), icons in `public/`, wired in `app/layout.tsx` metadata (title `HK RT Traffic Info · 香港實時交通資訊`; the in-app brand reads `HK RT Traffic Info` in English and `香港實時交通資訊` in Chinese).
+The app is also a PWA: `public/site.webmanifest` (name `HK RT Traffic Info`, short name `HK RT Traffic`, `display: standalone`, theme `#08244d`), icons in `public/` (`hkrttrafficinfo-logo.png` is the 1254px source art the rasters are cut from), wired in `app/layout.tsx` metadata (title `HK RT Traffic Info · 香港實時交通資訊`; the in-app brand reads `HK RT Traffic Info` in English and `香港實時交通資訊` in Chinese).
 
 ## 2. Technical framework
 
