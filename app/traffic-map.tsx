@@ -15,6 +15,7 @@ import { busVehicleDistanceAtTime, routeDistances, routeHeadingAtDistance, route
 import { markerOffsets, type MarkerPoint } from '@/lib/marker-layout';
 import { vehicleIcon, vehicleIconHeadingOffset } from '@/lib/vehicle-icons';
 import { ferryBadge } from '@/lib/ferry-routes';
+import { createLocationMotion, locationTransitionDuration, type LocationPoint } from '@/lib/location-motion';
 import SnapshotImage from './snapshot-image';
 
 const symbols = {
@@ -125,6 +126,16 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const [routePopupData, setRoutePopupData] = useState<{ stop: BusRouteStop; language: Language; camera?: Camera; status: 'loading' | 'error' | 'ready' } | null>(null);
   const [popupElement, setPopupElement] = useState<HTMLDivElement | null>(null);
   const [snapshotHover, setSnapshotHover] = useState<{ camera: Camera; element: HTMLDivElement } | null>(null);
+  const [snapshotHoverEnabled, setSnapshotHoverEnabled] = useState(false);
+  useEffect(() => {
+    // Match the compact map layout as well as input capability: a phone tap
+    // opens details directly, without a synthetic mouse/focus hover first.
+    const media = window.matchMedia('(min-width: 701px) and (min-height: 521px) and (hover: hover) and (pointer: fine)');
+    const update = () => setSnapshotHoverEnabled(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
   const snapshotPopupRef = useRef<Leaflet.Popup | null>(null);
   const popupRef = useRef<{ popup: Leaflet.Popup; stopId: string } | null>(null);
   const popupOrigin = useRef<{ id: string; element: HTMLElement | null; point?: Leaflet.LatLng } | null>(null);
@@ -161,13 +172,14 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const [locationError, setLocationError] = useState<'denied' | 'unavailable' | 'timeout' | 'unsupported' | null>(null);
   const [locationFound, setLocationFound] = useState(false);
   const [followingLocation, setFollowingLocation] = useState(false);
-  const locationWatch = useRef<{ id: number | null } | null>(null);
+  const locationWatch = useRef<{ id: number | null; dispose: () => void } | null>(null);
   const locationLayer = useRef<Leaflet.LayerGroup | null>(null);
   const viewportCallback = useRef(onViewport);
   const stopLocating = useCallback(() => {
     const watch = locationWatch.current;
     locationWatch.current = null;
     if (watch?.id != null) navigator.geolocation.clearWatch(watch.id);
+    watch?.dispose();
     locationLayer.current?.clearLayers();
     setFollowingLocation(false);
     setLocating(false);
@@ -183,8 +195,30 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       setLocationError('unsupported');
       return;
     }
-    const watch = { id: null as number | null };
+    const watch = { id: null as number | null, dispose: () => {} };
     locationWatch.current = watch;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let dot: Leaflet.CircleMarker | undefined, accuracy: Leaflet.Circle | undefined;
+    let latest: LocationPoint | undefined, lastFixAt: number | undefined;
+    const motion = createLocationMotion(point => {
+      if (map.current !== m || locationWatch.current !== watch) return;
+      dot?.setLatLng(point);
+      accuracy?.setLatLng(point);
+    });
+    const settle = () => {
+      if (!latest || map.current !== m || locationWatch.current !== watch) return;
+      if (!document.hidden && !reducedMotion.matches) return;
+      motion.finish();
+      m.stop().setView(latest, m.getZoom(), { animate: false });
+    };
+    document.addEventListener('visibilitychange', settle);
+    reducedMotion.addEventListener('change', settle);
+    watch.dispose = () => {
+      motion.dispose();
+      document.removeEventListener('visibilitychange', settle);
+      reducedMotion.removeEventListener('change', settle);
+      if (map.current === m) m.stop();
+    };
     setFollowingLocation(true);
     setLocating(true);
     const fail = (code: number) => {
@@ -196,12 +230,26 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       watch.id = navigator.geolocation.watchPosition(position => {
         if (map.current !== m || locationWatch.current !== watch) return;
         setLocating(false);
-        const point: Leaflet.LatLngExpression = [position.coords.latitude, position.coords.longitude];
+        const point: LocationPoint = [position.coords.latitude, position.coords.longitude];
+        const receivedAt = performance.now();
+        const animate = !reducedMotion.matches && !document.hidden;
+        const duration = lastFixAt === undefined || !animate ? 0 : locationTransitionDuration(receivedAt - lastFixAt);
+        lastFixAt = receivedAt;
+        latest = point;
         locationLayer.current ??= L.layerGroup().addTo(m);
-        locationLayer.current.clearLayers();
-        L.circle(point, { radius: position.coords.accuracy, color: '#137f87', weight: 1, fillOpacity: 0.08, interactive: false, className: 'user-location-accuracy' }).addTo(locationLayer.current);
-        L.circleMarker(point, { radius: 7, color: '#fff', weight: 3, fillColor: '#137f87', fillOpacity: 1, interactive: false, pane: 'userLocation', className: 'user-location-dot' }).addTo(locationLayer.current);
-        m.setView(point, Math.max(m.getZoom(), 16), { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
+        const firstFix = !dot;
+        accuracy ??= L.circle(point, { radius: position.coords.accuracy, color: '#137f87', weight: 1, fillOpacity: 0.08, interactive: false, className: 'user-location-accuracy' }).addTo(locationLayer.current);
+        dot ??= L.circleMarker(point, { radius: 7, color: '#fff', weight: 3, fillColor: '#137f87', fillOpacity: 1, interactive: false, pane: 'userLocation', className: 'user-location-dot' }).addTo(locationLayer.current);
+        accuracy.setRadius(position.coords.accuracy);
+        motion.moveTo(point, duration);
+        if (firstFix || !animate) m.setView(point, Math.max(m.getZoom(), 16), { animate: firstFix && animate });
+        else {
+          m.stop();
+          if (m.getZoom() < 16) m.setZoom(16, { animate: false });
+          // One pan per fix shares the dot's linear timing. Calling setView on
+          // every frame would continuously restart tiles and viewport requests.
+          m.panTo(point, { animate: true, duration: duration / 1000, easeLinearity: 1 });
+        }
         setLocationFound(true);
       }, error => fail(error.code), { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
       if (locationWatch.current !== watch) navigator.geolocation.clearWatch(watch.id);
@@ -322,7 +370,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     const ids = new Set(visible.map(camera => camera.id));
     markers.current.forEach((marker, id) => { if (!ids.has(id)) { group.removeLayer(marker); markers.current.delete(id); markerData.current.delete(id); if (popupRef.current?.stopId === id) popupRef.current.popup.remove(); } });
     visible.forEach(camera => {
-      const style = language;
+      const style = camera.kind === 'snapshot' ? `${language}:${snapshotHoverEnabled}` : language;
       const previous = markerData.current.get(camera.id);
       if (previous?.camera === camera && previous.style === style) return;
       if (camera.kind === 'snapshot' && previous?.style === style && JSON.stringify(previous.camera) === JSON.stringify(camera)) { markerData.current.set(camera.id, { ...previous, camera }); return; }
@@ -358,7 +406,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       if (!oldMarker && camera.kind === 'parking') marker.on('tooltipopen', (event: Leaflet.TooltipEvent) => { const element = event.tooltip.getElement(); if (element) element.style.borderColor = color; });
       const textLabel = document.createElement('span'); textLabel.textContent = name;
       const tooltipLabel: string | HTMLElement = camera.kind === 'parking' ? parkingTooltipHtml(camera, language, name) : textLabel;
-      if (rail || camera.kind === 'ferry') marker.unbindTooltip();
+      if (rail || camera.kind === 'ferry' || camera.kind === 'snapshot' && !snapshotHoverEnabled) marker.unbindTooltip();
       else if (marker.getTooltip()) marker.setTooltipContent(tooltipLabel);
       else marker.bindTooltip(tooltipLabel, { direction: 'top', offset: [0, -12], className: camera.kind === 'parking' ? 'parking-tooltip' : undefined });
       // Car parks carry their counts in the tooltip, so their marker opens no details popup.
@@ -373,7 +421,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       markerData.current.set(camera.id, { camera, style, labelLines: plate?.lines.length });
     });
     layoutMarkers.current();
-  }, [cameras, ready, language, copy, mapZoom, showBusStops]);
+  }, [cameras, ready, language, copy, mapZoom, showBusStops, snapshotHoverEnabled]);
   const snapshotMarkerKey = JSON.stringify(cameras.filter(hasDelayedHover));
   const fullPopupOpen = Boolean(selected || routePopupStop);
   useEffect(() => {
@@ -401,7 +449,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     };
     const listeners: (() => void)[] = [];
     markerData.current.forEach(({ camera }) => {
-      if (!hasDelayedHover(camera)) return;
+      if (!hasDelayedHover(camera) || camera.kind === 'snapshot' && !snapshotHoverEnabled) return;
       const marker = markers.current.get(camera.id), node = marker?.getElement();
       if (!marker || !node) return;
       node.setAttribute('aria-haspopup', 'dialog');
@@ -445,7 +493,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     const visibility = () => { if (document.visibilityState !== 'visible') close(); };
     m.on('movestart click', close); document.addEventListener('keydown', escape); document.addEventListener('visibilitychange', visibility);
     return () => { listeners.forEach(remove => remove()); m.off('movestart click', close); document.removeEventListener('keydown', escape); document.removeEventListener('visibilitychange', visibility); close(); };
-  }, [snapshotMarkerKey, ready, language, mapZoom, inactive, fullPopupOpen]);
+  }, [snapshotMarkerKey, ready, language, mapZoom, inactive, fullPopupOpen, snapshotHoverEnabled]);
   useEffect(() => {
     const popup = snapshotPopupRef.current;
     if (!snapshotHover || !popup || !element.current || !library.current) return;

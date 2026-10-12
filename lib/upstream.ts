@@ -1,4 +1,5 @@
 import { keepWorkerRequestAlive, openFeedCache } from "./feed-cache.ts"
+import { waitForRequest } from "./request-wait.ts"
 
 export type UpstreamBody = {
   status: number
@@ -12,6 +13,8 @@ export type UpstreamBody = {
 type UpstreamOptions = {
   headers?: HeadersInit
   timeoutMs?: number
+  /** Cancel this caller's wait; the shared producer remains available to others. */
+  signal?: AbortSignal
 }
 
 const memory = new Map<string, { expires: number; body: UpstreamBody }>()
@@ -26,17 +29,21 @@ export function lastGoodUpstream(url: string): UpstreamBody | undefined {
 }
 
 export async function fetchUpstream(url: string, ttlMs: number, options: UpstreamOptions = {}): Promise<UpstreamBody> {
+  options.signal?.throwIfAborted()
   const fresh = memory.get(url)
   if (fresh && fresh.expires > Date.now()) return fresh.body
+  const timeout = AbortSignal.timeout(options.timeoutMs ?? 25_000)
+  const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout
   const current = pending.get(url)
-  if (current) return current
+  if (current) return waitForRequest(current, signal)
   const task = keepWorkerRequestAlive(readThrough(url, ttlMs, options).finally(() => pending.delete(url)))
   pending.set(url, task)
-  return task
+  return waitForRequest(task, signal)
 }
 
 async function readThrough(url: string, ttlMs: number, options: UpstreamOptions): Promise<UpstreamBody> {
-  const shared = await readShared(url, ttlMs)
+  // Cache storage is an optimization and must not consume the upstream budget.
+  const shared = await waitForRequest(readShared(url, ttlMs), AbortSignal.timeout(Math.min(500, options.timeoutMs ?? 25_000))).catch(() => null)
   if (shared) return shared
 
   // Send conditional headers on the wire when the cache has previous validators.
@@ -66,7 +73,7 @@ async function readThrough(url: string, ttlMs: number, options: UpstreamOptions)
       lastModified: response.headers.get("last-modified") ?? cached.lastModified,
     }
     memory.set(url, { expires: Date.now() + ttlMs, body: refreshed })
-    await writeShared(url, ttlMs, refreshed)
+    void keepWorkerRequestAlive(writeShared(url, ttlMs, refreshed))
     return refreshed
   }
   const bytes = await response.arrayBuffer()
@@ -80,7 +87,7 @@ async function readThrough(url: string, ttlMs: number, options: UpstreamOptions)
   }
   if (response.ok) {
     memory.set(url, { expires: Date.now() + ttlMs, body })
-    await writeShared(url, ttlMs, body)
+    void keepWorkerRequestAlive(writeShared(url, ttlMs, body))
   }
   return body
 }

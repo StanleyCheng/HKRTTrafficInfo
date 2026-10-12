@@ -3,13 +3,13 @@ import { arrivalPairs } from "./arrival-pairs.ts"
 import { nlbArrivalMs } from "./nlb-clock.ts"
 import { nearestNlbStops, nlbStop } from "./nlb-network.ts"
 import { etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
-import { etaQueue, takeEtaTurn } from "./polite-fetch.ts"
+import { etaQueue, takeEtaTurn, ETA_REFRESH_TIMEOUT_MS } from "./polite-fetch.ts"
 import { pool } from "./pool.ts"
 import { fetchUpstreamResilient } from "./upstream-resilient.ts"
 import type { NlbCall, NlbPlacesResponse, NlbResponse, NlbStopBoard } from "./types.ts"
 
-// Wall-clock budget: 24 pairs × (5s + 2.5s retry) ÷ 8 in-flight = 22.5s worst
-// case, well inside Cloudflare's 30s paid wall clock.
+// All operators share six wire slots. The batch deadline also bounds queue
+// waiting; unfinished stops retain their previous arrivals and count as misses.
 const STOP_LIMIT = 6
 const PAIR_BUDGET = 24
 const FETCH_LIMIT = 8
@@ -49,17 +49,18 @@ export async function loadNlbNear(lng: number, lat: number, now = Date.now(), zo
     return { id: stop.id, routes: record?.services.map((service) => service.id) ?? [] }
   }), PAIR_BUDGET)
   const turn = await takeEtaTurn("nlb", async () => {
+    const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
     let missed = 0
     await pool(pairs, FETCH_LIMIT, async (pair) => {
       const key = `${pair.stopId}/${pair.route}`
       const cached = remembered.get(key)
       if (!etaDue(cached, now)) return
-      const rows = await fetchEta(pair.route, pair.stopId)
+      const rows = await fetchEta(pair.route, pair.stopId, signal)
       if (rows) remembered.set(key, { at: now, rows })
       else missed += 1
     })
     return missed
-  })
+  }, pairs.map(pair => `${pair.stopId}/${pair.route}`).sort().join(","))
   const total = pairs.length
   const missed = turn
   const totalFailure = total > 0 && missed === total
@@ -114,7 +115,7 @@ function callAt(route: string, rows: Arrival[], now: number): NlbCall | null {
   return best
 }
 
-async function fetchEta(routeId: string, stopId: string): Promise<Arrival[] | null> {
+async function fetchEta(routeId: string, stopId: string, signal: AbortSignal): Promise<Arrival[] | null> {
   const url = `${ETA_ROOT}&routeId=${encodeURIComponent(routeId)}&stopId=${encodeURIComponent(stopId)}&lang=en`
   try {
     const response = await etaQueue(() => fetchUpstreamResilient(url, ETA_FRESH_MS, {
@@ -124,7 +125,7 @@ async function fetchEta(routeId: string, stopId: string): Promise<Arrival[] | nu
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",
       },
-    }))
+    }), signal)
     if (response.servedFromCache || response.status < 200 || response.status >= 300) return null
     const text = new TextDecoder().decode(response.body)
     if (!text) return []

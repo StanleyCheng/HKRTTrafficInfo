@@ -87,17 +87,17 @@ export async function fetchUpstreamResilient(
   })()
 
   let lastError: ResilientError | undefined
+  let attempts = 0
   for (let attempt = 0; attempt <= retries; attempt += 1) {
-    if (signal?.aborted) {
-      lastError = { kind: "abort", message: "aborted before attempt" }
-      break
-    }
+    signal?.throwIfAborted()
+    attempts += 1
     const attemptStartedAt = Date.now()
     let body: UpstreamBody
     try {
       body = await fetchUpstream(url, ttlMs, {
         timeoutMs: attempt === 0 ? timeoutMs : retryTimeoutMs,
         headers,
+        signal,
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -111,8 +111,8 @@ export async function fetchUpstreamResilient(
         message,
         elapsedMs: Date.now() - attemptStartedAt,
       })
-      if (signal?.aborted) lastError = { kind: "abort", message }
-      else lastError = { kind: "timeout", message }
+      signal?.throwIfAborted()
+      lastError = { kind: "timeout", message }
       break
     }
     logResilient("attempt", {
@@ -143,12 +143,12 @@ export async function fetchUpstreamResilient(
     logResilient("stale", {
       host,
       url,
-      attempts: retries + 1,
+      attempts,
       kind: lastError?.kind,
       status: lastError?.kind === "http" ? lastError.status : undefined,
       totalElapsedMs: Date.now() - startedAt,
     })
-    return { ...stale, attempts: retries + 1, servedFromCache: true, error: lastError }
+    return { ...stale, attempts, servedFromCache: true, error: lastError }
   }
   // No cache to fall back to: surface the failure as a thrown error so callers
   // that wrap in try/catch (the bus feeds do) can keep their existing "missed"
@@ -157,7 +157,7 @@ export async function fetchUpstreamResilient(
   logResilient("throw", {
     host,
     url,
-    attempts: retries + 1,
+    attempts,
     kind: lastError?.kind,
     status: lastError?.kind === "http" ? lastError.status : undefined,
     totalElapsedMs: Date.now() - startedAt,
@@ -176,14 +176,14 @@ async function jitteredSleep(baseMs: number, attemptIndex: number, signal?: Abor
       reject(new Error("aborted"))
       return
     }
-    const timer = setTimeout(resolve, ms)
-    signal.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer)
-        reject(new Error("aborted"))
-      },
-      { once: true },
-    )
+    const abort = () => {
+      clearTimeout(timer)
+      reject(signal.reason)
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", abort)
+      resolve()
+    }, ms)
+    signal.addEventListener("abort", abort, { once: true })
   })
 }

@@ -14,7 +14,7 @@ const network = JSON.parse(await fs.readFile(new URL('../data/mtr-network.json',
 const lrt = JSON.parse(await fs.readFile(new URL('../data/light-rail-stations.json', import.meta.url), 'utf8'));
 const featureCollection = (kind, extra = {}) => ({ type: 'FeatureCollection', features: [1, 2].map(index => ({ type: 'Feature', properties: { id: `${kind}-${index}`, code: `${kind}-${index}`, name: `${kind} fixture ${index}`, ...extra }, geometry: { type: 'Point', coordinates: [113.943 + index * .006, 22.280] } })) });
 async function create(mobile = false, parking = [{ vacancy: 10, space: 100 }, { vacancy: 0 }]) {
-  const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+  const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, isMobile: mobile, hasTouch: mobile, reducedMotion: 'reduce' });
   contexts.push(context);
   const observedAt = new Date().toISOString(), localTime = new Date(Date.now() + 8 * 3600000).toISOString();
   const date = localTime.slice(0, 10), time = localTime.slice(11, 19), headers = { 'access-control-allow-origin': '*' };
@@ -220,25 +220,50 @@ try {
     assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await context.close();
   });
-  await test('Snapshot hover fits a narrow mobile map and closes when layer controls open', async () => {
+  await test('Mobile snapshot opens on one tap without either hover message, including landscape', async () => {
     const { page, context } = await create(true);
     await page.setViewportSize({ width: 375, height: 844 });
     await page.evaluate(() => { window.__map.setView([22.288, 113.949], 16, { animate: false }); });
-    const marker = page.locator('[data-marker-id="snapshot-1"]'), card = page.locator('.snapshot-hover');
-    await hoverMarker(page, marker); await card.waitFor(); await card.locator('img').waitFor();
+    const marker = page.locator('[data-marker-id="snapshot-1"]'), card = page.locator('.item-popup');
+    let requests = 0;
+    await context.route('**/fixture.jpg*', route => { requests++; return route.fulfill({ contentType: 'image/png', body: imagePixel }); });
+    assert.equal(await marker.getAttribute('title'), null);
+    await marker.dispatchEvent('mouseenter');
+    await marker.focus();
+    await page.waitForTimeout(2200);
+    assert.equal(await page.locator('.snapshot-hover, .leaflet-tooltip').count(), 0, 'Synthetic hover/focus must not open either mobile hover message');
+    assert.equal(requests, 0, 'A snapshot only loads after an explicit tap');
+    await marker.locator('.marker-inner').tap();
+    await card.getByRole('heading', { name: 'snapshot fixture 1', exact: true }).waitFor();
+    await card.locator('img').waitFor();
+    assert.equal(requests, 1);
     await page.waitForTimeout(100);
     const resizeNotifications = await card.evaluate(element => new Promise(resolve => {
       let count = 0;
       const observer = new ResizeObserver(() => count++); observer.observe(element);
       setTimeout(() => { observer.disconnect(); resolve(count); }, 400);
     }));
-    assert.ok(resizeNotifications <= 2, 'Loaded hover geometry settles without a frame-to-frame resize loop');
+    assert.ok(resizeNotifications <= 2, 'Loaded popup geometry settles without a frame-to-frame resize loop');
     assert.equal(await card.evaluate(element => {
-      const card = element.closest('.leaflet-popup').getBoundingClientRect(), map = document.querySelector('.map-canvas').getBoundingClientRect(), tools = document.querySelector('.map-tools').getBoundingClientRect();
-      return card.left >= map.left && card.right <= tools.left && card.bottom <= map.bottom;
-    }), true, 'Full photo fits the actual 375px map space clear of controls');
-    await page.screenshot({ path: path.join(evidence, 'snapshot-hover-mobile-375.png') });
-    await openLayers(page); await card.waitFor({ state: 'detached' });
+      const card = element.getBoundingClientRect(), map = document.querySelector('.map-canvas').getBoundingClientRect();
+      return card.left >= map.left && card.right <= map.right && card.top >= map.top && card.bottom <= map.bottom;
+    }), true, 'Snapshot card fits the actual 375px map');
+    assert.equal(await page.locator('.snapshot-hover, .leaflet-tooltip').count(), 0);
+    await page.screenshot({ path: path.join(evidence, 'snapshot-tap-mobile-375.png') });
+    await card.locator('.leaflet-popup-close-button').tap();
+    await card.waitFor({ state: 'detached' });
+    await page.waitForTimeout(2200);
+    assert.equal(await page.locator('.snapshot-hover, .leaflet-tooltip').count(), 0, 'Restoring marker focus after closing must not reopen a hover card');
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.evaluate(() => { window.__map.invalidateSize(); window.__map.setView([22.288, 113.949], 16, { animate: false }); });
+    await marker.dispatchEvent('mouseenter');
+    await page.waitForTimeout(2200);
+    assert.equal(await page.locator('.snapshot-hover, .leaflet-tooltip').count(), 0);
+    await marker.locator('.marker-inner').tap();
+    await card.locator('img').waitFor();
+    await page.screenshot({ path: path.join(evidence, 'snapshot-tap-mobile-landscape.png') });
+    await card.locator('.leaflet-popup-close-button').tap();
+    await card.waitFor({ state: 'detached' });
     assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await context.close();
   });

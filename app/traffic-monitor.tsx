@@ -302,10 +302,11 @@ export default function TrafficMonitor() {
   const topbarCollapsed = useSyncExternalStore(topbarFlag.subscribe, topbarFlag.getSnapshot, topbarFlag.getServerSnapshot);
   const dialog = useRef<HTMLDialogElement>(null);
   const inflight = useRef(new Set<LayerKind>());
+  const originalRetryAt = useRef(new Map<LayerKind, number>());
   const refreshIntegration = useRef<(kind: IntegrationKind) => Promise<void>>(async () => {});
   const integrationContext = useRef({ enabled, viewport, language });
   const integrationPending = useRef(new Map<IntegrationKind, { key: string; controller: AbortController }>());
-  const integrationLastFetch = useRef(new Map<IntegrationKind, { key: string; at: number }>());
+  const integrationLastFetch = useRef(new Map<IntegrationKind, { key: string; at: number; retryAt?: number }>());
 
   function toggleTopbar() {
     topbarFlag.set(!topbarCollapsed);
@@ -322,17 +323,20 @@ export default function TrafficMonitor() {
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
   }, []);
 
-  const fetchLayer = useCallback(async (kind: LayerKind) => {
+  const fetchLayer = useCallback(async (kind: LayerKind, force = false) => {
     if (!layerAvailable(kind)) return;
     if (integrationKinds.includes(kind as IntegrationKind)) return refreshIntegration.current(kind as IntegrationKind);
     if (inflight.current.has(kind)) return;
     inflight.current.add(kind);
+    originalRetryAt.current.delete(kind);
     const finishActivity = beginActivity();
     setStates(state => ({ ...state, [kind]: { ...state[kind], loading: true, error: false } }));
     try {
-      const data = await getCameraData(kind as OriginalLayerKind);
+      const data = await getCameraData(kind as OriginalLayerKind, { force });
+      if (data.feedError) originalRetryAt.current.set(kind, Date.now() + 30000);
       setStates(state => ({ ...state, [kind]: { data, loading: false, error: Boolean(data.feedError) } }));
     } catch {
+      originalRetryAt.current.set(kind, Date.now() + 30000);
       setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false, error: true } }));
     } finally {
       finishActivity();
@@ -348,6 +352,14 @@ export default function TrafficMonitor() {
     const otherInterval = setInterval(() => {
       if (document.visibilityState === 'visible') originalKinds.filter(kind => kind !== 'flow').forEach(kind => fetchLayer(kind));
     }, 300000);
+    // Failed updates recover on a short, bounded cadence while keeping their
+    // last data visible, instead of waiting for the normal multi-minute poll.
+    const retryInterval = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      originalRetryAt.current.forEach((at, kind) => {
+        if (integrationContext.current.enabled[kind] && Date.now() >= at) void fetchLayer(kind, true);
+      });
+    }, 30000);
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') originalKinds.forEach(kind => fetchLayer(kind));
     };
@@ -355,6 +367,7 @@ export default function TrafficMonitor() {
     return () => {
       clearInterval(flowInterval);
       clearInterval(otherInterval);
+      clearInterval(retryInterval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [fetchLayer]);
@@ -389,7 +402,7 @@ export default function TrafficMonitor() {
       const key = spatial ? `${viewport.lng}:${viewport.lat}:${viewport.zoom}` : '';
       const pending = integrationPending.current.get(kind);
       if (pending && pending.key === key) return;
-      if (!force && last?.key === key && Date.now() - last.at < pollingMs[kind]) return;
+      if (!force && last?.key === key && Date.now() < (last.retryAt ?? last.at + pollingMs[kind])) return;
       integrationPending.current.get(kind)?.controller.abort();
       const request = { key, controller: new AbortController() };
       integrationPending.current.set(kind, request);
@@ -411,9 +424,13 @@ export default function TrafficMonitor() {
         // failure flag from !data.complete (which already accounts for staleness).
         const partialMiss = Boolean(data.feedError && /\(\d+ of \d+\)/.test(data.feedError))
         const error = !partialMiss && (Boolean(data.stale) || Boolean(data.feedError) || ((kind === 'mtr' || kind === 'lrt') && !data.complete))
+        if (error) integrationLastFetch.current.set(kind, { key, at: Date.now(), retryAt: Date.now() + 30000 });
         setStates(state => ({ ...state, [kind]: { data, loading: false, error } }));
       } catch {
-        if (isCurrent()) setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false, error: true } }));
+        if (isCurrent()) {
+          integrationLastFetch.current.set(kind, { key, at: Date.now(), retryAt: Date.now() + 30000 });
+          setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false, error: true } }));
+        }
       } finally {
         finishActivity();
         if (integrationPending.current.get(kind) === request) integrationPending.current.delete(kind);
@@ -532,7 +549,7 @@ export default function TrafficMonitor() {
   const activeFetched = activeKinds.flatMap(kind => states[kind].data ? [states[kind].data!.fetchedAt] : []).sort()[0];
 
   function refreshAllLayers() {
-    kinds.forEach(kind => void fetchLayer(kind));
+    kinds.forEach(kind => void fetchLayer(kind, true));
     if (activeBusSelection) setBusRouteRetry(value => value + 1);
   }
 
@@ -659,7 +676,7 @@ export default function TrafficMonitor() {
               {kind === 'flow' && state.data?.segmentsComplete === false && state.data.segmentsExpectedCount !== undefined && (
                 <div className="flow-coverage">{copy.flowCoverage((state.data.segments?.length ?? 0).toLocaleString(numberLocale), state.data.segmentsExpectedCount.toLocaleString(numberLocale))}</div>
               )}
-              {enabled[kind] && state.error && <div className="layer-error" role="alert">{state.data ? copy.layerUpdateFailed : copy.dataLoadFailed} <button className="text-button" onClick={() => fetchLayer(kind)}>{copy.retry}</button></div>}
+              {enabled[kind] && state.error && <div className="layer-error" role="alert">{state.data ? copy.layerUpdateFailed : copy.dataLoadFailed} <button className="text-button" onClick={() => fetchLayer(kind, true)}>{copy.retry}</button></div>}
               {state.data?.count === 0 && kind !== 'incident' && kind !== 'weather-warning' && !viewportNote(kind, viewport) && <div className="layer-error">{copy.noOfficialLocations}</div>}
               {kind === 'incident' && state.data && (
                 state.data.notices?.length ? <details className="incident-notices">

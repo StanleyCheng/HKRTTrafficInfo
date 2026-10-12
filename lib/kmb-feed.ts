@@ -5,13 +5,13 @@ import { kmbStop, kmbStopsWithin } from "./kmb-network.ts"
 import { kmbRoutesAt, refreshKmbRoutesSoon } from "./kmb-routes.ts"
 import { isListedKmbRow, kmbReachMetres, STOP_CAP } from "./kmb-reach.ts"
 import { etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
-import { etaQueue, takeEtaTurn } from "./polite-fetch.ts"
+import { etaQueue, takeEtaTurn, ETA_REFRESH_TIMEOUT_MS } from "./polite-fetch.ts"
 import { pool } from "./pool.ts"
 import { fetchUpstreamResilient } from "./upstream-resilient.ts"
 import type { KmbCall, KmbPlacesResponse, KmbResponse, KmbStopBoard } from "./types.ts"
 
-// Wall-clock budget: at up to 24 stops × (5s + 2.5s retry) ÷ 8 in-flight
-// callers = 22.5s worst case, well under Cloudflare's 30s paid wall clock.
+// All operators share six wire slots. The batch deadline also bounds queue
+// waiting; unfinished stops retain their previous arrivals and count as misses.
 const FETCH_LIMIT = 8
 const ETA_TIMEOUT_MS = 5_000
 const ETA_RETRY_TIMEOUT_MS = 2_500
@@ -62,16 +62,17 @@ export async function loadKmbNear(lng: number, lat: number, now = Date.now(), zo
   forgetStale(remembered, now)
   const nearest = kmbStopsWithin(lng, lat, kmbReachMetres(zoom, lat), STOP_CAP)
   const turn = await takeEtaTurn("kmb", async () => {
+    const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
     let missed = 0
     await pool(nearest.map((stop) => stop.id), FETCH_LIMIT, async (stopId) => {
       const cached = remembered.get(stopId)
       if (!etaDue(cached, now)) return
-      const rows = await fetchStop(stopId)
+      const rows = await fetchStop(stopId, signal)
       if (rows) remembered.set(stopId, { at: now, rows })
       else missed += 1
     })
     return missed
-  })
+  }, nearest.map(stop => stop.id).sort().join(","))
   const total = nearest.length
   const missed = turn
   const totalFailure = total > 0 && missed === total
@@ -145,7 +146,7 @@ function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : ""
 }
 
-async function fetchStop(stopId: string): Promise<EtaRow[] | null> {
+async function fetchStop(stopId: string, signal: AbortSignal): Promise<EtaRow[] | null> {
   try {
     const response = await etaQueue(() => fetchUpstreamResilient(`${ETA_ROOT}/${encodeURIComponent(stopId)}`, ETA_FRESH_MS, {
       timeoutMs: ETA_TIMEOUT_MS,
@@ -154,7 +155,7 @@ async function fetchStop(stopId: string): Promise<EtaRow[] | null> {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",
       },
-    }))
+    }), signal)
     if (response.servedFromCache || response.status < 200 || response.status >= 300) return null
     const body = JSON.parse(new TextDecoder().decode(response.body)) as { data?: EtaRow[] }
     return Array.isArray(body.data) ? body.data : []

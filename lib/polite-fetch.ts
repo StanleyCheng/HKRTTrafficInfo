@@ -1,28 +1,50 @@
 import { keepWorkerRequestAlive } from "./feed-cache.ts"
-
-function pause(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
+import { waitForRequest } from "./request-wait.ts"
 
 export function politeQueue(limit: number) {
   let active = 0
-  return async function run<T>(task: () => Promise<T>): Promise<T> {
-    while (active >= limit) await pause(20)
-    active += 1
-    return keepWorkerRequestAlive(Promise.resolve().then(task).finally(() => {
+  const waiting: (() => void)[] = []
+  function acquire(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
+    if (active < limit) {
+      active += 1
+      return Promise.resolve()
+    }
+    return new Promise((resolve, reject) => {
+      const start = () => {
+        signal?.removeEventListener("abort", abort)
+        active += 1
+        resolve()
+      }
+      const abort = () => {
+        const index = waiting.indexOf(start)
+        if (index !== -1) waiting.splice(index, 1)
+        reject(signal!.reason)
+      }
+      waiting.push(start)
+      signal?.addEventListener("abort", abort, { once: true })
+    })
+  }
+  return async function run<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    await acquire(signal)
+    // Retain the slot until producer completion, even if this caller stops waiting.
+    const producer = keepWorkerRequestAlive(Promise.resolve().then(() => {
+      signal?.throwIfAborted()
+      return task()
+    }).finally(() => {
       active -= 1
+      waiting.shift()?.()
     }))
+    return signal ? waitForRequest(producer, signal) : producer
   }
 }
 
 const refreshing = new Map<string, Promise<unknown>>()
 
-// One refresh per operator at a time, but callers arriving while a refresh is in
-// flight JOIN that in-flight promise rather than silently returning null. This
-// makes the same kind of caller (e.g. two open popovers for citybus) share one
-// upstream round-trip per polling tick instead of paying for two and never
-// seeing the freshest data anyway.
-export async function takeEtaTurn<T>(key: string, task: () => Promise<T>): Promise<T> {
+// Only identical work joins: another viewport must fetch its own stops and report
+// its own misses. The shared queue still caps concurrency across all selections.
+export async function takeEtaTurn<T>(operator: string, task: () => Promise<T>, selection = ""): Promise<T> {
+  const key = JSON.stringify([operator, selection])
   const inflight = refreshing.get(key)
   if (inflight) return inflight as Promise<T>
   const promise = keepWorkerRequestAlive(Promise.resolve().then(task))
@@ -36,3 +58,5 @@ export async function takeEtaTurn<T>(key: string, task: () => Promise<T>): Promi
 
 // One isolate shares this queue, so several map views cannot open a burst of ETA calls together.
 export const etaQueue = politeQueue(6)
+// Includes time waiting behind other operators, not just time spent on the wire.
+export const ETA_REFRESH_TIMEOUT_MS = 20_000

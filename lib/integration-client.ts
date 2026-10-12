@@ -10,6 +10,7 @@ import { routeDistances } from './bus-route-motion.ts';
 import { ferryInstant } from './ferry-clock.ts';
 import { ferryVehicleIcon } from './vehicle-icons.ts';
 import { decorateControlPoints } from './control-points.ts';
+import { waitForRequest } from './request-wait.ts';
 
 export type MapViewport = { lng: number; lat: number; zoom: number };
 export const initialViewport: MapViewport = { lng: 114.13, lat: 22.355, zoom: 11 };
@@ -35,18 +36,22 @@ async function json(url: string, signal?: AbortSignal): Promise<unknown> {
   return response.json();
 }
 export async function getIntegrationData(kind: IntegrationKind, view: MapViewport, language: Language, signal?: AbortSignal): Promise<CameraData> {
+  signal?.throwIfAborted();
   const note = viewportNote(kind, view);
   if (note) return { ...base(kind, { ok: true }), feedNote: note };
   let payload: Envelope;
   if (staticExport) {
+    const timeout = AbortSignal.timeout(55000);
+    const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
     if (kind === 'weather-warning') {
       const { parseWarnsum, EMPTY_CONDITIONS } = await import('./warnings.ts');
       const lang = language === 'en' ? 'en' : 'tc';
-      const data = await json(`https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=${lang}`);
+      const data = await json(`https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=${lang}`, requestSignal);
       payload = { ok: true, observedAt: new Date().toISOString(), warnings: parseWarnsum(data, lang), conditions: EMPTY_CONDITIONS } as WarningsResponse;
     } else if (kind === 'kmb' || kind === 'citybus' || kind === 'gmb' || kind === 'nlb') {
       const { loadDirectTransit } = await import('./transit-direct.ts');
-      payload = await loadDirectTransit(kind, view.lng, view.lat, Date.now(), view.zoom);
+      requestSignal.throwIfAborted();
+      payload = await waitForRequest(loadDirectTransit(kind, view.lng, view.lat, Date.now(), view.zoom), requestSignal);
     } else throw new Error('Hosted feed required');
   } else {
     const query = new URLSearchParams({ lng: String(view.lng), lat: String(view.lat), zoom: String(view.zoom), lang: language === 'en' ? 'en' : 'tc' });

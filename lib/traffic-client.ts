@@ -1,6 +1,7 @@
 // Browser-side data layer for the static (GitHub Pages) build.
 // Fetches official open-data endpoints directly; all upstream hosts allow CORS.
 import { loadSlpDetectors } from './slp.ts';
+import { fetchOfficial as officialFetch } from './official-fetch.ts';
 import { XMLParser } from 'fast-xml-parser';
 import { type Camera, type CameraData, type FlowSegment, type IncidentNotice, type OriginalLayerKind as LayerKind, type ParkingSpaces, featureService, isLiveTrafficDataFresh, officialHongKongTimestamp, snapshotInventory, snapshotInventoryEn, speedLevel, speedLevelColors } from './traffic.ts';
 import { inHongKong, isUnnamedRoad, parseCsv, parseSegmentRouteNumbers, pickLatestPeriod, popupFields, roundCoordinate } from './traffic-parsing.ts';
@@ -10,17 +11,7 @@ const cached = new Map<LayerKind, { expires: number; data: CameraData }>();
 const pending = new Map<LayerKind, Promise<CameraData>>();
 type SnapshotRow = { key: string; description: string; district?: string; region?: string; latitude: string | number; longitude: string | number; url: string };
 
-async function officialFetch(url: string): Promise<Response> {
-  let last: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(20000), headers: { Accept: '*/*' } });
-      if (!response.ok) throw new Error(`官方資料服務回應 HTTP ${response.status}`);
-      return response;
-    } catch (error) { last = error; }
-  }
-  throw new Error(last instanceof Error && last.name === 'TimeoutError' ? '官方資料服務回應逾時，請稍後再試。' : `暫時無法連接官方資料服務。${last instanceof Error ? last.message : ''}`);
-}
+const optionalTranslation = { timeoutMs: 5000, retries: 0 };
 async function json(url: string) {
   const r = await officialFetch(url);
   const body = await r.json() as { error?: { message?: string; code: number }; objectIds?: number[]; count: number; exceededTransferLimit?: boolean; features?: { attributes: { OBJECTID: number; PopupInfo: string }; geometry?: { x: number; y: number } }[] };
@@ -63,7 +54,7 @@ async function loadEnforcement(kind: 'redlight' | 'speed'): Promise<CameraData> 
 async function loadSnapshots(): Promise<CameraData> {
   const [response, englishResponse] = await Promise.all([
     officialFetch(snapshotInventory),
-    officialFetch(snapshotInventoryEn).catch(() => null),
+    officialFetch(snapshotInventoryEn, optionalTranslation).catch(() => null),
   ]);
   const raw = parser.parse(await response.text())?.['image-list']?.image;
   if (!raw) throw new Error('官方快拍名冊格式不符或未提供資料。');
@@ -381,7 +372,7 @@ function parkingSpaces(row: ParkingInfo, live: ParkingVacancy | undefined): { sp
 async function loadParking(): Promise<CameraData> {
   const [infoEn, infoZh, vacancy] = await Promise.all([
     officialFetch(`${parkingBaseUrl}?data=info&lang=en_US`),
-    officialFetch(`${parkingBaseUrl}?data=info&lang=zh_HK`).catch(() => null),
+    officialFetch(`${parkingBaseUrl}?data=info&lang=zh_HK`, optionalTranslation).catch(() => null),
     officialFetch(`${parkingBaseUrl}?data=vacancy&lang=en_US`),
   ]);
   // The endpoints are public JSON APIs; only `results` is read from each response.
@@ -446,7 +437,7 @@ type RainfallReading = { place?: string; max?: number | string; main?: string };
 async function loadRainfall(): Promise<CameraData> {
   const [responseEn, responseZh] = await Promise.all([
     officialFetch(rainfallUrl('en')),
-    officialFetch(rainfallUrl('tc')).catch(() => null),
+    officialFetch(rainfallUrl('tc'), optionalTranslation).catch(() => null),
   ]);
   const bodyEn = await responseEn.json() as { rainfall?: { data?: RainfallReading[]; startTime?: string; endTime?: string } };
   const rows = bodyEn.rainfall?.data;
@@ -480,9 +471,9 @@ async function loadRainfall(): Promise<CameraData> {
 
 const cacheTtl: Record<LayerKind, number> = { redlight: 300000, speed: 300000, snapshot: 300000, flow: 90000, incident: 120000, parking: 180000, rainfall: 600000 };
 
-export async function getCameraData(kind: LayerKind): Promise<CameraData> {
+export async function getCameraData(kind: LayerKind, options: { force?: boolean } = {}): Promise<CameraData> {
   const entry = cached.get(kind);
-  if (entry && entry.expires > Date.now()) return entry.data;
+  if (!options.force && entry && entry.expires > Date.now()) return entry.data;
   const existing = pending.get(kind);
   if (existing) return existing;
   const load = kind === 'snapshot' ? loadSnapshots()

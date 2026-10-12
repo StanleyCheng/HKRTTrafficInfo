@@ -2,15 +2,13 @@ import { viewportAllowed } from "./view-cache.ts"
 import { arrivalPairs } from "./arrival-pairs.ts"
 import { citybusStop, nearestCitybusStops } from "./citybus-network.ts"
 import { etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
-import { etaQueue, takeEtaTurn } from "./polite-fetch.ts"
+import { etaQueue, takeEtaTurn, ETA_REFRESH_TIMEOUT_MS } from "./polite-fetch.ts"
 import { pool } from "./pool.ts"
 import { fetchUpstreamResilient } from "./upstream-resilient.ts"
 import type { CitybusCall, CitybusPlacesResponse, CitybusResponse, CitybusStopBoard } from "./types.ts"
 
-// Wall-clock budget: at 24 pairs × (5s attempt + 2.5s retry) ÷ 8 in-flight
-// callers = 22.5s worst case, which keeps a degraded-upstream refresh inside
-// Cloudflare's 30s paid plan wall clock. Normal-case requests complete well
-// under this bound.
+// All operators share six wire slots. The batch deadline also bounds queue
+// waiting; unfinished stops retain their previous arrivals and count as misses.
 const STOP_LIMIT = 6
 const PAIR_BUDGET = 24
 const FETCH_LIMIT = 8
@@ -58,17 +56,18 @@ export async function loadCitybusNear(lng: number, lat: number, now = Date.now()
   const nearest = nearestCitybusStops(lng, lat, STOP_LIMIT)
   const pairs = arrivalPairs(nearest, PAIR_BUDGET)
   const turn = await takeEtaTurn("citybus", async () => {
+    const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
     let missed = 0
     await pool(pairs, FETCH_LIMIT, async (pair) => {
       const key = `${pair.stopId}/${pair.route}`
       const cached = remembered.get(key)
       if (!etaDue(cached, now)) return
-      const rows = await fetchEta(pair.stopId, pair.route)
+      const rows = await fetchEta(pair.stopId, pair.route, signal)
       if (rows) remembered.set(key, { at: now, rows })
       else missed += 1
     })
     return missed
-  })
+  }, pairs.map(pair => `${pair.stopId}/${pair.route}`).sort().join(","))
   const missed = turn
   const totalFailure = pairs.length > 0 && missed === pairs.length
   const partialFailure = !totalFailure && missed > 0
@@ -142,7 +141,7 @@ function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : ""
 }
 
-async function fetchEta(stopId: string, route: string): Promise<EtaRow[] | null> {
+async function fetchEta(stopId: string, route: string, signal: AbortSignal): Promise<EtaRow[] | null> {
   try {
     const response = await etaQueue(() => fetchUpstreamResilient(`${ETA_ROOT}/${encodeURIComponent(stopId)}/${encodeURIComponent(route)}`, ETA_FRESH_MS, {
       timeoutMs: ETA_TIMEOUT_MS,
@@ -151,7 +150,7 @@ async function fetchEta(stopId: string, route: string): Promise<EtaRow[] | null>
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",
       },
-    }))
+    }), signal)
     // servedFromCache means every attempt failed and the wrapper served a
     // previous good body. We must still surface that as a miss so the bus feed
     // can mark partial vs total failure correctly.
