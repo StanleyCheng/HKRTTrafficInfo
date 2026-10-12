@@ -1,12 +1,12 @@
 'use client';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed, Tags } from 'lucide-react';
+import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed, Tags, BusFront } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import { integrationMessages, messages } from '@/lib/i18n';
-import { Camera, CameraData, FlowSegment, Language, MapPath, hkTime, layerText, layers, parkingCounts, readableInk, speedLevelColors } from '@/lib/traffic';
+import { Camera, CameraData, FlowSegment, Language, LayerKind, MapPath, hkTime, layerText, layers, parkingCounts, readableInk, speedLevelColors } from '@/lib/traffic';
 import type { TrafficSearchItem } from '@/lib/traffic-view';
-import { ferryDepartures, movingCameras, railHoverText, type MapViewport } from '@/lib/integration-client';
+import { ferryDepartures, movingCameras, railHoverText, busKinds, type MapViewport } from '@/lib/integration-client';
 import { stopPlate } from '@/lib/stop-plate';
 import { STOP_LABEL_WIDTH, declutterLabels, stopLabelHeight, type StopLabelItem, type StopLabelPlacement } from '@/lib/stop-labels';
 import type { BusRouteData, BusRouteResponse, BusRouteSelection, BusRouteStop, BusVehicle } from '@/lib/bus-route';
@@ -63,8 +63,9 @@ const SELECTED_FLOW_SEGMENT_WEIGHT = 7.2;
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors';
 const OPENFREEMAP_ATTRIBUTION = '<a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> &copy; <a href="https://openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>';
 
-const busStopKinds: readonly string[] = ['kmb', 'citybus', 'gmb', 'nlb'];
-const isBusStop = (camera: Camera) => busStopKinds.includes(camera.kind);
+// Bus stops are the four bus operators' published stops; the list comes from the
+// shared bus feed kinds so a new operator only needs wiring in one place.
+const isBusStop = (camera: Camera) => (busKinds as readonly LayerKind[]).includes(camera.kind);
 const hasDelayedHover = (camera: Camera) => camera.kind === 'snapshot' || camera.kind === 'ferry' && camera.positionType === 'pier';
 // Every vehicle type the car park publishes, in the current language, as label plus
 // available / total. The tooltip and the accessible name both read this list.
@@ -110,8 +111,8 @@ function FerryPierPopup({ camera, language, now }: { camera: Camera; language: L
 
 export type Basemap = 'osm' | 'positron';
 type DetailOptions = { status: 'loading' | 'error' | 'ready'; onRetry?: () => void; onClose?: () => void };
-type Props = { busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; hasDrawableLayers: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; renderItemDetails: (camera: Camera, options?: DetailOptions) => ReactNode; onCloseDetails: () => void; onDetailsOpen?: (content: HTMLElement) => void };
-export default function TrafficMap({ busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, hasDrawableLayers, language, basemap, inactive = false, now, busSelection, renderItemDetails, onCloseDetails, onDetailsOpen }: Props) {
+type Props = { busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; hasDrawableLayers: boolean; hasBusStopLayers: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; renderItemDetails: (camera: Camera, options?: DetailOptions) => ReactNode; onCloseDetails: () => void; onDetailsOpen?: (content: HTMLElement) => void };
+export default function TrafficMap({ busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, hasDrawableLayers, hasBusStopLayers, language, basemap, inactive = false, now, busSelection, renderItemDetails, onCloseDetails, onDetailsOpen }: Props) {
   const copy = messages[language];
   const element = useRef<HTMLDivElement>(null);
   const map = useRef<Leaflet.Map | null>(null);
@@ -133,6 +134,10 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const popupLanguage = useRef(language);
   const [revealedRouteKey, setRevealedRouteKey] = useState<string | null>(null);
   const [routeStopLabels, setRouteStopLabels] = useState(true);
+  // Every enabled bus layer's stop markers follow this one switch. It is a map
+  // display preference, not a layer: popups, search and feeds stay untouched,
+  // and the stops a displayed route draws are a separate surface.
+  const [showBusStops, setShowBusStops] = useState(true);
   const routeFocusRef = useRef(false);
   const previousSelection = useRef<string | null>(null);
   const selectRef = useRef(onSelect);
@@ -311,7 +316,9 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   useEffect(() => {
     const L = library.current, m = map.current, group = markerGroup.current;
     if (!ready || !L || !m || !group) return;
-    const visible = cameras;
+    // Run the stop-marker switch before any marker work, so hidden stops leave
+    // no marker, plate, tooltip or layout slot behind.
+    const visible = showBusStops ? cameras : cameras.filter(camera => !isBusStop(camera));
     const ids = new Set(visible.map(camera => camera.id));
     markers.current.forEach((marker, id) => { if (!ids.has(id)) { group.removeLayer(marker); markers.current.delete(id); markerData.current.delete(id); if (popupRef.current?.stopId === id) popupRef.current.popup.remove(); } });
     visible.forEach(camera => {
@@ -366,7 +373,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       markerData.current.set(camera.id, { camera, style, labelLines: plate?.lines.length });
     });
     layoutMarkers.current();
-  }, [cameras, ready, language, copy, mapZoom]);
+  }, [cameras, ready, language, copy, mapZoom, showBusStops]);
   const snapshotMarkerKey = JSON.stringify(cameras.filter(hasDelayedHover));
   const fullPopupOpen = Boolean(selected || routePopupStop);
   useEffect(() => {
@@ -1095,7 +1102,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const locationErrorMessage = locationError === 'denied' ? copy.locationDenied : locationError === 'timeout' ? copy.locationTimeout : locationError === 'unsupported' ? copy.locationUnsupported : copy.locationUnavailable;
   return <section className="map-area" aria-label={copy.mapLabel} aria-hidden={inactive || undefined} inert={inactive || undefined}>
     <div ref={element} className="map-canvas" data-basemap={basemap} role="group" aria-label={copy.mapKeyboardHelp} />
-    <div className="map-tools"><div className="zoom-buttons"><button aria-label={copy.zoomIn} title={copy.zoomIn} onClick={() => map.current?.zoomIn()}><Plus size={19}/></button><button aria-label={copy.zoomOut} title={copy.zoomOut} onClick={() => map.current?.zoomOut()}><Minus size={19}/></button></div><button aria-label={copy.showAll} title={copy.returnToHongKong} onClick={fit}><Maximize size={20}/></button><button type="button" className="gps-button" aria-label={followingLocation ? copy.stopFollowing : copy.locateMe} title={followingLocation ? copy.stopFollowing : copy.locateMe} aria-pressed={followingLocation} aria-busy={locating} disabled={!ready} onClick={followingLocation ? stopLocating : locate}>{locating ? <LoaderCircle className="spin" size={20}/> : <LocateFixed size={20}/>}</button>{busRoute?.route && <button type="button" className="route-labels-button" aria-label={routeStopLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} title={routeStopLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} aria-pressed={routeStopLabels} onClick={() => setRouteStopLabels(value => !value)}><Tags size={20}/></button>}</div>
+    <div className="map-tools"><div className="zoom-buttons"><button aria-label={copy.zoomIn} title={copy.zoomIn} onClick={() => map.current?.zoomIn()}><Plus size={19}/></button><button aria-label={copy.zoomOut} title={copy.zoomOut} onClick={() => map.current?.zoomOut()}><Minus size={19}/></button></div><button aria-label={copy.showAll} title={copy.returnToHongKong} onClick={fit}><Maximize size={20}/></button><button type="button" className="gps-button" aria-label={followingLocation ? copy.stopFollowing : copy.locateMe} title={followingLocation ? copy.stopFollowing : copy.locateMe} aria-pressed={followingLocation} aria-busy={locating} disabled={!ready} onClick={followingLocation ? stopLocating : locate}>{locating ? <LoaderCircle className="spin" size={20}/> : <LocateFixed size={20}/>}</button>{hasBusStopLayers && <button type="button" className="bus-stops-button" aria-label={showBusStops ? copy.hideBusStops : copy.showBusStops} title={showBusStops ? copy.hideBusStops : copy.showBusStops} aria-pressed={showBusStops} onClick={() => setShowBusStops(value => !value)}><BusFront size={20}/></button>}{busRoute?.route && <button type="button" className="route-labels-button" aria-label={routeStopLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} title={routeStopLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} aria-pressed={routeStopLabels} onClick={() => setRouteStopLabels(value => !value)}><Tags size={20}/></button>}</div>
     <span className="sr-only" role="status">{locating ? copy.locating : locationFound ? copy.locationFound : ''}</span>
     {locationError && <div className={`map-error location-error${mapError ? ' with-map-error' : ''}`} role="alert">{locationErrorMessage}<button type="button" className="map-retry" onClick={() => setLocationError(null)}>{copy.dismissLocationError}</button></div>}
     {mapError && <div className="map-error" role="alert">{copy.mapLoadFailed}<button type="button" className="map-retry" onClick={() => ready ? setBasemapRetry(value => value + 1) : window.location.reload()}><RefreshCw size={14}/>{copy.retry}</button></div>}

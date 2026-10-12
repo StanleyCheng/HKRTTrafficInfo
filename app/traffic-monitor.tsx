@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import TrafficSearch from './traffic-search';
 import TrafficStatus from './traffic-status';
 import IntelPanel from './intel-panel';
-import { getIntegrationData, initialViewport, pollingMs, viewportNote, withBoundarySpeeds, movingCameras, type MapViewport } from '@/lib/integration-client';
+import { getIntegrationData, initialViewport, pollingMs, viewportNote, withBoundarySpeeds, movingCameras, busKinds, type MapViewport } from '@/lib/integration-client';
 import { linesThrough, mtrLineList } from '@/lib/mtr-network';
 import type { MtrResponse } from '@/lib/types';
 import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
@@ -474,6 +474,9 @@ export default function TrafficMonitor() {
     return segment ? cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated) : null;
   }, [selectedSnapshot, states, displayStates, segments, flowFresh, now]);
   const activeBusSelection = busSelection && enabled[busSelection.operator] ? busSelection : null;
+  // The map's stop switch is offered while any enabled bus layer can draw stops;
+  // the switch state itself belongs to the map, next to the other map buttons.
+  const hasBusStopLayers = busKinds.some(kind => enabled[kind] && layerAvailable(kind));
   const busRoute = activeBusSelection && busRouteState?.selection === activeBusSelection ? busRouteState.data : undefined;
   useEffect(() => {
     if (!activeBusSelection) return;
@@ -616,7 +619,7 @@ export default function TrafficMonitor() {
     </header>
     <div className="workspace">
       <div className="map-workspace">
-      <TrafficMap onActivity={beginActivity} busRoute={busRoute} paths={paths} transitFeeds={transitFeeds} onViewport={setViewport} cameras={cameras} segments={enabled.flow ? segments : undefined} selected={selected} selectedSegmentId={selected?.id && selected.id.startsWith('flow-segment-') ? selected.id : null} onSelect={choose} onSelectSegment={onSelectSegment} focusTarget={focusTarget} loading={loading} allDisabled={kinds.every(kind => !enabled[kind])} hasErrors={errors} hasDrawableLayers={hasDrawableLayers} language={language} basemap={basemap} now={now} busSelection={activeBusSelection} renderItemDetails={renderItemDetails} onCloseDetails={closeDetails} onDetailsOpen={focusDetails}/>
+      <TrafficMap onActivity={beginActivity} busRoute={busRoute} paths={paths} transitFeeds={transitFeeds} onViewport={setViewport} cameras={cameras} segments={enabled.flow ? segments : undefined} selected={selected} selectedSegmentId={selected?.id && selected.id.startsWith('flow-segment-') ? selected.id : null} onSelect={choose} onSelectSegment={onSelectSegment} focusTarget={focusTarget} loading={loading} allDisabled={kinds.every(kind => !enabled[kind])} hasErrors={errors} hasDrawableLayers={hasDrawableLayers} hasBusStopLayers={hasBusStopLayers} language={language} basemap={basemap} now={now} busSelection={activeBusSelection} renderItemDetails={renderItemDetails} onCloseDetails={closeDetails} onDetailsOpen={focusDetails}/>
       <IntelPanel input={intelInput} language={language} onSelect={selectSearchItem}/>
       <TrafficStatus feeds={kinds.filter(kind => enabled[kind]).map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={refreshAllLayers}/>
       <div className="map-toolbar" role="group" aria-label={copy.openControls}>
