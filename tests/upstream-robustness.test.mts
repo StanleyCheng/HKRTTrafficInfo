@@ -1,9 +1,16 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fetchUpstream, lastGoodUpstream } from '../lib/upstream.ts';
 import { fetchOfficial } from '../lib/official-fetch.ts';
 import { getCameraData } from '../lib/traffic-client.ts';
+
+// Every case here waits on an AbortSignal.timeout deadline, whose timer Node keeps unref'd:
+// with nothing else pending the event loop resolves first and Node 22 cancels the test
+// ("Promise resolution is still pending but the event loop has already resolved"). One
+// ref'd handle holds the loop for the file and is released once its tests are done.
+const keepAlive = setInterval(() => {}, 1000);
+after(() => clearInterval(keepAlive));
 
 test('a timed-out shared-cache body cannot replace a newer network body', async t => {
   let release!: () => void;
@@ -35,13 +42,10 @@ test('a stalled upstream body clears its producer so a later refresh can recover
     return calls === 1 ? new Response(new ReadableStream()) : new Response('recovered');
   });
   const url = 'https://example.test/stalled-upstream-body';
-  // Keep Node alive while AbortSignal.timeout is pending (its timer is unrefed).
-  const alive = delay(50);
   await assert.rejects(fetchUpstream(url, 60_000, { timeoutMs: 10 }), { name: 'TimeoutError' });
   await delay(1);
   assert.equal(new TextDecoder().decode((await fetchUpstream(url, 60_000, { timeoutMs: 100 })).body), 'recovered');
   assert.equal(calls, 2);
-  await alive;
 });
 
 test('HTTP failures surface immediately even when their error body stalls', async t => {
