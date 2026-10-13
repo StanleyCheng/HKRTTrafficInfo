@@ -1,14 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, lazy, Suspense, type CSSProperties } from 'react';
 import Image from 'next/image';
-import { Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, Search, ShieldCheck, SlidersHorizontal, SquareParking, TrafficCone, TrainFront, TriangleAlert, Video, X } from 'lucide-react';
+import { Box, Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, Search, ShieldCheck, SlidersHorizontal, SquareParking, TrafficCone, TrainFront, TriangleAlert, Video, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { messages, integrationMessages } from '@/lib/i18n';
 import { getCameraData } from '@/lib/traffic-client';
 import { Camera, CameraData, FlowSegment, Language, LayerKind, IntegrationKind, OriginalLayerKind, featureService, hkTime, isLiveTrafficDataFresh, isFeedDataStale, isCameraDataStale, kinds, originalKinds, integrationKinds, layerGroups, layerAvailable, hostedUrl, layerText, layers, snapshotInventory, snapshotInventoryEn, speedLevelColors } from '@/lib/traffic';
 import { cameraFromFlowSegment, displayFlowSegments, type TrafficSearchItem } from '@/lib/traffic-view';
-import TrafficMap, { type Basemap } from './traffic-map';
+import TrafficMap, { type Basemap, type TrafficMapProps } from './traffic-map';
 import ItemDetails from './item-details';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import TrafficSearch from './traffic-search';
@@ -20,6 +20,8 @@ import type { MtrResponse } from '@/lib/types';
 import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
 import { getBusRoute } from '@/lib/bus-route-client';
 import { ETA_FRESH_MS } from '@/lib/place-arrivals';
+
+const TrafficMap3D = lazy(() => import('./traffic-map-3d'));
 
 type LayerState = { data?: CameraData; loading: boolean; error: boolean };
 type BusRouteState = { selection: BusRouteSelection; data?: BusRouteResponse; error?: boolean; loading: boolean };
@@ -262,6 +264,10 @@ const topbarFlag = createStoredFlag('hk-traffic-topbar-v1');
 
 export default function TrafficMonitor() {
   const language = useSyncExternalStore(subscribeLanguage, getLanguageSnapshot, getServerLanguageSnapshot);
+  const [mapMode, setMapMode] = useState<'2d' | '3d'>('2d');
+  const [switchedMapMode, setSwitchedMapMode] = useState(false);
+  const [camera3D, setCamera3D] = useState({ pitch: 55, bearing: -20 });
+  const updateCamera3D = useCallback((camera: { pitch: number; bearing: number }) => setCamera3D(previous => previous.pitch === camera.pitch && previous.bearing === camera.bearing ? previous : camera), []);
   const basemap = useSyncExternalStore(subscribeBasemap, getBasemapSnapshot, getServerBasemapSnapshot);
   const copy = messages[language];
   const extra = integrationMessages[language];
@@ -287,6 +293,7 @@ export default function TrafficMonitor() {
     };
   }, []);
   const [viewport, setViewport] = useState<MapViewport>(initialViewport);
+  const updateViewport = useCallback((view: MapViewport) => setViewport(previous => previous.lat === view.lat && previous.lng === view.lng && previous.zoom === view.zoom ? previous : view), []);
   const [dockGroup, setDockGroup] = useState<(typeof layerGroups)[number]['id']>('roads');
   const dockKinds = layerGroups.find(group => group.id === dockGroup)!.kinds;
   const [selectedSnapshot, setSelectedSnapshot] = useState<Camera | null>(null);
@@ -596,6 +603,13 @@ export default function TrafficMonitor() {
   }
 
   const selectedName = selected && (language === 'en' ? selected.nameEn || selected.name : selected.name);
+  function switchMapMode() {
+    setSwitchedMapMode(true);
+    closeDetails();
+    setFocusTarget(null);
+    setMapMode(mode => mode === '2d' ? '3d' : '2d');
+  }
+
   const basemapAction = basemap === 'osm' ? copy.switchToPositron : copy.switchToOsm;
 
   const routeLoading = Boolean(activeBusSelection && (busRouteState?.selection !== activeBusSelection || busRouteState.loading));
@@ -617,6 +631,16 @@ export default function TrafficMonitor() {
     return <ItemDetails camera={camera} language={language} now={now} stale={stale} onActivity={beginActivity} activeBusSelection={activeBusSelection} routeStatus={relatedRoute ? routeStatus : undefined} status={options?.status} onRetry={options?.onRetry} onShowRoute={tracking => { showBusRoute(camera, tracking); options?.onClose?.(); }}/>;
   }
 
+  const mapProps: TrafficMapProps = {
+    onActivity: beginActivity, busRoute, paths, transitFeeds, onViewport: updateViewport, initialView: viewport,
+    cameras, segments: enabled.flow ? segments : undefined, selected,
+    selectedSegmentId: selected?.id.startsWith('flow-segment-') ? selected.id : null,
+    onSelect: choose, onSelectSegment, focusTarget, loading,
+    allDisabled: kinds.every(kind => !enabled[kind]), hasErrors: errors, hasDrawableLayers, hasBusStopLayers,
+    language, basemap, now, busSelection: activeBusSelection, renderItemDetails,
+    onCloseDetails: closeDetails, onDetailsOpen: focusDetails,
+  };
+
   return <main className="app-shell">
     <header className={topbarCollapsed ? 'topbar collapsed' : 'topbar'}>
       <div className="brand">
@@ -630,13 +654,16 @@ export default function TrafficMonitor() {
           <button type="button" aria-pressed={language === 'en'} aria-label={copy.english} title={copy.english} onClick={() => setStoredLanguage('en')}>EN</button>
           <button type="button" aria-pressed={language === 'zh'} aria-label={copy.chinese} title={copy.chinese} onClick={() => setStoredLanguage('zh')}>繁</button>
         </div>
-        <button type="button" className="basemap-toggle" aria-label={`${copy.mapStyle}: ${basemap === 'osm' ? copy.mapStyleStreet : copy.mapStyleLight}. ${basemapAction}`} title={basemapAction} onClick={() => setStoredBasemap(basemap === 'osm' ? 'positron' : 'osm')}><span className="map-style-label">{copy.mapStyle}: </span>{basemap === 'osm' ? copy.mapStyleStreet : copy.mapStyleLight}</button>
+        {mapMode === '2d' && <button type="button" className="basemap-toggle" aria-label={`${copy.mapStyle}: ${basemap === 'osm' ? copy.mapStyleStreet : copy.mapStyleLight}. ${basemapAction}`} title={basemapAction} onClick={() => setStoredBasemap(basemap === 'osm' ? 'positron' : 'osm')}><span className="map-style-label">{copy.mapStyle}: </span>{basemap === 'osm' ? copy.mapStyleStreet : copy.mapStyleLight}</button>}
+        <button type="button" className="map-mode-toggle" data-testid="map-mode-toggle" aria-pressed={mapMode === '3d'} aria-label={mapMode === '3d' ? copy.switchTo2D : copy.switchTo3D} title={mapMode === '3d' ? copy.switchTo2D : copy.switchTo3D} onClick={switchMapMode}><Box size={17}/><span>3D</span></button>
         <button className="source-button" aria-label={copy.sources} onClick={() => dialog.current?.showModal()}><Info size={17}/><span>{copy.sources}</span></button>
       </div>
     </header>
     <div className="workspace">
       <div className="map-workspace">
-      <TrafficMap onActivity={beginActivity} busRoute={busRoute} paths={paths} transitFeeds={transitFeeds} onViewport={setViewport} cameras={cameras} segments={enabled.flow ? segments : undefined} selected={selected} selectedSegmentId={selected?.id && selected.id.startsWith('flow-segment-') ? selected.id : null} onSelect={choose} onSelectSegment={onSelectSegment} focusTarget={focusTarget} loading={loading} allDisabled={kinds.every(kind => !enabled[kind])} hasErrors={errors} hasDrawableLayers={hasDrawableLayers} hasBusStopLayers={hasBusStopLayers} language={language} basemap={basemap} now={now} busSelection={activeBusSelection} renderItemDetails={renderItemDetails} onCloseDetails={closeDetails} onDetailsOpen={focusDetails}/>
+      {mapMode === '3d' ? <Suspense fallback={<div className="map-loading" role="status"><LoaderCircle className="spin" size={20}/>{copy.map3DLoading}</div>}>
+        <TrafficMap3D {...mapProps} camera3D={camera3D} onCamera3D={updateCamera3D} onExit3D={switchMapMode}/>
+      </Suspense> : <TrafficMap {...mapProps} autoLocate={!switchedMapMode}/>}
       <IntelPanel input={intelInput} language={language} onSelect={selectSearchItem}/>
       <TrafficStatus feeds={kinds.filter(kind => enabled[kind]).map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={refreshAllLayers}/>
       <div className="map-toolbar" role="group" aria-label={copy.openControls}>
@@ -801,7 +828,7 @@ export default function TrafficMonitor() {
           </details>;
         })}
         <p className="dialog-footnote">{copy.sourceFootnote}</p>
-        <p className="dialog-footnote">{copy.basemap}{basemap === 'positron' && <><a href="https://openfreemap.org/" target="_blank" rel="noreferrer">{copy.openFreeMapPositron}</a> · <a href="https://openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a> · </>}<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">{copy.osmContributors}</a>{copy.nonGovernmentBasemap}<a href="https://data.gov.hk/tc/terms-and-conditions" target="_blank" rel="noreferrer">{copy.governmentTerms}</a>.</p>
+        <p className="dialog-footnote">{copy.basemap}{(basemap === 'positron' || mapMode === '3d') && <><a href="https://openfreemap.org/" target="_blank" rel="noreferrer">{copy.openFreeMapPositron}</a> · <a href="https://openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a> · </>}<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">{copy.osmContributors}</a>{copy.nonGovernmentBasemap}<a href="https://data.gov.hk/tc/terms-and-conditions" target="_blank" rel="noreferrer">{copy.governmentTerms}</a>.</p>
       </div>
     </dialog>
   </main>;

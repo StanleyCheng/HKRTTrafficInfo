@@ -17,35 +17,13 @@ import { vehicleIcon, vehicleIconHeadingOffset } from '@/lib/vehicle-icons';
 import { ferryBadge } from '@/lib/ferry-routes';
 import { createLocationMotion, locationTransitionDuration, type LocationPoint } from '@/lib/location-motion';
 import SnapshotImage from './snapshot-image';
+import { symbols, escapeHtml, vehicleHtml, vehicleDestination } from '@/lib/map-markers';
 
-const symbols = {
-  redlight: '<rect x="8" y="2" width="8" height="20" rx="3"/><path d="M5 5h3m8 0h3M5 12h3m8 0h3M5 19h3m8 0h3"/><circle cx="12" cy="7" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="17" r="1"/>',
-  speed: '<path d="M4 18a9 9 0 1 1 16 0M12 13l5-5M6 9l1 1M12 5v2M4 15h2m12 0h2"/><circle cx="12" cy="14" r="2"/>',
-  snapshot: '<rect x="3" y="6" width="14" height="12" rx="2"/><path d="m17 10 4-3v10l-4-3"/>',
-  flow: '<path d="M12 3l6 10h-3.5v8h-5v-8H6l6-10z"/>',
-  incident: '<path d="M12 3.5 2.5 20h19L12 3.5z"/><path d="M12 10v4.5m0 2.5v.5"/>',
-  parking: '<rect x="4" y="3" width="16" height="18" rx="3"/><path d="M10 17V7.5h3.4a3.1 3.1 0 0 1 0 6.2H10"/>',
-  rainfall: '<path d="M12 3.5s5.8 6.4 5.8 10.6a5.8 5.8 0 1 1-11.6 0C6.2 9.9 12 3.5 12 3.5z"/>',
-  crossing: '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
-  works: '<path d="m12 3 8 18H4L12 3zM7 15h10M9 10h6"/>',
-  toll: '<path d="M3 21V7h18v14M3 7l3-4h12l3 4M8 12h8M8 16h8"/>',
-  boundary: '<path d="M12 3 3 7v6c0 5 9 8 9 8s9-3 9-8V7l-9-4z"/>',
-  'weather-warning': '<path d="M12 3 2 21h20L12 3zM12 9v5m0 3v1"/>',
-  mtr: '<rect x="5" y="3" width="14" height="16" rx="4"/><path d="M5 11h14M8 19l-2 3m10-3 2 3M8 15h1m6 0h1"/>',
-  lrt: '<rect x="5" y="3" width="14" height="16" rx="4"/><path d="M5 11h14M8 19l-2 3m10-3 2 3M8 15h1m6 0h1"/>',
-  kmb: '<rect x="4" y="4" width="16" height="15" rx="3"/><path d="M4 11h16M7 19v3m10-3v3M7 15h1m8 0h1"/>',
-  citybus: '<rect x="4" y="4" width="16" height="15" rx="3"/><path d="M4 11h16M7 19v3m10-3v3M7 15h1m8 0h1"/>',
-  gmb: '<rect x="4" y="4" width="16" height="15" rx="3"/><path d="M4 11h16M7 19v3m10-3v3M7 15h1m8 0h1"/>',
-  nlb: '<rect x="4" y="4" width="16" height="15" rx="3"/><path d="M4 11h16M7 19v3m10-3v3M7 15h1m8 0h1"/>',
-  ferry: '<path d="M3 14h18l-4 6H7l-4-6zM7 14V8h10v6M12 3v5M2 22l4-1 4 1 4-1 4 1 4-1"/>',
-};
-const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 function updatePopup(popup: Leaflet.Popup) {
   const focused = popup.getElement()?.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
   popup.update();
   focused?.focus({ preventScroll: true });
 }
-const vehicleHtml = (src: string | null, color: string, destination: string) => `<span class="marker-leader" aria-hidden="true" hidden></span><div class="marker-displacement" style="--marker-color:${escapeHtml(color)}"><span class="vehicle-dest" aria-hidden="true">${escapeHtml(destination)}</span><div class="marker-inner"><div class="vehicle-heading" style="transform:rotate(${vehicleIconHeadingOffset}deg)"><img class="vehicle-art" src="${escapeHtml(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}${src ?? ''}`)}" alt="" draggable="false"/></div></div></div>`;
 const enableMarkerKeyboard = (marker: Leaflet.Marker) => marker.on('keydown', (event: Leaflet.LeafletKeyboardEvent) => {
   if (event.originalEvent.key !== 'Enter' && event.originalEvent.key !== ' ') return;
   event.originalEvent.preventDefault();
@@ -54,11 +32,6 @@ const enableMarkerKeyboard = (marker: Leaflet.Marker) => marker.on('keydown', (e
 });
 // Trains name themselves "line → terminus"; ferries carry the sailing destination
 // on their first arrival; the vessel name is the last resort.
-const vehicleDestination = (camera: Pick<Camera, 'kind' | 'arrivals'>, language: Language, name: string) => {
-  if (camera.kind === 'mtr' || camera.kind === 'lrt') return name;
-  const arrival = camera.arrivals?.[0];
-  return language === 'en' ? arrival?.destinationEn || arrival?.destination || name : arrival?.destination || name;
-};
 const FLOW_SEGMENT_WEIGHT = 4.8;
 const SELECTED_FLOW_SEGMENT_WEIGHT = 7.2;
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors';
@@ -116,9 +89,11 @@ function FerryPierPopup({ camera, language, now }: { camera: Camera; language: L
 
 export type Basemap = 'osm' | 'positron';
 type DetailOptions = { status: 'loading' | 'error' | 'ready'; onRetry?: () => void; onClose?: () => void };
-type Props = { busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; hasDrawableLayers: boolean; hasBusStopLayers: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; renderItemDetails: (camera: Camera, options?: DetailOptions) => ReactNode; onCloseDetails: () => void; onDetailsOpen?: (content: HTMLElement) => void };
-export default function TrafficMap({ busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, hasDrawableLayers, hasBusStopLayers, language, basemap, inactive = false, now, busSelection, renderItemDetails, onCloseDetails, onDetailsOpen }: Props) {
+export type TrafficMapProps = { initialView?: MapViewport; autoLocate?: boolean; busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; hasDrawableLayers: boolean; hasBusStopLayers: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; renderItemDetails: (camera: Camera, options?: DetailOptions) => ReactNode; onCloseDetails: () => void; onDetailsOpen?: (content: HTMLElement) => void };
+export default function TrafficMap({ initialView, autoLocate = true, busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, hasDrawableLayers, hasBusStopLayers, language, basemap, inactive = false, now, busSelection, renderItemDetails, onCloseDetails, onDetailsOpen }: TrafficMapProps) {
   const copy = messages[language];
+  const startingView = useRef(initialView);
+  const locateOnMount = useRef(autoLocate);
   const element = useRef<HTMLDivElement>(null);
   const map = useRef<Leaflet.Map | null>(null);
   const library = useRef<typeof Leaflet | null>(null);
@@ -164,7 +139,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const railRenderer = useRef<Leaflet.Renderer | null>(null);
   const segmentPolylines = useRef(new Map<string, Leaflet.Polyline>());
   const vehicleGroup = useRef<Leaflet.LayerGroup | null>(null);
-  const fittedBusRoute = useRef<string | null>(null);
+  const fittedBusRoute = useRef<string | null>(autoLocate ? null : busRoute?.route?.key ?? null);
   const busVehicles = useRef(new Map<string, { marker: Leaflet.Marker; distance: number; feed: BusRouteResponse; direction: { route: BusRouteData }; correction?: { distance: number; at: number }; heading: HTMLElement | null }>());
   const vehicles = useRef(new Map<string, { marker: Leaflet.Marker; camera: Camera; feed: CameraData | undefined; language: Language; hoverAt: number; routeDistance?: number; correction?: { lat: number; lng: number; at: number }; routeCorrection?: { distance: number; at: number } }>());
   const previousSegmentSelection = useRef<string | null>(null);
@@ -284,7 +259,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       (window as unknown as { L: typeof Leaflet }).L = L;
       if (disposed || !element.current) return;
       library.current = L;
-      const m = L.map(element.current, { zoomControl: false, minZoom: 10, maxZoom: 19, attributionControl: true }).setView([22.355, 114.13], 11);
+      const m = L.map(element.current, { zoomControl: false, minZoom: 10, maxZoom: 19, zoomSnap: 0, attributionControl: true }).setView([startingView.current?.lat ?? 22.355, startingView.current?.lng ?? 114.13], startingView.current?.zoom ?? 11);
       map.current = m;
       const locationPane = m.createPane('userLocation');
       locationPane.style.zIndex = '625';
@@ -303,7 +278,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       observer.observe(element.current);
       setPopupElement(document.createElement('div'));
       setReady(true);
-      locate();
+      if (locateOnMount.current) locate();
     })().catch(() => { if (!disposed) setMapError(true); }).finally(finishActivity);
     return () => { disposed = true; finishActivity(); observer?.disconnect(); stopLocating(); map.current?.remove(); map.current = null; markerGroup.current = null; basemapLayer.current = null; locationLayer.current = null; vehicleGroup.current = null; busVehicles.current.clear(); fittedBusRoute.current = null; vehicleEntries.clear(); staticEntries.clear(); staticData.clear(); };
   }, [onActivity, locate, stopLocating]);

@@ -15,6 +15,18 @@ type AppMessages = {
   mapStyleLight: string;
   switchToPositron: string;
   switchToOsm: string;
+  switchTo3D: string;
+  switchTo2D: string;
+  map3DLabel: string;
+  map3DKeyboardHelp: string;
+  map3DLoading: string;
+  map3DUnsupported: string;
+  map3DLoadFailed: string;
+  returnTo2D: string;
+  reset3DCamera: string;
+  mapTilt: string;
+  zoomForBuildings: string;
+  estimatedPosition: string;
   officialData: string;
   sources: string;
   sidebarLabel: string;
@@ -171,6 +183,18 @@ export const messages: Record<Language, AppMessages> = {
     brandTitle: '香港實時交通資訊', brandCompactTitle: '香港實時交通',
     mapStyle: '底圖樣式', mapStyleStreet: '街道', mapStyleLight: '淺灰',
     switchToPositron: '切換至 OpenFreeMap Positron 淺灰底圖', switchToOsm: '切換至 OpenStreetMap 底圖',
+    switchTo3D: '切換至 3D 地圖',
+    switchTo2D: '切換至 2D 地圖',
+    map3DLabel: '香港交通 3D 互動地圖',
+    map3DKeyboardHelp: '拖動以移動地圖；右鍵拖動或雙指旋轉，使用傾斜滑桿調整視角；以 Tab 選取標記，以方向鍵移動地圖',
+    map3DLoading: '正在載入 3D 地圖',
+    map3DUnsupported: '此裝置暫時無法顯示 3D 地圖。請返回 2D 繼續查看交通。',
+    map3DLoadFailed: '3D 底圖未能完整載入。請重試，或返回 2D 地圖。',
+    returnTo2D: '返回 2D 地圖',
+    reset3DCamera: '朝向北方並重設 3D 視角',
+    mapTilt: '傾斜',
+    zoomForBuildings: '放大地圖，即可查看 3D 建築',
+    estimatedPosition: '估算位置',
     officialData: '官方開放數據', sources: '資料來源', sidebarLabel: '圖層及詳情',
     overviewEyebrow: '香港 · 交通概覽', overviewTitle: '全港交通概覽', publishedLocations: '個已公布位置',
     completeInventory: '完整名冊', mapLayers: '地圖圖層', showingLocations: count => `顯示 ${count} 個`,
@@ -259,6 +283,18 @@ export const messages: Record<Language, AppMessages> = {
     brandTitle: 'HK RT Traffic Info', brandCompactTitle: 'HK RT Traffic',
     mapStyle: 'Map style', mapStyleStreet: 'Street', mapStyleLight: 'Light',
     switchToPositron: 'Switch to the OpenFreeMap Positron light-gray basemap', switchToOsm: 'Switch to the OpenStreetMap basemap',
+    switchTo3D: 'Switch to 3D map',
+    switchTo2D: 'Switch to 2D map',
+    map3DLabel: 'Interactive 3D map of Hong Kong traffic',
+    map3DKeyboardHelp: 'Drag to pan; right-drag or use two fingers to rotate. Adjust the tilt slider for perspective. Use Tab to select markers and arrow keys to pan.',
+    map3DLoading: 'Loading 3D map',
+    map3DUnsupported: 'This device cannot display the 3D map right now. Return to 2D to keep viewing traffic.',
+    map3DLoadFailed: 'The 3D basemap could not fully load. Retry or return to the 2D map.',
+    returnTo2D: 'Return to 2D map',
+    reset3DCamera: 'Face north and reset the 3D view',
+    mapTilt: 'Tilt',
+    zoomForBuildings: 'Zoom in to see 3D buildings',
+    estimatedPosition: 'Estimated position',
     officialData: 'Official open data', sources: 'Sources', sidebarLabel: 'Layers and details',
     overviewEyebrow: 'HONG KONG · TRAFFIC OVERVIEW', overviewTitle: 'Traffic overview', publishedLocations: 'published locations',
     completeInventory: 'Complete list', mapLayers: 'Map layers', showingLocations: count => `Showing ${count}`,

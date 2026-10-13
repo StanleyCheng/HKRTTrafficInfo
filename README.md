@@ -2,6 +2,10 @@
 
 Bilingual Traditional Chinese / English traffic map built with Leaflet, React and Next.js. The original seven layers are joined by harbour journey boards, road works, toll points, boundary queues, weather warnings, rail arrivals, bus arrivals and ferries. The ranked intelligence panel combines incidents, slow roads, warnings and feed faults.
 
+The **3D** button in the top menu switches to a native MapLibre GL JS renderer with OpenFreeMap Positron and extruded OpenStreetMap buildings. Switching preserves the current location, geographic zoom scale, layer selection and displayed route; pressing the active button returns to the existing 2D map and its chosen basemap. Rotate with a right-button drag or a two-finger gesture, adjust the **Tilt** slider, and use the compass to face north and reset the perspective. Zoom in for building detail.
+
+The 3D view shares traffic roads, rail/ferry routes, stop and camera details, snapshots, search, GPS following and estimated vehicle movements with the monitor. It uses the existing self-hosted MapLibre workers and requires no new API key. Buildings reflect OpenStreetMap coverage and published heights; this version does not include terrain elevation or the Lands Department's detailed 3D Tiles, which require separate data integration and an official API key. Devices without a working WebGL context can return to 2D from the error message.
+
 [![Vercel deploy](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/deploy-vercel.yml/badge.svg)](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/deploy-vercel.yml)
 [![Cloudflare Worker deploy](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/deploy-cloudflare.yml/badge.svg)](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/deploy-cloudflare.yml)
 [![Verify](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/verify.yml/badge.svg)](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/verify.yml)
