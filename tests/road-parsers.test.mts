@@ -18,6 +18,14 @@ test('road works joins traditional text, rejects invalid coordinates; toll point
   assert.equal(tolls.features.length, 1)
   assert.equal(tolls.features[0].properties?.band, 'overview')
 })
+test('toll points drop the mid-tunnel generalisation once a tunnel publishes plaza points', () => {
+  const plaza = (code: string, featureId: number, lng: number, lat: number) => ({ type: 'Feature', properties: { TunnelCode: code, FeatureID: featureId, Scale: '1-300' }, geometry: { type: 'Point', coordinates: [lng, lat] } })
+  const generalisation = (code: string, featureId: number, lng: number, lat: number) => ({ type: 'Feature', properties: { TunnelCode: code, FeatureID: featureId, Scale: '300+' }, geometry: { type: 'Point', coordinates: [lng, lat] } })
+  // Real feed shape: two plaza points plus one generalisation drawn mid-crossing per tunnel.
+  const mixed = tollsFromWfs({ features: [plaza('CHT', 150338, 114.1805, 22.3008), plaza('CHT', 150339, 114.1804, 22.3007), generalisation('CHT', 2, 114.1820, 22.2913), generalisation('TLT', 4, 114.0616, 22.3928)] })
+  assert.deepEqual(mixed.features.map(feature => feature.properties?.id), ['150338', '150339', '4'], 'A tunnel with plaza points keeps only those; a tunnel without keeps its generalisation')
+  assert.equal(mixed.features.some(feature => feature.properties?.code === 'CHT' && feature.properties?.band === 'overview'), false, 'No mid-tunnel marker survives beside plaza points')
+})
 test('boundary retains all eight control points and decorates approach speeds', () => {
   const queue = Object.fromEntries(['HYW','HZM','LMC','LSC','LWS','MKT','SBC','STK'].map((code) => [code, { arrQueue: 0, depQueue: 2 }])) as QueueFile
   assert.equal(isQueueFile(queue), true)

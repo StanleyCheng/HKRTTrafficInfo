@@ -59,7 +59,13 @@ export function tollsFromWfs(wfs: unknown): GeoJSON.FeatureCollection {
       geometry: { type: "Point", coordinates },
     })
   }
-  return { type: "FeatureCollection", features }
+  // The feed carries two cartographic bands per tunnel: the "1-300" points at the toll
+  // plazas and one "300+" generalisation placed inside the tunnel or the harbour. Drawing
+  // both put unbuildable stations mid-crossing, so a generalisation now survives only for
+  // a tunnel that publishes no plaza point of its own.
+  const plazaCodes: Record<string, true> = {}
+  for (const feature of features) if (feature.properties?.band === "portal") plazaCodes[text(feature.properties?.code)] = true
+  return { type: "FeatureCollection", features: features.filter(feature => feature.properties?.band === "portal" || !plazaCodes[text(feature.properties?.code)]) }
 }
 
 export function withTraditionalText(

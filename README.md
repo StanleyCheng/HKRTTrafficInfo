@@ -53,7 +53,7 @@ The original seven layers fetch official data directly in both modes. New integr
 | Rainfall | HKO rhrread | Existing browser adapter | Yes |
 | Harbour journey boards | HKeMobility WFS / getTextInfo | `/api/approaches` | Hosted only |
 | Road works | HKeMobility road works WFS, EN and TC | `/api/works` | Hosted only |
-| Toll points | HKeMobility toll WFS | `/api/tolls` | Hosted only |
+| Toll points | HKeMobility toll WFS (plaza points only — the feed's 300+ on-tunnel generalisation is dropped when a tunnel publishes plazas) | `/api/tolls` | Hosted only |
 | Boundary queues | ImmD resident / visitor queue files | `/api/control-points` | Hosted only |
 | Weather warnings | HKO warnsum, TC and EN | `/api/warnings?lang=tc` | Yes |
 | MTR | MTR Next Train and bundled geometry | `/api/mtr` | Hosted only |
