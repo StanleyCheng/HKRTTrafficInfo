@@ -349,7 +349,7 @@ try {
     const actual = await counts(page);
     for (const [kind, count] of Object.entries(expected)) assert.equal(actual[kind], count, `${kind} must show every source record individually`);
     assert.ok(actual.flow >= 1, 'Flow detector marker remains individual alongside road geometry');
-    await page.evaluate(() => { window.__originalStatic = [...document.querySelectorAll('.camera-marker:not(.vehicle-marker)')].filter(element => /redlight fixture/.test(element.title)); });
+    await page.evaluate(() => { window.__originalStatic = [...document.querySelectorAll('.camera-marker:not(.vehicle-marker)')].filter(element => element.dataset.markerId?.startsWith('redlight-')); });
     for (const zoom of [10, 13, 17]) {
       await page.evaluate(({ center, zoom }) => { window.__map.setView(center, zoom, { animate: false }); }, { center, zoom });
       await page.waitForTimeout(200);
@@ -368,8 +368,9 @@ try {
   });
   for (const mobile of [false, true]) await test(`${mobile ? 'Mobile' : 'Desktop'}: colocated records keep geographic anchors and independent bounded click targets`, async () => {
     const { page, context } = await create(mobile);
-    const targets = page.locator('.camera-marker[title*="redlight fixture"]');
+    const targets = page.locator('.camera-marker[data-marker-id^="redlight-"]');
     assert.equal(await targets.count(), 3);
+    assert.equal(await targets.first().getAttribute('title'), null, 'Red-light markers carry no delayed native title to open over the details');
     const layout = await targets.evaluateAll(elements => elements.map(element => {
       let anchor; window.__map.eachLayer(layer => { if (layer.getElement?.() === element) anchor = layer.getLatLng(); });
       const body = element.querySelector('.marker-displacement'), displacement = new DOMMatrix(getComputedStyle(body).transform);
@@ -379,11 +380,23 @@ try {
     assert.ok(layout.every(marker => marker.anchor.lat === center[0] && marker.anchor.lng === center[1]), 'Display displacement never changes source coordinates');
     assert.equal(new Set(layout.map(marker => JSON.stringify(marker.center))).size, 3, 'Three colocated records each have their own visible center');
     assert.ok(layout.every(marker => Math.max(Math.abs(marker.x), Math.abs(marker.y)) <= 34.01), 'Display displacements stay within 34px on each axis');
-    await page.evaluate(() => { window.__colocated = [...document.querySelectorAll('.camera-marker[title*="redlight fixture"]')]; });
+    await page.evaluate(() => { window.__colocated = [...document.querySelectorAll('.camera-marker[data-marker-id^="redlight-"]')]; });
+    // The red-light point names itself in the details popup: a desktop pointer still gets
+    // the instant hover tooltip before the click, a compact tap never raises one, and
+    // neither form factor leaves a tooltip sitting over the opened details block.
+    if (!mobile) {
+      await hoverMarker(page, targets.first());
+      await page.getByRole('tooltip', { name: 'redlight fixture 1', exact: true }).waitFor();
+      await page.mouse.move(50, 20);
+      await page.locator('.leaflet-tooltip').waitFor({ state: 'detached' });
+    }
     for (let index = 0; index < 3; index++) {
-      await targets.nth(index).locator('.marker-inner').click();
+      const target = targets.nth(index).locator('.marker-inner');
+      if (mobile) await target.tap(); else await target.click();
       await page.getByRole('heading', { level: 2, name: `redlight fixture ${index + 1}`, exact: true }).waitFor();
       await page.waitForFunction(() => document.querySelectorAll('.item-popup').length === 1);
+      await page.locator('.leaflet-tooltip').waitFor({ state: 'detached' });
+      assert.equal(await page.locator('.leaflet-tooltip').count(), 0, 'The opened details block carries no hover tooltip over it');
       await page.locator('.item-popup .leaflet-popup-close-button').click();
       await page.locator('.item-popup').waitFor({ state: 'detached' });
     }

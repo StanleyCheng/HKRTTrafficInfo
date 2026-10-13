@@ -168,7 +168,7 @@ export const messages: Record<Language, AppMessages> = {
     languageControl: '語言選擇', english: '英文', chinese: '中文',
     collapseTopbar: '收起頂部工具列，讓地圖顯示更大', expandTopbar: '展開頂部工具列',
     collapseSidebar: '收起圖層面板，讓地圖顯示更大', expandSidebar: '展開圖層面板',
-    brandTitle: '香港實時交通資訊', brandCompactTitle: '香港交通',
+    brandTitle: '香港實時交通資訊', brandCompactTitle: '香港實時交通',
     mapStyle: '底圖樣式', mapStyleStreet: '街道', mapStyleLight: '淺灰',
     switchToPositron: '切換至 OpenFreeMap Positron 淺灰底圖', switchToOsm: '切換至 OpenStreetMap 底圖',
     officialData: '官方開放數據', sources: '資料來源', sidebarLabel: '圖層及詳情',

@@ -12,7 +12,7 @@ Live/deployed URLs (`README.md` "Live site"):
 
 i18n: two languages, `zh` (Traditional Chinese, default) and `en`, implemented as a hand-rolled message table `messages: Record<Language, AppMessages>` in `lib/i18n.ts` (~315 lines, typed keys, function-valued formatters). Language choice persists in `localStorage` key `hk-traffic-language-v1` via a `useSyncExternalStore` subscription with cross-tab `storage` events and an in-memory fallback when storage is unavailable (`app/traffic-monitor.tsx` `getLanguageSnapshot`/`subscribeLanguage`). Server snapshot is always `'zh'`; `<html lang>` is `zh-HK` statically (`app/layout.tsx`) and updated client-side on toggle. No next-i18n/library; `next-themes` is a dependency but unused by app code (only referenced inside vendored `components/ui/sonner.tsx`).
 
-The app is also a PWA: `public/site.webmanifest` (name `HK RT Traffic Info`, short name `HK RT Traffic`, `display: standalone`, theme `#08244d`), icons in `public/` (`hkrttrafficinfo-logo.png` is the 1254px source art the rasters are cut from), wired in `app/layout.tsx` metadata (title `HK RT Traffic Info · 香港實時交通資訊`; the in-app brand reads `HK RT Traffic Info` in English and `香港實時交通資訊` in Chinese).
+The app is also a PWA: `public/site.webmanifest` (name `HK RT Traffic Info`, short name `HK RT Traffic`, `display: standalone`, theme `#08244d`), icons in `public/` (`hkrttrafficinfo-logo.png` is the 1254px source art the rasters are cut from), wired in `app/layout.tsx` metadata (title `HK RT Traffic Info · 香港實時交通資訊`; the in-app brand reads `HK RT Traffic Info` in English and `香港實時交通資訊` in Chinese, compacting to `HK RT Traffic` and `香港實時交通` in the mobile top bar).
 
 ## 2. Technical framework
 
@@ -133,7 +133,7 @@ All seven layers share the same pipeline: `TrafficMonitor.fetchLayer(kind)` → 
 ### 5.1 Red-light camera junctions (`redlight`)
 
 - **Function**: markers for junctions with red-light camera systems; details show Chinese/English site description, remarks, last-updated date.
-- **UI**: layer card in `app/traffic-monitor.tsx` (Layers tab, desktop dock, mobile dock); marker SVG in `app/traffic-map.tsx` (`symbols.redlight`); detail note `copy.layerDetail.redlight` (`lib/i18n.ts`).
+- **UI**: layer card in `app/traffic-monitor.tsx` (Layers tab, desktop dock, mobile dock); marker SVG in `app/traffic-map.tsx` (`symbols.redlight`); detail note `copy.layerDetail.redlight` (`lib/i18n.ts`). Naming: no browser `title` (so no delayed native tooltip on any form factor); the instant hover tooltip is bound only when `hoverCapable` (desktop pointer with room), and a click or tap opens the details popup on its own (`hoverTooltipKinds` in `app/traffic-map.tsx`).
 - **Client access**: `loadEnforcement('redlight')` in `lib/traffic-client.ts` (mirror: `lib/traffic-server.ts`).
 - **Server route**: none (deleted `/api/cameras/redlight`).
 - **Upstream**: CSDI FeatureServer layer 0, base URL built by `featureService('redlight')` (`lib/traffic.ts`): `https://portal.csdi.gov.hk/server/rest/services/common/td_rcd_1671693287017_1644/FeatureServer/0`, queried as `<base>/query?where=1%3D1&returnIdsOnly=true&f=json`, `<base>/query?where=1%3D1&returnCountOnly=true&f=json`, then `<base>/query?objectIds=…&outFields=*&returnGeometry=true&outSR=4326&f=json` in batches of 150. Format: Esri JSON. Publisher: Transport Department via CSDI; dataset page `https://data.gov.hk/tc-data/dataset/hk-td-tis_25-junctions-with-rlc`.
@@ -145,7 +145,7 @@ All seven layers share the same pipeline: `TrafficMonitor.fetchLayer(kind)` → 
 ### 5.2 Speed-enforcement housings (`speed`)
 
 - **Function**: markers for speed-camera housing locations (not cameras themselves).
-- **UI**: same layer-card/marker/detail pattern (`symbols.speed` in `app/traffic-map.tsx`).
+- **UI**: same layer-card/marker/detail pattern (`symbols.speed` in `app/traffic-map.tsx`), with the red-light naming contract: no native `title`, desktop-pointer hover tooltip only, details popup from click or tap.
 - **Client access**: `loadEnforcement('speed')` — identical pipeline to §5.1.
 - **Server route**: none (deleted `/api/cameras/speed`).
 - **Upstream**: `https://portal.csdi.gov.hk/server/rest/services/common/td_rcd_1671693428549_89372/FeatureServer/0` (same query URLs). Esri JSON; TD via CSDI; dataset `https://data.gov.hk/tc-data/dataset/hk-td-tis_26-locations-of-sec`. Source id uses `SEC_ID` from PopupInfo.

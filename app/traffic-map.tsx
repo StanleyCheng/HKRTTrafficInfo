@@ -68,6 +68,10 @@ const OPENFREEMAP_ATTRIBUTION = '<a href="https://openfreemap.org/" target="_bla
 // shared bus feed kinds so a new operator only needs wiring in one place.
 const isBusStop = (camera: Camera) => (busKinds as readonly LayerKind[]).includes(camera.kind);
 const hasDelayedHover = (camera: Camera) => camera.kind === 'snapshot' || camera.kind === 'ferry' && camera.positionType === 'pier';
+// Red-light and speed-camera points never carry the browser's delayed native title, and
+// their instant hover tooltip is a desktop-pointer affordance only: a tap opens the
+// details popup on its own, with no tooltip left open over it.
+const hoverTooltipKinds: readonly LayerKind[] = ['redlight', 'speed'];
 // Every vehicle type the car park publishes, in the current language, as label plus
 // available / total. The tooltip and the accessible name both read this list.
 const parkingRows = (camera: Camera, language: Language): { label: string; counts: string }[] => {
@@ -126,12 +130,13 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
   const [routePopupData, setRoutePopupData] = useState<{ stop: BusRouteStop; language: Language; camera?: Camera; status: 'loading' | 'error' | 'ready' } | null>(null);
   const [popupElement, setPopupElement] = useState<HTMLDivElement | null>(null);
   const [snapshotHover, setSnapshotHover] = useState<{ camera: Camera; element: HTMLDivElement } | null>(null);
-  const [snapshotHoverEnabled, setSnapshotHoverEnabled] = useState(false);
+  const [hoverCapable, setHoverCapable] = useState(false);
   useEffect(() => {
-    // Match the compact map layout as well as input capability: a phone tap
-    // opens details directly, without a synthetic mouse/focus hover first.
+    // Desktop pointer with room for a hover card; the same capability decides which
+    // markers may carry hover tooltips, so a phone tap opens details directly, without
+    // a synthetic mouse/focus hover first.
     const media = window.matchMedia('(min-width: 701px) and (min-height: 521px) and (hover: hover) and (pointer: fine)');
-    const update = () => setSnapshotHoverEnabled(media.matches);
+    const update = () => setHoverCapable(media.matches);
     update();
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
@@ -370,7 +375,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     const ids = new Set(visible.map(camera => camera.id));
     markers.current.forEach((marker, id) => { if (!ids.has(id)) { group.removeLayer(marker); markers.current.delete(id); markerData.current.delete(id); if (popupRef.current?.stopId === id) popupRef.current.popup.remove(); } });
     visible.forEach(camera => {
-      const style = camera.kind === 'snapshot' ? `${language}:${snapshotHoverEnabled}` : language;
+      const style = camera.kind === 'snapshot' || hoverTooltipKinds.includes(camera.kind) ? `${language}:${hoverCapable}` : language;
       const previous = markerData.current.get(camera.id);
       if (previous?.camera === camera && previous.style === style) return;
       if (camera.kind === 'snapshot' && previous?.style === style && JSON.stringify(previous.camera) === JSON.stringify(camera)) { markerData.current.set(camera.id, { ...previous, camera }); return; }
@@ -393,10 +398,11 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       if (oldMarker) marker.setIcon(icon).setLatLng([camera.lat, camera.lng]);
       const node = marker.getElement();
       // A car park states its counts in the tooltip, so it never gets the browser's delayed native
-      // title, and its label repeats the counts because no popup opens to carry them.
+      // title, and its label repeats the counts because no popup opens to carry them. Red-light and
+      // speed-camera points hand their naming to the details popup instead.
       const rows = camera.kind === 'parking' ? parkingRows(camera, language) : [];
       if (node) {
-        if (hasDelayedHover(camera) || camera.kind === 'parking') node.removeAttribute('title');
+        if (hasDelayedHover(camera) || camera.kind === 'parking' || hoverTooltipKinds.includes(camera.kind)) node.removeAttribute('title');
         else node.title = rail ? hover : `${layerText(camera.kind, language).name}: ${name}`;
         node.setAttribute('aria-label', rows.length ? `${hover} · ${rows.map(row => `${row.label} ${row.counts}`).join(' · ')}` : hover);
         if (camera.kind === 'parking') node.removeAttribute('aria-haspopup');
@@ -406,13 +412,19 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       if (!oldMarker && camera.kind === 'parking') marker.on('tooltipopen', (event: Leaflet.TooltipEvent) => { const element = event.tooltip.getElement(); if (element) element.style.borderColor = color; });
       const textLabel = document.createElement('span'); textLabel.textContent = name;
       const tooltipLabel: string | HTMLElement = camera.kind === 'parking' ? parkingTooltipHtml(camera, language, name) : textLabel;
-      if (rail || camera.kind === 'ferry' || camera.kind === 'snapshot' && !snapshotHoverEnabled) marker.unbindTooltip();
+      // Rail, ferries and the compact layout name themselves without an instant tooltip;
+      // the red-light and speed-camera points keep theirs on a desktop pointer only.
+      const hoverTooltip = !rail && camera.kind !== 'ferry' && !(camera.kind === 'snapshot' && !hoverCapable) && !(hoverTooltipKinds.includes(camera.kind) && !hoverCapable);
+      if (!hoverTooltip) marker.unbindTooltip();
       else if (marker.getTooltip()) marker.setTooltipContent(tooltipLabel);
       else marker.bindTooltip(tooltipLabel, { direction: 'top', offset: [0, -12], className: camera.kind === 'parking' ? 'parking-tooltip' : undefined });
       // Car parks carry their counts in the tooltip, so their marker opens no details popup.
       if (!oldMarker && camera.kind !== 'parking') marker.on('click', () => {
         const latest = markerData.current.get(camera.id)?.camera;
         if (!latest || isBusStop(latest) && routeFocusRef.current) return;
+        // The red-light and speed-camera tooltip is a hover-time affordance: the click hands
+        // the naming to the details popup instead of leaving the tooltip sitting over it.
+        if (hoverTooltipKinds.includes(camera.kind)) marker.closeTooltip();
         popupOrigin.current = { id: latest.id, element: marker.getElement() ?? null };
         setRoutePopupStop(null);
         selectRef.current(latest);
@@ -421,7 +433,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
       markerData.current.set(camera.id, { camera, style, labelLines: plate?.lines.length });
     });
     layoutMarkers.current();
-  }, [cameras, ready, language, copy, mapZoom, showBusStops, snapshotHoverEnabled]);
+  }, [cameras, ready, language, copy, mapZoom, showBusStops, hoverCapable]);
   const snapshotMarkerKey = JSON.stringify(cameras.filter(hasDelayedHover));
   const fullPopupOpen = Boolean(selected || routePopupStop);
   useEffect(() => {
@@ -449,7 +461,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     };
     const listeners: (() => void)[] = [];
     markerData.current.forEach(({ camera }) => {
-      if (!hasDelayedHover(camera) || camera.kind === 'snapshot' && !snapshotHoverEnabled) return;
+      if (!hasDelayedHover(camera) || camera.kind === 'snapshot' && !hoverCapable) return;
       const marker = markers.current.get(camera.id), node = marker?.getElement();
       if (!marker || !node) return;
       node.setAttribute('aria-haspopup', 'dialog');
@@ -493,7 +505,7 @@ export default function TrafficMap({ busRoute, onActivity, cameras, paths, trans
     const visibility = () => { if (document.visibilityState !== 'visible') close(); };
     m.on('movestart click', close); document.addEventListener('keydown', escape); document.addEventListener('visibilitychange', visibility);
     return () => { listeners.forEach(remove => remove()); m.off('movestart click', close); document.removeEventListener('keydown', escape); document.removeEventListener('visibilitychange', visibility); close(); };
-  }, [snapshotMarkerKey, ready, language, mapZoom, inactive, fullPopupOpen, snapshotHoverEnabled]);
+  }, [snapshotMarkerKey, ready, language, mapZoom, inactive, fullPopupOpen, hoverCapable]);
   useEffect(() => {
     const popup = snapshotPopupRef.current;
     if (!snapshotHover || !popup || !element.current || !library.current) return;
