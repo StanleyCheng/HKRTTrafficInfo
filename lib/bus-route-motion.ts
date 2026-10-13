@@ -14,7 +14,7 @@ export function routeDistances(coordinates: [number, number][]): number[] {
 }
 
 export function routePointAtDistance(coordinates: [number, number][], distances: number[], distance: number): [number, number] | null {
-  if (!coordinates.length || !Number.isFinite(distance)) return null;
+  if (!coordinates.length || coordinates.length !== distances.length || !Number.isFinite(distance) || !Number.isFinite(distances.at(-1))) return null;
   if (distance <= 0) return coordinates[0];
   let low = 1, high = distances.length - 1;
   while (low < high) {
@@ -51,10 +51,11 @@ export function routeHeadingAtDistance(coordinates: [number, number][], distance
 // departureAt→arrivalAt. Before departure it holds at the segment start — the
 // route origin for inferred approaches — instead of vanishing.
 export function busVehicleDistanceAtTime(vehicle: BusVehicle, now: number): number | null {
+  if (![now, vehicle.fromDistance, vehicle.toDistance, vehicle.departureAt, vehicle.arrivalAt, vehicle.validUntil].every(Number.isFinite)
+    || vehicle.fromDistance < 0 || vehicle.toDistance < vehicle.fromDistance || vehicle.arrivalAt <= vehicle.departureAt) return null;
   if (now > vehicle.validUntil) return null;
   if (now < vehicle.departureAt) return vehicle.fromDistance;
   const duration = vehicle.arrivalAt - vehicle.departureAt;
-  if (duration <= 0 || ![vehicle.fromDistance, vehicle.toDistance, vehicle.departureAt, vehicle.arrivalAt, vehicle.validUntil].every(Number.isFinite)) return null;
   const progress = Math.min(1, (now - vehicle.departureAt) / duration);
   return vehicle.fromDistance + (vehicle.toDistance - vehicle.fromDistance) * progress;
 }

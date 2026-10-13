@@ -13,7 +13,7 @@ function makeHandler(current: { calls: number; phase: "ok" | "fail" | "throw" })
   return selectionCachedGet<FixtureBody>({
     freshMs: 10_000,
     cacheKey: (request) => new URL(request.url).searchParams.get("id") ?? null,
-    load: async (request) => {
+    load: async () => {
       current.calls += 1
       if (current.phase === "throw") throw new Error("upstream unavailable")
       return {

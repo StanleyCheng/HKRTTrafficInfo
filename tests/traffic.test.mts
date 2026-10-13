@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import {
   isLiveTrafficDataFresh,
+  isFeedDataStale,
+  isCameraDataStale,
   liveTrafficMaxAgeMs,
   officialHongKongTimestamp,
   speedLevel,
@@ -51,6 +53,17 @@ test('isLiveTrafficDataFresh rejects expired and implausibly future readings', (
   assert.equal(isLiveTrafficDataFresh(new Date(now + 5 * 60 * 1000 + 1).toISOString(), now), false);
   assert.equal(isLiveTrafficDataFresh('not-a-date', now), false);
   assert.equal(isLiveTrafficDataFresh(undefined, now), false);
+});
+
+test('future or invalid feed clocks cannot hide stale data', () => {
+  const now = Date.parse('2026-10-13T12:00:00+08:00');
+  const data = { fetchedAt: new Date(now).toISOString(), observedAt: new Date(now + 300001).toISOString() } as import('../lib/traffic.ts').CameraData;
+  assert.equal(isFeedDataStale('citybus', data, now), true);
+  assert.equal(isFeedDataStale('citybus', { ...data, observedAt: 'invalid' }, now), true);
+  assert.equal(isFeedDataStale('citybus', { ...data, observedAt: new Date(now).toISOString() }, now), false);
+  const unavailableStop = { kind: 'citybus' } as import('../lib/traffic.ts').Camera;
+  assert.equal(isCameraDataStale(unavailableStop, now), true);
+  assert.equal(isCameraDataStale({ ...unavailableStop, kind: 'redlight' }, now), false, 'static inventory does not require an arrival clock');
 });
 
 test('shared traffic parsers handle quoted CSV, route numbers and popup markup', () => {

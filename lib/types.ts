@@ -204,6 +204,7 @@ export type KmbCall = {
 
 export type KmbStopBoard = {
   id: string
+  observedAt?: string | null
   nameTc: string
   nameEn: string
   lng: number
@@ -271,6 +272,7 @@ export type CitybusCall = {
 
 export type CitybusStopBoard = {
   id: string
+  observedAt?: string | null
   nameTc: string
   nameEn: string
   lng: number

@@ -28,6 +28,9 @@ test("MTR timestamp fallback is used only when published station clock is missin
   assert.equal(missingClock?.board.observedAt, new Date(now).toISOString())
   const publishedClock = readSchedule({ data: { "TWL-CEN": { ...board, curr_time: "2026-10-03 12:00:00" } } }, "TWL", "CEN", now)
   assert.equal(publishedClock?.board.observedAt, "2026-10-03T04:00:00.000Z")
+  const sentinelClock = readSchedule({ status: 1, curr_time: "-", data: { "KTL-TIK": { ...board, curr_time: "-" } } }, "KTL", "TIK", now)
+  assert.equal(sentinelClock?.board.observedAt, new Date(now).toISOString(), "the live Kwun Tong missing-clock sentinel uses the wire observation")
+  assert.equal(readSchedule({ data: { "TWL-CEN": { ...board, curr_time: "invalid" } } }, "TWL", "CEN", now), null, "a malformed supplied clock must not be relabeled fresh")
 })
 
 test("Fortune timetable fails visibly when HTML has zero valid clocks", () => {

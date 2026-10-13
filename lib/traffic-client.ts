@@ -2,7 +2,7 @@
 // Fetches official open-data endpoints directly; all upstream hosts allow CORS.
 import { loadSlpDetectors } from './slp.ts';
 import { fetchOfficial as officialFetch } from './official-fetch.ts';
-import { XMLParser } from 'fast-xml-parser';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { type Camera, type CameraData, type FlowSegment, type IncidentNotice, type OriginalLayerKind as LayerKind, type ParkingSpaces, featureService, isLiveTrafficDataFresh, officialHongKongTimestamp, snapshotInventory, snapshotInventoryEn, speedLevel, speedLevelColors } from './traffic.ts';
 import { inHongKong, isUnnamedRoad, parseCsv, parseSegmentRouteNumbers, pickLatestPeriod, popupFields, roundCoordinate } from './traffic-parsing.ts';
 
@@ -268,15 +268,17 @@ async function loadFlow(): Promise<CameraData> {
   };
 }
 
-const geocodeCache = new Map<string, { lat: number; lng: number } | null>();
+const geocodeCache = new Map<string, { expires: number; location: { lat: number; lng: number } | null }>();
 const roadPattern = /\b([A-Z][A-Za-z0-9'.-]*(?:\s+[A-Z][A-Za-z0-9'.-]*){0,4}\s+(?:Road|Street|Avenue|Boulevard|Highway|Expressway|Tunnel|Bridge|Flyover|Path|Lane|Drive|Terrace|Circuit|Underpass|Interchange)(?:\s*-\s*[A-Za-z' ]{2,25})?)/g;
 
-async function geocodeRoad(name: string): Promise<{ lat: number; lng: number } | null> {
+async function geocodeRoad(name: string, signal: AbortSignal): Promise<{ lat: number; lng: number } | null> {
   const key = name.trim();
-  if (geocodeCache.has(key)) return geocodeCache.get(key)!;
+  const cached = geocodeCache.get(key);
+  if (cached && cached.expires > Date.now()) return cached.location;
+  if (signal.aborted) return null;
   let result: { lat: number; lng: number } | null = null;
   try {
-    const response = await officialFetch(`${alsLookupUrl}?q=${encodeURIComponent(key)}&n=1`);
+    const response = await officialFetch(`${alsLookupUrl}?q=${encodeURIComponent(key)}&n=1`, { timeoutMs: 3000, retries: 0, signal });
     const text = await response.text();
     // ALS answers JSON when asked, otherwise XML; accept both.
     const parsed = text.trimStart().startsWith('{') ? JSON.parse(text) : parser.parse(text)?.AddressLookupResult;
@@ -290,7 +292,9 @@ async function geocodeRoad(name: string): Promise<{ lat: number; lng: number } |
   } catch {
     // Geocoding is best-effort; incidents without a confident match stay list-only.
   }
-  geocodeCache.set(key, result);
+  if (signal.aborted) return null;
+  if (geocodeCache.size >= 300 && !geocodeCache.has(key)) geocodeCache.delete(geocodeCache.keys().next().value!);
+  geocodeCache.set(key, { expires: Date.now() + (result ? 24 * 60 * 60 * 1000 : 60_000), location: result });
   return result;
 }
 
@@ -306,8 +310,16 @@ function parseNewsTime(value: string | undefined): string {
 
 async function loadIncidents(): Promise<CameraData> {
   const response = await officialFetch(speedNewsUrl);
-  const raw = parser.parse(await response.text())?.body?.message;
+  const xml = await response.text();
+  if (XMLValidator.validate(xml) !== true) throw new Error('官方交通消息格式不符。');
+  const body = parser.parse(xml)?.body;
+  // An explicitly empty <body/> is a valid clear bulletin. A service error page
+  // or a different XML root must not replace the last notices with an empty list.
+  if (body === undefined || body === null || (typeof body !== 'object' && body !== '')) throw new Error('官方交通消息格式不符。');
+  const raw = body?.message;
+  if (body !== '' && raw === undefined) throw new Error('官方交通消息格式不符。');
   const messages = (Array.isArray(raw) ? raw : raw ? [raw] : []) as { msgID: string | number; ChinText?: string; EngText?: string; ChinShort?: string; EngShort?: string; ReferenceDate?: string }[];
+  const geocodeDeadline = AbortSignal.timeout(5000);
   const cameras: Camera[] = [];
   const notices: IncidentNotice[] = [];
   for (const message of messages) {
@@ -320,7 +332,7 @@ async function loadIncidents(): Promise<CameraData> {
     let location: { lat: number; lng: number } | null = null;
     let matchedRoad = '';
     for (const candidate of candidates) {
-      location = await geocodeRoad(candidate);
+      location = await geocodeRoad(candidate, geocodeDeadline);
       if (location) { matchedRoad = candidate; break; }
     }
     const notice: IncidentNotice = { id: `incident-${id}`, text, textEn, time, located: Boolean(location) };
@@ -380,6 +392,7 @@ async function loadParking(): Promise<CameraData> {
   const vacancyJson = (await vacancy.json()) as { results?: ParkingVacancy[] };
   const infoRows = infoJson.results;
   if (!Array.isArray(infoRows) || !infoRows.length) throw new Error('官方停車場名冊格式不符或未提供資料。');
+  if (!Array.isArray(vacancyJson.results)) throw new Error('官方停車場空位數據格式不符。');
   let zhNames = new Map<string, ParkingInfo>();
   if (infoZh) {
     try {
@@ -389,7 +402,7 @@ async function loadParking(): Promise<CameraData> {
       // English names remain available if the optional Chinese feed is malformed.
     }
   }
-  const vacancyByPark = new Map((vacancyJson.results ?? []).map(row => [row.park_Id, row]));
+  const vacancyByPark = new Map(vacancyJson.results.map(row => [row.park_Id, row]));
   const cameras: Camera[] = [];
   for (const row of infoRows) {
     const lat = Number(row.latitude);

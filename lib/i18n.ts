@@ -398,7 +398,7 @@ export const integrationLayerNames = {
   nlb: { name: '新大嶼山巴士', nameEn: 'New Lantao Bus', short: '嶼巴', shortEn: 'NLB', caption: '移至大嶼山查看附近巴士站', captionEn: 'Move to Lantau for nearby bus stops' },
   ferry: { name: '渡輪', nameEn: 'Ferries', short: '渡輪', shortEn: 'Ferries', caption: '四間營辦商船期及船隻位置', captionEn: 'Four operators, sailings and vessel positions' },
 };
-export const boundaryNames: Record<string, string> = { HYW: '香園圍', HZM: '港珠澳大橋', LMC: '落馬洲', LSC: '落馬洲支線', LWS: '羅湖', MKT: '文錦渡', SBC: '深圳灣', STK: '沙頭角' };
+export const boundaryNames: Record<string, string> = { HYW: '香園圍', HZM: '港珠澳大橋', HGP: '皇崗', LMC: '落馬洲', LSC: '落馬洲支線', LWS: '羅湖', MKT: '文錦渡', SBC: '深圳灣', STK: '沙頭角' };
 export const tollNames: Record<string, string> = { WHC: '西區海底隧道', CHT: '紅磡海底隧道', EHC: '東區海底隧道', TLT: '大欖隧道' };
 
 export const integrationMessages = {

@@ -15,7 +15,8 @@ import { busVehicleDistanceAtTime, routeDistances, routeHeadingAtDistance, route
 import { markerOffsets, type MarkerPoint } from '@/lib/marker-layout';
 import { vehicleIcon, vehicleIconHeadingOffset } from '@/lib/vehicle-icons';
 import { ferryBadge } from '@/lib/ferry-routes';
-import { createLocationMotion, locationTransitionDuration, type LocationPoint } from '@/lib/location-motion';
+import { createLocationMotion, locationTransitionDuration, validLocationFix, type LocationPoint } from '@/lib/location-motion';
+import { vehicleCorrection, vehicleFrame, type VehicleCorrection } from '@/lib/vehicle-motion';
 import SnapshotImage from './snapshot-image';
 import { symbols, escapeHtml, vehicleHtml, vehicleDestination } from '@/lib/map-markers';
 
@@ -140,8 +141,8 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
   const segmentPolylines = useRef(new Map<string, Leaflet.Polyline>());
   const vehicleGroup = useRef<Leaflet.LayerGroup | null>(null);
   const fittedBusRoute = useRef<string | null>(autoLocate ? null : busRoute?.route?.key ?? null);
-  const busVehicles = useRef(new Map<string, { marker: Leaflet.Marker; distance: number; feed: BusRouteResponse; direction: { route: BusRouteData }; correction?: { distance: number; at: number }; heading: HTMLElement | null }>());
-  const vehicles = useRef(new Map<string, { marker: Leaflet.Marker; camera: Camera; feed: CameraData | undefined; language: Language; hoverAt: number; routeDistance?: number; correction?: { lat: number; lng: number; at: number }; routeCorrection?: { distance: number; at: number } }>());
+  const busVehicles = useRef(new Map<string, { marker: Leaflet.Marker; distance: number; drawnAt: number; feed: BusRouteResponse; direction: { route: BusRouteData }; correction?: VehicleCorrection; heading: HTMLElement | null }>());
+  const vehicles = useRef(new Map<string, { marker: Leaflet.Marker; camera: Camera; feed: CameraData | undefined; language: Language; hoverAt: number; routeDistance?: number; drawnAt: number; correction?: VehicleCorrection }>());
   const previousSegmentSelection = useRef<string | null>(null);
   const onSelectSegmentRef = useRef(onSelectSegment);
   const [ready, setReady] = useState(false);
@@ -179,7 +180,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
     locationWatch.current = watch;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let dot: Leaflet.CircleMarker | undefined, accuracy: Leaflet.Circle | undefined;
-    let latest: LocationPoint | undefined, lastFixAt: number | undefined;
+    let latest: LocationPoint | undefined, lastFixAt: number | undefined, lastTimestamp: number | undefined;
     const motion = createLocationMotion(point => {
       if (map.current !== m || locationWatch.current !== watch) return;
       dot?.setLatLng(point);
@@ -209,6 +210,8 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
     try {
       watch.id = navigator.geolocation.watchPosition(position => {
         if (map.current !== m || locationWatch.current !== watch) return;
+        if (!validLocationFix(position, lastTimestamp)) return;
+        lastTimestamp = position.timestamp;
         setLocating(false);
         const point: LocationPoint = [position.coords.latitude, position.coords.longitude];
         const receivedAt = performance.now();
@@ -251,7 +254,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
   useEffect(() => {
     let disposed = false;
     let observer: ResizeObserver | undefined;
-    const vehicleEntries = vehicles.current;
+    const vehicleEntries = vehicles.current, routeVehicleEntries = busVehicles.current;
     const staticEntries = markers.current, staticData = markerData.current;
     const finishActivity = onActivity();
     (async () => {
@@ -280,7 +283,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
       setReady(true);
       if (locateOnMount.current) locate();
     })().catch(() => { if (!disposed) setMapError(true); }).finally(finishActivity);
-    return () => { disposed = true; finishActivity(); observer?.disconnect(); stopLocating(); map.current?.remove(); map.current = null; markerGroup.current = null; basemapLayer.current = null; locationLayer.current = null; vehicleGroup.current = null; busVehicles.current.clear(); fittedBusRoute.current = null; vehicleEntries.clear(); staticEntries.clear(); staticData.clear(); };
+    return () => { disposed = true; finishActivity(); observer?.disconnect(); stopLocating(); map.current?.remove(); map.current = null; markerGroup.current = null; basemapLayer.current = null; locationLayer.current = null; vehicleGroup.current = null; routeVehicleEntries.clear(); fittedBusRoute.current = null; vehicleEntries.clear(); staticEntries.clear(); staticData.clear(); };
   }, [onActivity, locate, stopLocating]);
   useEffect(() => {
     const L = library.current, m = map.current;
@@ -895,7 +898,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
       const icon = entry.marker.getElement();
       if (icon) { icon.title = name; icon.setAttribute('aria-label', name); }
     });
-    const tick = (move = true) => {
+    const tick = () => {
       const now = Date.now();
       const live = new Map<string, { direction: { route: BusRouteData }; distance: number }>();
       for (const direction of directions) {
@@ -907,21 +910,24 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
       for (const id of [...entries.keys()]) if (!live.has(id)) remove(id);
       for (const [id, target] of live) {
         const shape = geometry.get(target.direction.route.key)!;
+        const routePosition = { key: target.direction.route.key, distance: target.distance, ...shape };
+        const coordinate = routePointAtDistance(shape.coordinates, shape.distances, target.distance);
+        if (!coordinate) { remove(id); continue; }
+        const targetPosition = { point: coordinate, route: routePosition };
         let entry = entries.get(id);
         if (entry && entry.feed !== busRoute) {
-          entry.correction = reducedMotion.matches ? undefined : { distance: entry.distance - target.distance, at: now };
+          const previous = entry.marker.getLatLng();
+          entry.correction = reducedMotion.matches ? undefined : vehicleCorrection({ point: [previous.lng, previous.lat], route: { key: entry.direction.route.key, distance: entry.distance }, at: entry.drawnAt }, targetPosition, now, false, 2000);
           entry.feed = busRoute;
         }
-        const remaining = !reducedMotion.matches && entry?.correction ? Math.max(0, 1 - (now - entry.correction.at) / 2000) ** 3 : 0;
-        const displayDistance = target.distance + (entry?.correction?.distance ?? 0) * remaining;
-        const coordinate = routePointAtDistance(shape.coordinates, shape.distances, displayDistance);
-        if (!coordinate) { remove(id); continue; }
-        const point = L.latLng(coordinate[1], coordinate[0]);
+        const displayed = vehicleFrame(targetPosition, reducedMotion.matches ? undefined : entry?.correction, now);
+        const displayDistance = displayed.distance!;
+        const point = L.latLng(displayed.point[1], displayed.point[0]);
         if (!entry) {
           const icon = L.divIcon({ className: 'camera-marker vehicle-marker bus-route-marker', html: vehicleHtml(vehicleIcon({ kind: target.direction.route.operator, route: target.direction.route.route, company: target.direction.route.company }), layers[target.direction.route.operator].color, destinationOf(target.direction)), iconSize: [24, 24], iconAnchor: [12, 12] });
           const marker = enableMarkerKeyboard(L.marker(point, { icon, title: name, alt: name, keyboard: true, zIndexOffset: 500 }).addTo(m));
           marker.getElement()?.setAttribute('aria-label', name);
-          entries.set(id, entry = { marker, distance: displayDistance, feed: busRoute, direction: target.direction, heading: marker.getElement()?.querySelector<HTMLElement>('.vehicle-heading') ?? null });
+          entries.set(id, entry = { marker, distance: displayDistance, drawnAt: now, feed: busRoute, direction: target.direction, heading: marker.getElement()?.querySelector<HTMLElement>('.vehicle-heading') ?? null });
         }
         // Rotate inside the marker; Leaflet owns its outer transform.
         const heading = routeHeadingAtDistance(shape.coordinates, shape.distances, displayDistance);
@@ -929,13 +935,11 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
           entry.heading ??= entry.marker.getElement()?.querySelector<HTMLElement>('.vehicle-heading') ?? null;
           if (entry.heading) entry.heading.style.transform = `rotate(${heading + vehicleIconHeadingOffset}deg)`;
         }
-        if (move) {
-          entry.distance = displayDistance;
-          if (!remaining) entry.correction = undefined;
-          entry.marker.setLatLng(point);
-          const icon = entry.marker.getElement();
-          if (icon) L.DomUtil.setPosition(icon, m.project(point).subtract(m.getPixelOrigin()));
-        }
+        entry.distance = displayDistance; entry.drawnAt = now; entry.direction = target.direction;
+        if (!displayed.active) entry.correction = undefined;
+        entry.marker.setLatLng(point);
+        const icon = entry.marker.getElement();
+        if (icon) L.DomUtil.setPosition(icon, m.project(point).subtract(m.getPixelOrigin()));
       }
     };
     const animate = () => { tick(); frame = requestAnimationFrame(animate); };
@@ -946,7 +950,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
       element.current?.classList.toggle('map-motion-paused', paused || reducedMotion.matches);
       if (paused) return;
       tick();
-      if (reducedMotion.matches) timer = window.setInterval(() => tick(false), 1000);
+      if (reducedMotion.matches) timer = window.setInterval(tick, 1000);
       else frame = requestAnimationFrame(animate);
     };
     const startZoom = () => { zooming = true; visible(); };
@@ -963,7 +967,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
     let frame: number | undefined;
     let timer: ReturnType<typeof setInterval> | undefined;
     let zooming = m.getContainer().classList.contains('leaflet-zoom-anim');
-    const tick = (move = true) => {
+    const tick = () => {
       const now = Date.now();
       const next = (['mtr', 'lrt', 'ferry'] as const).flatMap(kind => transitFeeds?.[kind] ? movingCameras(kind, transitFeeds[kind]!, now) : []).filter(camera => Number.isFinite(camera.lat) && Number.isFinite(camera.lng));
       const ids = new Set(next.map(camera => camera.id));
@@ -976,15 +980,14 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
         const existing = entries.get(camera.id);
         if (existing) {
           const node = existing.marker.getElement();
+          const target = { point: [camera.lng, camera.lat] as [number, number], route: routePosition };
           if (existing.feed !== feed) {
             // Refresh corrections follow the route the vehicle is on: a distance offset walks the
             // surveyed path, while a latitude/longitude tween would cut across a bend. Only a GPS
             // fix without a surveyed route falls back to that tween.
-            if (routePosition) existing.routeCorrection = !reducedMotion.matches && existing.camera.routePosition?.key === routePosition.key && existing.routeDistance !== undefined ? { distance: existing.routeDistance - routePosition.distance, at: now } : undefined;
-            else if (!rail && camera.positionSource === 'gps' && !reducedMotion.matches) {
-              const position = existing.marker.getLatLng();
-              existing.correction = { lat: position.lat - camera.lat, lng: position.lng - camera.lng, at: now };
-            } else if (!rail) existing.correction = undefined;
+            const previous = existing.marker.getLatLng();
+            const previousRoute = existing.camera.routePosition;
+            existing.correction = reducedMotion.matches ? undefined : vehicleCorrection({ point: [previous.lng, previous.lat], route: previousRoute && existing.routeDistance !== undefined ? { key: previousRoute.key, distance: existing.routeDistance } : undefined, at: existing.drawnAt }, target, now, camera.positionSource === 'gps');
           }
           if (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn) {
             const destination = vehicleDestination(camera, language, name);
@@ -996,11 +999,8 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
           if (!rail && (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn || existing.camera.positionSource !== camera.positionSource)) {
             const icon = existing.marker.getElement(); if (icon) { icon.title = name; icon.setAttribute('aria-label', `${name} · ${camera.positionSource === 'gps' ? integrationMessages[language].gps : integrationMessages[language].estimatedFerry}`); }
           }
-          const correction = routePosition ? existing.routeCorrection : existing.correction;
-          const remaining = !reducedMotion.matches && correction ? Math.max(0, 1 - (now - correction.at) / 1000) ** 3 : 0;
-          const routeDistance = routePosition ? routePosition.distance + (existing.routeCorrection?.distance ?? 0) * remaining : undefined;
-          const routePoint = routePosition && routeDistance !== undefined ? routePointAtDistance(routePosition.coordinates, routePosition.distances, routeDistance) : null;
-          const point = routePoint ? L.latLng(routePoint[1], routePoint[0]) : L.latLng(camera.lat + (existing.correction?.lat ?? 0) * remaining, camera.lng + (existing.correction?.lng ?? 0) * remaining);
+          const displayed = vehicleFrame(target, reducedMotion.matches ? undefined : existing.correction, now);
+          const point = L.latLng(displayed.point[1], displayed.point[0]);
           const previous = existing.marker.getLatLng();
           const dx = (point.lng - previous.lng) * Math.cos(point.lat * Math.PI / 180), dy = point.lat - previous.lat;
           const running = Math.abs(dx) + Math.abs(dy) > 1e-10;
@@ -1011,17 +1011,16 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
           }
           if (existing.camera.color !== camera.color) node?.querySelector<HTMLElement>('.marker-displacement')?.style.setProperty('--marker-color', camera.color ?? layers[camera.kind].color);
           const heading = node?.querySelector<HTMLElement>('.vehicle-heading');
-          if (running && heading) heading.style.transform = `rotate(${Math.atan2(dx, dy) * 180 / Math.PI + vehicleIconHeadingOffset}deg)`;
+          const routeHeading = routePosition && displayed.distance !== undefined ? routeHeadingAtDistance(routePosition.coordinates, routePosition.distances, displayed.distance) : null;
+          if (heading && (routeHeading !== null || running)) heading.style.transform = `rotate(${(routeHeading ?? Math.atan2(dx, dy) * 180 / Math.PI) + vehicleIconHeadingOffset}deg)`;
           const art = node?.querySelector<HTMLImageElement>('.vehicle-art');
           if (art && vehicleIcon(existing.camera) !== vehicleIcon(camera)) art.src = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}${vehicleIcon(camera)}`;
           existing.camera = camera; existing.feed = feed; existing.language = language;
-          if (move) {
-            if (!remaining) { existing.correction = undefined; existing.routeCorrection = undefined; }
-            existing.routeDistance = routeDistance;
-            existing.marker.setLatLng(point);
-            // Leaflet rounds marker pixels; retain its geographic state with subpixel display motion.
-            const icon = existing.marker.getElement(); if (icon) L.DomUtil.setPosition(icon, m.project(point).subtract(m.getPixelOrigin()));
-          }
+          if (!displayed.active) existing.correction = undefined;
+          existing.routeDistance = displayed.distance; existing.drawnAt = now;
+          existing.marker.setLatLng(point);
+          // Leaflet rounds marker pixels; retain its geographic state with subpixel display motion.
+          const icon = existing.marker.getElement(); if (icon) L.DomUtil.setPosition(icon, m.project(point).subtract(m.getPixelOrigin()));
           const popup = popupRef.current;
           if (popup?.stopId === camera.id) {
             const position = existing.marker.getLatLng();
@@ -1044,7 +1043,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
           setRoutePopupStop(null);
           selectRef.current(latest.camera);
         });
-        entries.set(camera.id, { marker, camera, feed, language, hoverAt: now, routeDistance: routePosition?.distance });
+        entries.set(camera.id, { marker, camera, feed, language, hoverAt: now, routeDistance: routePosition?.distance, drawnAt: now });
       });
     };
     const animate = () => { tick(); frame = requestAnimationFrame(animate); };
@@ -1055,7 +1054,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
       element.current?.classList.toggle('map-motion-paused', paused || reducedMotion.matches);
       if (paused) return;
       tick();
-      if (reducedMotion.matches) timer = setInterval(() => tick(false), 1000);
+      if (reducedMotion.matches) timer = setInterval(tick, 1000);
       else frame = requestAnimationFrame(animate);
     };
     const startZoom = () => { zooming = true; visible(); };

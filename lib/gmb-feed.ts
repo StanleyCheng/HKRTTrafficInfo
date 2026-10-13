@@ -1,7 +1,7 @@
 import { viewportAllowed } from "./view-cache.ts"
 import { gmbStop, gmbStopsWithin } from "./gmb-reach.ts"
 import { kmbReachMetres } from "./kmb-reach.ts"
-import { etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
+import { arrivalExpired, arrivalObservedAt, arrivalRows, arrivalSnapshot, etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
 import { etaQueue, takeEtaTurn, ETA_REFRESH_TIMEOUT_MS } from "./polite-fetch.ts"
 import { pool } from "./pool.ts"
 import { fetchUpstreamResilient } from "./upstream-resilient.ts"
@@ -63,7 +63,7 @@ export async function loadGmbNear(lng: number, lat: number, now = Date.now(), zo
       const cached = remembered.get(stopId)
       if (!etaDue(cached, now)) return
       const rows = await fetchStop(stopId, signal)
-      if (rows) remembered.set(stopId, { at: now, rows })
+      if (rows) remembered.set(stopId, rows)
       else missed += 1
     })
     return missed
@@ -78,6 +78,7 @@ export async function loadGmbNear(lng: number, lat: number, now = Date.now(), zo
     const record = gmbStop(stop.id)
     if (!record) continue
     const rows = heldRows(remembered.get(stop.id), now) ?? []
+    const observedAt = arrivalObservedAt(remembered.get(stop.id), now)
     stops.push({
       id: stop.id,
       nameTc: record.tc,
@@ -85,7 +86,8 @@ export async function loadGmbNear(lng: number, lat: number, now = Date.now(), zo
       lng: record.lng,
       lat: record.lat,
       routes: record.routes,
-      calls: callsAt(rows, record.ids ?? {}, now, stop.id),
+      observedAt,
+      calls: callsAt(rows, record.ids ?? {}, now, stop.id, remembered.get(stop.id)?.at ?? now),
     })
   }
   const error = totalFailure
@@ -104,7 +106,7 @@ export async function loadGmbNear(lng: number, lat: number, now = Date.now(), zo
   }
 }
 
-function callsAt(rows: EtaRoute[], ids: Record<string, string>, now: number, stopId: string): GmbCall[] {
+function callsAt(rows: EtaRoute[], ids: Record<string, string>, now: number, stopId: string, observedAt: number): GmbCall[] {
   const soonest = new Map<string, GmbCall>()
   for (const row of rows) {
     if (row.enabled === false || row.route_id == null) continue
@@ -112,7 +114,9 @@ function callsAt(rows: EtaRoute[], ids: Record<string, string>, now: number, sto
     if (!route) continue
     const entry = (row.eta ?? []).find((item) => item.eta_seq === 1) ?? row.eta?.[0]
     if (!entry) continue
-    const etaMs = entry.timestamp ? Date.parse(entry.timestamp) : NaN
+    const etaMs = entry.timestamp ? Date.parse(entry.timestamp)
+      : typeof entry.diff === "number" && Number.isFinite(entry.diff) ? observedAt + entry.diff * 60_000 : NaN
+    if (arrivalExpired(etaMs, now)) continue
     const hasEta = Number.isFinite(etaMs)
     const minutes = hasEta
       ? Math.max(0, Math.round((etaMs - now) / 60_000))
@@ -142,19 +146,21 @@ function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : ""
 }
 
-async function fetchStop(stopId: string, signal: AbortSignal): Promise<EtaRoute[] | null> {
+async function fetchStop(stopId: string, signal: AbortSignal): Promise<HeldRows<EtaRoute> | null> {
   try {
     const response = await etaQueue(() => fetchUpstreamResilient(`${ETA_ROOT}/${encodeURIComponent(stopId)}`, ETA_FRESH_MS, {
       timeoutMs: ETA_TIMEOUT_MS,
       retryTimeoutMs: ETA_RETRY_TIMEOUT_MS,
+      signal,
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",
       },
     }), signal)
     if (response.servedFromCache || response.status < 200 || response.status >= 300) return null
-    const body = JSON.parse(new TextDecoder().decode(response.body)) as { data?: EtaRoute[] }
-    return Array.isArray(body.data) ? body.data : []
+    const body = JSON.parse(new TextDecoder().decode(response.body)) as { data?: EtaRoute[]; generated_timestamp?: string }
+    const rows = arrivalRows<EtaRoute>(body.data)
+    return arrivalSnapshot(rows, response.fetchedAt, [body.generated_timestamp])
   } catch {
     return null
   }

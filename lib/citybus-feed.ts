@@ -1,7 +1,7 @@
 import { viewportAllowed } from "./view-cache.ts"
 import { arrivalPairs } from "./arrival-pairs.ts"
 import { citybusStop, nearestCitybusStops } from "./citybus-network.ts"
-import { etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
+import { arrivalExpired, arrivalRows, arrivalSnapshot, etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
 import { etaQueue, takeEtaTurn, ETA_REFRESH_TIMEOUT_MS } from "./polite-fetch.ts"
 import { pool } from "./pool.ts"
 import { fetchUpstreamResilient } from "./upstream-resilient.ts"
@@ -17,6 +17,7 @@ const ETA_RETRY_TIMEOUT_MS = 2_500
 const ETA_ROOT = "https://rt.data.gov.hk/v2/transport/citybus/eta/CTB"
 
 type EtaRow = {
+  data_timestamp?: string
   dir?: "I" | "O"
   seq?: number
   route?: string
@@ -63,7 +64,7 @@ export async function loadCitybusNear(lng: number, lat: number, now = Date.now()
       const cached = remembered.get(key)
       if (!etaDue(cached, now)) return
       const rows = await fetchEta(pair.stopId, pair.route, signal)
-      if (rows) remembered.set(key, { at: now, rows })
+      if (rows) remembered.set(key, rows)
       else missed += 1
     })
     return missed
@@ -77,9 +78,10 @@ export async function loadCitybusNear(lng: number, lat: number, now = Date.now()
     const record = citybusStop(stop.id)
     if (!record) continue
     const rows: EtaRow[] = []
+    const clocks: number[] = []
     for (const route of stop.routes) {
       const kept = heldRows(remembered.get(`${stop.id}/${route}`), now)
-      if (kept) rows.push(...kept)
+      if (kept) { rows.push(...kept); clocks.push(remembered.get(`${stop.id}/${route}`)!.at) }
     }
     stops.push({
       id: stop.id,
@@ -88,6 +90,7 @@ export async function loadCitybusNear(lng: number, lat: number, now = Date.now()
       lng: record.lng,
       lat: record.lat,
       routes: record.routes,
+      observedAt: clocks.length ? new Date(Math.min(...clocks)).toISOString() : null,
       calls: callsAt(rows, now, stop.id),
     })
   }
@@ -114,6 +117,7 @@ function callsAt(rows: EtaRow[], now: number, stopId: string): CitybusCall[] {
     const route = text(row.route)
     if (!route) continue
     const etaMs = row.eta ? Date.parse(row.eta) : NaN
+    if (arrivalExpired(etaMs, now)) continue
     const hasEta = Number.isFinite(etaMs)
     const remarkTc = isScheduled(row) ? "" : text(row.rmk_tc)
     const remarkEn = isScheduled(row) ? "" : text(row.rmk_en)
@@ -141,11 +145,12 @@ function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : ""
 }
 
-async function fetchEta(stopId: string, route: string, signal: AbortSignal): Promise<EtaRow[] | null> {
+async function fetchEta(stopId: string, route: string, signal: AbortSignal): Promise<HeldRows<EtaRow> | null> {
   try {
     const response = await etaQueue(() => fetchUpstreamResilient(`${ETA_ROOT}/${encodeURIComponent(stopId)}/${encodeURIComponent(route)}`, ETA_FRESH_MS, {
       timeoutMs: ETA_TIMEOUT_MS,
       retryTimeoutMs: ETA_RETRY_TIMEOUT_MS,
+      signal,
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",
@@ -155,8 +160,9 @@ async function fetchEta(stopId: string, route: string, signal: AbortSignal): Pro
     // previous good body. We must still surface that as a miss so the bus feed
     // can mark partial vs total failure correctly.
     if (response.servedFromCache || response.status < 200 || response.status >= 300) return null
-    const body = JSON.parse(new TextDecoder().decode(response.body)) as { data?: EtaRow[] }
-    return Array.isArray(body.data) ? body.data : []
+    const body = JSON.parse(new TextDecoder().decode(response.body)) as { data?: EtaRow[]; generated_timestamp?: string }
+    const rows = arrivalRows<EtaRow>(body.data)
+    return arrivalSnapshot(rows, response.fetchedAt, [body.generated_timestamp, ...(rows ?? []).map(row => row.data_timestamp)])
   } catch {
     return null
   }

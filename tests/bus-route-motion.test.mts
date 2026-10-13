@@ -25,6 +25,11 @@ test('bus trajectory uses absolute time, holds before departure and suppresses e
   assert.equal(busVehicleDistanceAtTime(vehicle, 999), 100, 'Before departure the bus holds at the segment start');
   assert.equal(busVehicleDistanceAtTime(vehicle, 6001), null);
   assert.equal(busVehicleDistanceAtTime({ ...vehicle, departureAt: Number.NaN }, 3000), null);
+  assert.equal(busVehicleDistanceAtTime({ ...vehicle, fromDistance: NaN }, 999), null, 'Malformed pre-departure data cannot bypass validation');
+  assert.equal(busVehicleDistanceAtTime({ ...vehicle, validUntil: NaN }, 999), null);
+  assert.equal(busVehicleDistanceAtTime({ ...vehicle, toDistance: 50 }, 3000), null, 'A reversed distance interval cannot drive a bus backwards');
+  assert.equal(busVehicleDistanceAtTime(vehicle, NaN), null);
+  assert.equal(routePointAtDistance([[114, 22], [115, 23]], [0], 100), null, 'Mismatched route distances cannot crash marker updates');
 });
 
 test('route heading follows travel direction and clamps at the terminus', () => {

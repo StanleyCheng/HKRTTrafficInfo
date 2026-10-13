@@ -4,9 +4,10 @@ import { gmbStop } from './gmb-reach.ts'
 import { nlbRouteIds, nlbStop } from './nlb-network.ts'
  import { nlbArrivalMs } from './nlb-clock.ts'
  import { fetchUpstream } from './upstream.ts'
- import { etaQueue } from './polite-fetch.ts'
- import { ETA_FRESH_MS } from './place-arrivals.ts'
+ import { etaQueue, ETA_REFRESH_TIMEOUT_MS } from './polite-fetch.ts'
+ import { arrivalRows, arrivalSnapshot, ETA_FRESH_MS } from './place-arrivals.ts'
  import { pool } from './pool.ts'
+import { waitForRequest } from './request-wait.ts'
 import { busVehicleDistanceAtTime, routeDistances } from './bus-route-motion.ts'
 import { busRoadGeometry } from './bus-route-geometry.ts'
 import { busCompany } from './bus-company.ts'
@@ -54,6 +55,18 @@ const scheduled = (row: Row) => /scheduled|未開出|原定班次/i.test(`${row.
 // "(落客站)" or "(西翼)" never match the code shape and are kept.
 const kmbStopName = (name: string) => name.replace(/\s*\([A-Z]{2}\d{3,4}[A-Za-z]?\)$/, '').trim() || name
 
+function routeArrivalRows(value: unknown): Row[] {
+  const rows = arrivalRows<Row>(value)
+  if (!rows) throw new Error('Bus route arrival data unavailable')
+  return rows
+}
+
+function routeObservedAt(fetched: number, published: unknown[]): number {
+  const clock = arrivalSnapshot([], new Date(fetched).toISOString(), published)
+  if (!clock) throw new Error('Bus route observation clock unavailable')
+  return clock.at
+}
+
 export function validBusSelection(value: BusRouteSelection, requireStopSeq = false): boolean {
   if (!value || !['kmb', 'citybus', 'gmb', 'nlb'].includes(value.operator) || !/^[A-Za-z0-9-]{1,12}$/.test(value.route) || !/^[A-Za-z0-9]{1,20}$/.test(value.stopId)) return false
   if (requireStopSeq && value.stopSeq == null) return false
@@ -63,8 +76,8 @@ export function validBusSelection(value: BusRouteSelection, requireStopSeq = fal
   return /^\d{1,10}$/.test(value.routeId ?? '') && (value.operator !== 'gmb' || value.routeSeq === 1 || value.routeSeq === 2)
 }
 
-async function json(url: string, ttl = DAY): Promise<{ body: Row; fetched: number }> {
-  const response = await etaQueue(() => fetchUpstream(url, ttl, { timeoutMs: 8_000, headers: { Accept: 'application/json' } }))
+async function json(url: string, ttl = DAY, signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)): Promise<{ body: Row; fetched: number }> {
+  const response = await etaQueue(() => fetchUpstream(url, ttl, { timeoutMs: 8_000, signal, headers: { Accept: 'application/json' } }), signal)
   if (response.status !== 200) throw new Error('Bus route feed unavailable')
   return { body: record(JSON.parse(new TextDecoder().decode(response.body))), fetched: Date.parse(response.fetchedAt) }
 }
@@ -77,7 +90,7 @@ export async function loadBusStopArrivals(selection: BusRouteSelection, now = Da
       : operator === 'citybus' ? `${CTB}/eta/CTB/${stopId}/${route}`
         : operator === 'gmb' ? `${GMB}/eta/route-stop/${routeId}/${routeSeq}/${stopSeq}`
           : `${NLB}?action=estimatedArrivals&routeId=${routeId}&stopId=${stopId}&lang=en`
-    const { body, fetched } = await json(url, ETA_FRESH_MS)
+    const { body, fetched } = await json(url, ETA_FRESH_MS, AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS))
     const data = operator === 'gmb' ? record(body.data) : body
     const published = operator === 'nlb' ? data.estimatedArrivals : operator === 'gmb' ? data.eta : body.data
     if (!Array.isArray(published) || published.some((item) => !item || typeof item !== 'object' || Array.isArray(item))) throw new Error('Stop arrival data unavailable')
@@ -116,14 +129,14 @@ export async function loadBusStopArrivals(selection: BusRouteSelection, now = Da
   }
 }
 
-async function routeStops(selection: BusRouteSelection, requireSelectedStop = true): Promise<BusRouteStop[]> {
+async function routeStops(selection: BusRouteSelection, requireSelectedStop: boolean, signal: AbortSignal): Promise<BusRouteStop[]> {
   const { operator, route, bound, routeId, routeSeq, serviceType } = selection
   const direction = bound === 'I' ? 'inbound' : 'outbound'
   const url = operator === 'kmb' ? `${KMB}/route-stop/${route}/${direction}/${serviceType}`
     : operator === 'citybus' ? `${CTB}/route-stop/CTB/${route}/${direction}`
       : operator === 'gmb' ? `${GMB}/route-stop/${routeId}/${routeSeq}`
         : `${NLB}?action=list&routeId=${routeId}`
-  const { body } = await json(url)
+  const { body } = await json(url, DAY, signal)
   const rows = array(operator === 'gmb' ? record(body.data).route_stops : operator === 'nlb' ? body.stops : body.data)
   if (rows.length < 2 || rows.length > 200) throw new Error('Complete bus route unavailable')
   const stops: BusRouteStop[] = []
@@ -133,7 +146,7 @@ async function routeStops(selection: BusRouteSelection, requireSelectedStop = tr
     let place = { kmb: kmbStop, citybus: citybusStop, gmb: gmbStop, nlb: nlbStop }[operator](id)
     if (!place && operator !== 'nlb') {
       const stopUrl = operator === 'kmb' ? `${KMB}/stop/${id}` : operator === 'citybus' ? `${CTB}/stop/${id}` : `${GMB}/stop/${id}`
-      const data = record((await json(stopUrl)).body.data)
+      const data = record((await json(stopUrl, DAY, signal)).body.data)
       const point = operator === 'gmb' ? record(record(data.coordinates).wgs84) : data
       place = { tc: text(data.name_tc ?? row.name_tc), en: text(data.name_en ?? row.name_en), lng: Number(point.long ?? point.longitude), lat: Number(point.lat ?? point.latitude) }
     }
@@ -152,10 +165,11 @@ async function routeStops(selection: BusRouteSelection, requireSelectedStop = tr
   return stops
 }
 
-async function routeEtas(selection: BusRouteSelection, stops: BusRouteStop[]): Promise<BusEta[]> {
+async function routeEtas(selection: BusRouteSelection, stops: BusRouteStop[], signal: AbortSignal): Promise<BusEta[]> {
   if (selection.operator === 'kmb') {
-    const { body, fetched } = await json(`${KMB}/route-eta/${selection.route}/${selection.serviceType}`, ETA_FRESH_MS)
-    return array(body.data).filter((row) => row.dir === selection.bound && String(row.service_type) === selection.serviceType && Number(row.eta_seq) >= 1 && Number(row.eta_seq) <= 3).map((row) => ({ seq: Number(row.seq), rank: Number(row.eta_seq), at: Date.parse(text(row.eta)), observed: Date.parse(text(row.data_timestamp)) || fetched, scheduled: scheduled(row) }))
+    const { body, fetched } = await json(`${KMB}/route-eta/${selection.route}/${selection.serviceType}`, ETA_FRESH_MS, signal)
+    routeObservedAt(fetched, [body.generated_timestamp])
+    return routeArrivalRows(body.data).filter((row) => row.dir === selection.bound && String(row.service_type) === selection.serviceType && Number(row.eta_seq) >= 1 && Number(row.eta_seq) <= 3).map((row) => ({ seq: Number(row.seq), rank: Number(row.eta_seq), at: Date.parse(text(row.eta)), observed: routeObservedAt(fetched, [body.generated_timestamp, row.data_timestamp]), scheduled: scheduled(row) }))
   }
   // The whole-route fleet view back-projects every published bus, so every
   // stop is sampled at every published rank (KMB alone has a route-level
@@ -166,21 +180,24 @@ async function routeEtas(selection: BusRouteSelection, stops: BusRouteStop[]): P
     const url = selection.operator === 'citybus' ? `${CTB}/eta/CTB/${stop.id}/${selection.route}`
       : selection.operator === 'gmb' ? `${GMB}/eta/route-stop/${selection.routeId}/${selection.routeSeq}/${stop.seq}`
         : `${NLB}?action=estimatedArrivals&routeId=${selection.routeId}&stopId=${stop.id}&lang=en`
-    const { body, fetched } = await json(url, ETA_FRESH_MS)
+    const { body, fetched } = await json(url, ETA_FRESH_MS, signal)
     if (selection.operator === 'nlb') {
-      const row = array(body.estimatedArrivals)[0]
-      if (row) etas.push({ seq: stop.seq, rank: 1, at: nlbArrivalMs(text(row.estimatedArrivalTime)), observed: nlbArrivalMs(text(row.generateTime)), scheduled: String(row.departed) !== '1' || String(row.noGPS) !== '0' })
+      routeObservedAt(fetched, [body.generateTime])
+      const row = routeArrivalRows(body.estimatedArrivals)[0]
+      if (row) etas.push({ seq: stop.seq, rank: 1, at: nlbArrivalMs(text(row.estimatedArrivalTime)), observed: routeObservedAt(fetched, [body.generateTime, row.generateTime]), scheduled: String(row.departed) !== '1' || String(row.noGPS) !== '0' })
     } else if (selection.operator === 'gmb') {
       const data = record(body.data)
       if (data.enabled === false) return
-      array(data.eta).forEach((row, index) => {
+      const observed = routeObservedAt(fetched, [body.generated_timestamp])
+      routeArrivalRows(data.eta).forEach((row, index) => {
         const at = Date.parse(text(row.timestamp))
-        if (Number.isFinite(at)) etas.push({ seq: stop.seq, rank: Number(row.eta_seq) || index + 1, at, observed: Date.parse(text(body.generated_timestamp)) || fetched, scheduled: scheduled(row) })
+        if (Number.isFinite(at)) etas.push({ seq: stop.seq, rank: Number(row.eta_seq) || index + 1, at, observed, scheduled: scheduled(row) })
       })
     } else {
-      array(body.data).filter((item) => item.dir === selection.bound && Number(item.seq) === stop.seq && Number(item.eta_seq) >= 1 && Number(item.eta_seq) <= 3).forEach((row) => {
+      routeObservedAt(fetched, [body.generated_timestamp])
+      routeArrivalRows(body.data).filter((item) => item.dir === selection.bound && Number(item.seq) === stop.seq && Number(item.eta_seq) >= 1 && Number(item.eta_seq) <= 3).forEach((row) => {
         const at = Date.parse(text(row.eta))
-        if (Number.isFinite(at)) etas.push({ seq: stop.seq, rank: Number(row.eta_seq), at, observed: Date.parse(text(row.data_timestamp)) || fetched, scheduled: scheduled(row) })
+        if (Number.isFinite(at)) etas.push({ seq: stop.seq, rank: Number(row.eta_seq), at, observed: routeObservedAt(fetched, [body.generated_timestamp, row.data_timestamp]), scheduled: scheduled(row) })
       })
     }
   })
@@ -293,10 +310,10 @@ function vehicleFromChain(chain: BusEta[], bySeq: Map<number, BusRouteStop>, now
 
 type DirectionLoad = { route: BusRouteData; vehicles: BusVehicle[]; observed: number; failed: boolean }
 
-async function loadDirection(selection: BusRouteSelection, now: number, requireSelectedStop: boolean): Promise<DirectionLoad> {
-  const stops = await routeStops(selection, requireSelectedStop)
+async function loadDirection(selection: BusRouteSelection, now: number, requireSelectedStop: boolean, signal: AbortSignal): Promise<DirectionLoad> {
+  const stops = await routeStops(selection, requireSelectedStop, signal)
   const key = [selection.operator, selection.route, selection.bound, selection.serviceType, selection.routeId, selection.routeSeq].join(':')
-  const [road, etaResult] = await Promise.all([busRoadGeometry(selection, stops).catch(() => null), routeEtas(selection, stops).then((etas) => ({ etas, failed: false })).catch(() => ({ etas: [] as BusEta[], failed: true }))])
+  const [road, etaResult] = await Promise.all([waitForRequest(busRoadGeometry(selection, stops), signal).catch(() => null), routeEtas(selection, stops, signal).then((etas) => ({ etas, failed: false })).catch(() => ({ etas: [] as BusEta[], failed: true }))])
   const coordinates: [number, number][] = road?.coordinates ?? stops.map((stop) => [stop.lng, stop.lat])
   const distances = road?.stopDistances ?? routeDistances(coordinates)
   stops.forEach((stop, index) => { stop.distance = distances[index] })
@@ -320,7 +337,8 @@ function reverseSelections(selection: BusRouteSelection): BusRouteSelection[] {
 export async function loadBusRoute(selection: BusRouteSelection, now = Date.now()): Promise<BusRouteResponse> {
   if (!validBusSelection(selection)) return { ok: false, error: 'Invalid bus route selection', vehicles: [], reverse: [], observedAt: null, stale: false }
   try {
-    const [forward, ...reverseLoads] = await Promise.all([loadDirection(selection, now, true), ...reverseSelections(selection).map((reverse) => loadDirection(reverse, now, false).catch(() => null))])
+    const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
+    const [forward, ...reverseLoads] = await Promise.all([loadDirection(selection, now, true, signal), ...reverseSelections(selection).map((reverse) => loadDirection(reverse, now, false, signal).catch(() => null))])
     const observed = Math.max(0, forward.observed, ...reverseLoads.flatMap((load) => (load ? [load.observed] : [])))
     // Staleness follows the rider's own bound; a reverse bound that fails to
     // load simply drops out of the view.

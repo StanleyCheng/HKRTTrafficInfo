@@ -11,6 +11,9 @@ export function fortuneDepartureTimes(html: string): string[] {
     seen.add(time)
     times.push(time)
   }
+  // The company returns a normal route page with this explicit result on days
+  // that do not serve Kai Tak. Distinguish no sailings from a changed/error page.
+  if (times.length === 0 && html.includes("search-route-section") && /抱歉，找不到在以上條件下的航線信息。/.test(html)) return []
   if (times.length === 0) throw new Error("Fortune Ferry timetable contains no valid departure clocks")
   return times
 }

@@ -2,7 +2,7 @@ import { viewportAllowed } from "./view-cache.ts"
 import { arrivalPairs } from "./arrival-pairs.ts"
 import { nlbArrivalMs } from "./nlb-clock.ts"
 import { nearestNlbStops, nlbStop } from "./nlb-network.ts"
-import { etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
+import { arrivalExpired, arrivalRows, arrivalSnapshot, etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
 import { etaQueue, takeEtaTurn, ETA_REFRESH_TIMEOUT_MS } from "./polite-fetch.ts"
 import { pool } from "./pool.ts"
 import { fetchUpstreamResilient } from "./upstream-resilient.ts"
@@ -17,7 +17,7 @@ const ETA_TIMEOUT_MS = 5_000
 const ETA_RETRY_TIMEOUT_MS = 2_500
 const ETA_ROOT = "https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=estimatedArrivals"
 
-type Arrival = { estimatedArrivalTime?: string; departed?: string | number; noGPS?: string | number }
+type Arrival = { estimatedArrivalTime?: string; generateTime?: string; departed?: string | number; noGPS?: string | number }
 
 const remembered = new Map<string, HeldRows<Arrival>>()
 
@@ -56,7 +56,7 @@ export async function loadNlbNear(lng: number, lat: number, now = Date.now(), zo
       const cached = remembered.get(key)
       if (!etaDue(cached, now)) return
       const rows = await fetchEta(pair.route, pair.stopId, signal)
-      if (rows) remembered.set(key, { at: now, rows })
+      if (rows) remembered.set(key, rows)
       else missed += 1
     })
     return missed
@@ -71,8 +71,11 @@ export async function loadNlbNear(lng: number, lat: number, now = Date.now(), zo
     const record = nlbStop(stop.id)
     if (!record) continue
     const calls: NlbCall[] = []
+    const clocks: number[] = []
     for (const service of record.services) {
       const rows = heldRows(remembered.get(`${stop.id}/${service.id}`), now) ?? []
+      const held = remembered.get(`${stop.id}/${service.id}`)
+      if (heldRows(held, now) && held) clocks.push(held.at)
       const call = callAt(service.code, rows, now)
       if (call) calls.push({ ...call, tracking: { operator: "nlb", route: service.code, stopId: stop.id, routeId: service.id } })
     }
@@ -84,6 +87,7 @@ export async function loadNlbNear(lng: number, lat: number, now = Date.now(), zo
       lng: record.lng,
       lat: record.lat,
       routes: record.routes,
+      observedAt: clocks.length ? new Date(Math.min(...clocks)).toISOString() : null,
       calls: calls.slice(0, 12),
     })
   }
@@ -94,7 +98,7 @@ export async function loadNlbNear(lng: number, lat: number, now = Date.now(), zo
       : undefined
   const latest = Math.max(0, ...pairs.map((pair) => remembered.get(`${pair.stopId}/${pair.route}`)?.at ?? 0))
   return {
-    ok: nearest.length === 0 || stops.length > 0,
+    ok: !totalFailure,
     ...(error ? { error } : {}),
     observedAt: latest > 0 ? new Date(latest).toISOString() : null,
     stale: totalFailure,
@@ -107,7 +111,7 @@ function callAt(route: string, rows: Arrival[], now: number): NlbCall | null {
   let best: NlbCall | null = null
   for (const row of rows) {
     const etaMs = row.estimatedArrivalTime ? nlbArrivalMs(row.estimatedArrivalTime) : NaN
-    if (!Number.isFinite(etaMs)) continue
+    if (!Number.isFinite(etaMs) || arrivalExpired(etaMs, now)) continue
     const minutes = Math.max(0, Math.round((etaMs - now) / 60_000))
     if (best && (best.minutes ?? 999) <= minutes) continue
     best = { route, destTc: "", destEn: "", eta: new Date(etaMs).toISOString(), minutes, scheduled: String(row.departed) === "0" || String(row.noGPS) === "1", remarkTc: "", remarkEn: "" }
@@ -115,12 +119,13 @@ function callAt(route: string, rows: Arrival[], now: number): NlbCall | null {
   return best
 }
 
-async function fetchEta(routeId: string, stopId: string, signal: AbortSignal): Promise<Arrival[] | null> {
+async function fetchEta(routeId: string, stopId: string, signal: AbortSignal): Promise<HeldRows<Arrival> | null> {
   const url = `${ETA_ROOT}&routeId=${encodeURIComponent(routeId)}&stopId=${encodeURIComponent(stopId)}&lang=en`
   try {
     const response = await etaQueue(() => fetchUpstreamResilient(url, ETA_FRESH_MS, {
       timeoutMs: ETA_TIMEOUT_MS,
       retryTimeoutMs: ETA_RETRY_TIMEOUT_MS,
+      signal,
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",
@@ -128,9 +133,10 @@ async function fetchEta(routeId: string, stopId: string, signal: AbortSignal): P
     }), signal)
     if (response.servedFromCache || response.status < 200 || response.status >= 300) return null
     const text = new TextDecoder().decode(response.body)
-    if (!text) return []
-    const body = JSON.parse(text) as { estimatedArrivals?: Arrival[] }
-    return Array.isArray(body.estimatedArrivals) ? body.estimatedArrivals : []
+    if (!text) return null
+    const body = JSON.parse(text) as { estimatedArrivals?: Arrival[]; generateTime?: string }
+    const rows = arrivalRows<Arrival>(body.estimatedArrivals)
+    return arrivalSnapshot(rows, response.fetchedAt, [body.generateTime, ...(rows ?? []).map(row => row.generateTime)])
   } catch {
     return null
   }

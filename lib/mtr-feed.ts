@@ -3,6 +3,7 @@ import { carryArrivalClock, estimateTrains, type TrainObservation } from "./mtr-
 import { pool } from "./pool.ts"
 import { fairLineReads } from "./refresh-slice.ts"
 import { ETA_FRESH_MS } from "./place-arrivals.ts"
+import { etaQueue, takeEtaTurn, ETA_REFRESH_TIMEOUT_MS } from "./polite-fetch.ts"
 import { fetchUpstream } from "./upstream.ts"
 import { mtrQueries, networkRoutes, stationPoint } from "./mtr-network.ts"
 import { readSchedule } from "./mtr-schedule.ts"
@@ -15,6 +16,7 @@ const FETCH_LIMIT = 4
 type Remembered = { at: number; board: MtrBoard; observations: TrainObservation[] }
 
 const remembered = new Map<string, Remembered>()
+const attempted = new Map<string, number>()
 // Not this worker's host. A cache key on our own host can wait on the request that is writing it.
 const MEMORY_URL = "https://hktraffic-cache.invalid/mtr-board-memory"
 let blockedUntil = 0
@@ -28,13 +30,18 @@ type SavedMemory = { stations: { key: string; at: number; board: MtrBoard; obser
 // The next 16 are chosen so every line, including Tsuen Wan, is read before a
 // line that was just read gets another turn.
 export async function loadMtrSnapshot(now = Date.now()): Promise<MtrResponse> {
+  return takeEtaTurn("mtr", () => collectMtrSnapshot(now))
+}
+
+async function collectMtrSnapshot(now: number): Promise<MtrResponse> {
   if (now >= blockedUntil) failures = 0
   let missed = 0
   await readSharedMemory(now)
   if (now >= blockedUntil) {
+    const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
     const due = fairLineReads(
       mtrQueries(),
-      (pair) => remembered.get(`${pair.line}-${pair.station}`)?.at ?? null,
+      (pair) => attempted.get(`${pair.line}-${pair.station}`) ?? remembered.get(`${pair.line}-${pair.station}`)?.at ?? null,
       now,
       ETA_FRESH_MS,
       REFRESH_SLICE,
@@ -42,15 +49,16 @@ export async function loadMtrSnapshot(now = Date.now()): Promise<MtrResponse> {
     await pool(due, FETCH_LIMIT, async (pair) => {
       const key = `${pair.line}-${pair.station}`
       const previous = remembered.get(key)
-      let parsed = await fetchPair(pair.line, pair.station)
+      attempted.set(key, now)
+      let parsed = await fetchPair(pair.line, pair.station, signal)
       if (parsed && parsed.observations.length === 0) {
-        const again = await fetchPair(pair.line, pair.station)
+        const again = await fetchPair(pair.line, pair.station, signal)
         if (again && again.observations.length > 0) parsed = again
       }
       if (!parsed) { missed += 1; return }
-      if (parsed.observations.length === 0 && previous && previous.observations.length > 0 && now - previous.at < REMEMBER_MS) return
+      if (parsed.observations.length === 0 && previous && previous.observations.length > 0 && now - previous.at < REMEMBER_MS) { missed += 1; return }
       remembered.set(key, {
-        at: now,
+        at: Math.min(now, Date.parse(parsed.board.observedAt!)),
         board: parsed.board,
         observations: carryArrivalClock(previous?.observations ?? [], parsed.observations),
       })
@@ -127,17 +135,18 @@ async function writeSharedMemory(now: number): Promise<void> {
   }
 }
 
-async function fetchPair(line: string, station: string) {
+async function fetchPair(line: string, station: string, signal: AbortSignal) {
   if (Date.now() < blockedUntil || failures >= 8) return null
   const url = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${encodeURIComponent(line)}&sta=${encodeURIComponent(station)}&lang=tc`
   try {
-    const response = await fetchUpstream(url, ETA_FRESH_MS, {
+    const response = await etaQueue(() => fetchUpstream(url, ETA_FRESH_MS, {
       timeoutMs: 5_000,
+      signal,
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",
       },
-    })
+    }), signal)
     if (response.status === 429) {
       blockedUntil = Date.now() + 45_000
       failures += 1
@@ -150,7 +159,10 @@ async function fetchPair(line: string, station: string) {
     if (response.status !== 200) return null
     failures = 0
     const payload: unknown = JSON.parse(new TextDecoder().decode(response.body))
-    return readSchedule(payload, line, station, Date.now())
+    const parsed = readSchedule(payload, line, station, Date.parse(response.fetchedAt))
+    const observedAt = Date.parse(parsed?.board.observedAt ?? "")
+    if (!Number.isFinite(observedAt) || Date.now() - observedAt > REMEMBER_MS || observedAt > Date.now() + 30_000) return null
+    return parsed
   } catch {
     failures += 1
     return null

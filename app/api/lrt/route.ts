@@ -1,7 +1,8 @@
-import { loadLrtSnapshot } from "@/lib/lrt-feed"
-import { keepWorkerRequestAlive } from "@/lib/feed-cache"
-import { ETA_FRESH_MS } from "@/lib/place-arrivals"
-import type { LrtResponse } from "@/lib/types"
+import { loadLrtSnapshot } from "../../../lib/lrt-feed.ts"
+import { keepWorkerRequestAlive } from "../../../lib/feed-cache.ts"
+import { ETA_FRESH_MS } from "../../../lib/place-arrivals.ts"
+import { snapshotFallback } from "../../../lib/snapshot-cache.ts"
+import type { LrtResponse } from "../../../lib/types.ts"
 
 export const dynamic = "force-dynamic"
 
@@ -20,10 +21,12 @@ export async function GET() {
   pending = current
   try {
     const body = await current
-    if (!body.ok && cached) return Response.json({ ...cached.body, stale: true, error: body.error })
+    const fallback = snapshotFallback(cached)
+    if (!body.ok && fallback) return Response.json({ ...fallback, stale: true, error: body.error })
     return Response.json(body, { status: body.ok ? 200 : 502 })
   } catch (error) {
-    if (cached) return Response.json({ ...cached.body, stale: true, error: error instanceof Error ? error.message : "Light Rail arrivals failed" })
+    const fallback = snapshotFallback(cached)
+    if (fallback) return Response.json({ ...fallback, stale: true, error: error instanceof Error ? error.message : "Light Rail arrivals failed" })
     const body: LrtResponse = {
       ok: false,
       error: error instanceof Error ? error.message : "Light Rail arrivals failed",

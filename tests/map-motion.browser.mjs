@@ -27,6 +27,7 @@ async function create({ mobile = false, reducedMotion = 'no-preference', gps = f
   const date = hk.slice(0, 10), time = hk.slice(11, 19);
   let mtrCalls = 0;
   let gpsUpdated = false;
+  const mtrPath = ['CEN', 'ADM', 'TST', 'JOR', 'YMT', 'MOK', 'PRE', 'SSP', 'CSW', 'LCK', 'MEF', 'LAK', 'KWF', 'KWH', 'TWH', 'TSW'];
   await context.route(url => url.hostname.endsWith('.gov.hk'), route => {
     const url = new URL(route.request().url());
     const headers = { 'access-control-allow-origin': '*' };
@@ -41,7 +42,7 @@ async function create({ mobile = false, reducedMotion = 'no-preference', gps = f
   });
   await context.route('**/api/mtr**', route => {
     mtrCalls++;
-    return route.fulfill({ json: { ok: true, observedAt, fetchedAt: new Date().toISOString(), boards: [], trains: [{ id: 'motion-mtr', line: 'TWL', dest: 'TSW', plat: '1', ttnt: .4, observedAt, delay: false, timeType: 'A', anchor: 'ADM', path: ['CEN', 'ADM', 'TST', 'TSW'], hold: ['CEN', 'ADM', 'TST', 'TSW'] }] } });
+    return route.fulfill({ json: { ok: true, observedAt, fetchedAt: new Date().toISOString(), boards: [], trains: [{ id: mtrCalls === 1 ? 'motion-mtr' : `changed-upstream-serial-${mtrCalls}`, line: 'TWL', dest: 'TSW', plat: '1', ttnt: .4, observedAt, delay: false, timeType: 'A', anchor: 'ADM', path: mtrPath, hold: mtrPath }] } });
   });
   await context.route('**/api/lrt**', route => route.fulfill({ json: { ok: true, observedAt, boards: [], trains: [{ id: 'motion-lrt', line: '614P', dest: '100', plat: '1', ttnt: .3, observedAt, delay: false, timeType: 'A', anchor: '240', path: ['1', '240', '250', '100'], hold: ['1', '240', '250', '100'] }] } }));
   await context.route('**/api/ferry**', route => {
@@ -50,6 +51,11 @@ async function create({ mobile = false, reducedMotion = 'no-preference', gps = f
     return route.fulfill({ json: { ok: true, observedAt, piers: [], vessels } });
   });
   await context.route('https://tile.openstreetmap.org/**', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgQIAI7mY6QAAAABJRU5ErkJggg==', 'base64') }));
+  await context.route('**/app/traffic-map-3d.tsx*', async route => {
+    const response = await route.fetch(), source = await response.text();
+    assert.ok(source.includes('map.current = m;') && source.includes('vehicles.current.set(camera.id, entry);'), 'Native motion instrumentation points exist');
+    await route.fulfill({ response, body: source.replace('map.current = m;', 'map.current = m; window.__nativeMap = m;').replace('vehicles.current.set(camera.id, entry);', 'vehicles.current.set(camera.id, entry); window.__nativeVehicles = vehicles.current;') });
+  });
   await context.addInitScript(() => {
     localStorage.setItem('hk-traffic-language-v1', 'en');
     localStorage.setItem('hk-traffic-basemap-v1', 'osm');
@@ -222,7 +228,10 @@ try {
   await test('Reduced motion and hidden document stop animation; becoming visible resumes continuous positions', async () => {
     const { page, context } = await create({ reducedMotion: 'reduce' });
     const still = await frameSamples(page);
-    assert.equal(new Set(still.map(sample => JSON.stringify(sample))).size, 1, 'Reduced motion disables continuous movement');
+    assert.ok(new Set(still.map(sample => JSON.stringify(sample))).size <= 2, 'Reduced motion replaces animation with at most one location update per second');
+    const before = still.at(-1);
+    await page.waitForTimeout(1200);
+    assert.notDeepEqual((await frameSamples(page)).at(-1), before, 'Reduced-motion locations must still reflect the current arrival estimate');
     assert.ok((await vehicleMotion(page)).every(vehicle => !vehicle.animations.includes('running')), 'Reduced motion stops miniature animation');
     assert.ok((await dotStyles(page)).every(dot => dot.state === 'paused' || dot.duration === 0), 'Reduced motion disables dot animation');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -255,6 +264,29 @@ try {
     const gpsMotion = (await vehicleMotion(page)).find(vehicle => vehicle.title === 'GPS fixture ferry');
     assert.equal(gpsMotion.running, false, 'Stationary GPS fix must not run a miniature animation');
     assert.ok(!gpsMotion.animations.includes('running'));
+    await context.close();
+  });
+  await test('Native 3D: GPS refresh interpolates confirmed fixes and keeps the same vehicle marker', async () => {
+    const { page, context, confirmGps } = await create({ gps: true });
+    await page.getByTestId('map-mode-toggle').click();
+    await page.waitForFunction(() => window.__nativeVehicles?.has('ferry-vessel-motion-gps') && window.__nativeMap?.loaded());
+    const start = await page.evaluate(() => { window.__gpsMarker = window.__nativeVehicles.get('ferry-vessel-motion-gps').marker; return window.__gpsMarker.getLngLat().lng; });
+    confirmGps();
+    const response = page.waitForResponse(response => response.url().includes('/api/ferry') && response.ok());
+    await reloadAll(page); await response;
+    await page.waitForFunction(() => window.__gpsMarker.getLngLat().lng > 114.161);
+    const samples = await page.evaluate(() => new Promise(resolve => {
+      const points = [], started = performance.now();
+      function tick() { points.push(window.__gpsMarker.getLngLat().lng); if (performance.now() - started >= 1200) resolve(points); else requestAnimationFrame(tick); }
+      requestAnimationFrame(tick);
+    }));
+    assert.ok(samples.some(lng => lng > start && lng < 114.163), 'Native GPS markers must display intermediate confirmed positions');
+    assert.ok(samples.every(lng => lng >= start && lng <= 114.163), 'GPS interpolation stays inside the confirmed interval');
+    assert.equal(samples.at(-1), 114.163);
+    await page.waitForTimeout(150);
+    assert.equal(await page.evaluate(() => window.__gpsMarker.getLngLat().lng), 114.163, 'Native GPS never extrapolates past the fix');
+    assert.equal(await page.evaluate(() => window.__nativeVehicles.get('ferry-vessel-motion-gps').marker === window.__gpsMarker), true);
+    assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await context.close();
   });
   await test('GPS ferry follows its route before and after a refresh across a bend', async () => {

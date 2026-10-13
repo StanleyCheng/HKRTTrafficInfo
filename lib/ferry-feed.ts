@@ -4,10 +4,12 @@ import { fortuneDepartureTimes } from "./fortune-timetable.ts"
 import { ferryFairway } from "./ferry-fairway.ts"
 import { parseSunTimetable, parseHkkfTimetable } from "./ferry-timetable.ts"
 import { SUN_ROUTES } from "./ferry-routes.ts"
-import { etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
-import { etaQueue, takeEtaTurn } from "./polite-fetch.ts"
+import { arrivalRows, etaDue, ETA_FRESH_MS, forgetStale, heldRows, type HeldRows } from "./place-arrivals.ts"
+import { etaQueue, takeEtaTurn, ETA_REFRESH_TIMEOUT_MS } from "./polite-fetch.ts"
 import { pool } from "./pool.ts"
 import { fetchUpstream } from "./upstream.ts"
+import { keepWorkerRequestAlive } from "./feed-cache.ts"
+import { waitForRequest } from "./request-wait.ts"
 import type { FerryCall, FerryResponse, FerryVessel } from "./types.ts"
 import piersFile from "../data/ferry-piers.json" with { type: "json" }
 
@@ -44,13 +46,13 @@ type Clock = {
   firstFerry?: string
   lastFerry?: string
 }
-type SunFix = { vessel: FerryVessel | null; clocks: Clock[] }
+type SunFix = { vessel: FerryVessel | null; clocks: Clock[]; at: number }
 
 const clocks = new Map<string, HeldRows<Clock>>()
 const vessels = new Map<string, HeldRows<FerryVessel | null>>()
 const feedFaults = new Map<string, string>()
-let starText: { at: number; sheets: { from: string; csv: string }[] } | null = null
-let fortunePages: { at: number; pages: { pierId: string; destTc: string; destEn: string; html: string }[] } | null = null
+let starText: { at: number; sheets: { from: string; csv: string; at: number }[] } | null = null
+let fortunePages: { at: number; pages: { pierId: string; destTc: string; destEn: string; html: string; at: number }[] } | null = null
 let holidays: { at: number; dates: string[] } | null = null
 const timetableText = new Map<string, { at: number; csv: string }>()
 const TIMETABLE_URLS = [
@@ -75,11 +77,12 @@ export async function loadFerrySnapshot(now = Date.now()): Promise<FerryResponse
 }
 
 async function refreshFerryClock(now: number): Promise<true> {
+  const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
   const jobs = [
-    ...SUN_ROUTES.map((route) => ({ key: `sun:${route.code}`, run: () => fetchSun(route, now) })),
+    ...SUN_ROUTES.map((route) => ({ key: `sun:${route.code}`, run: () => fetchSun(route, now, signal) })),
     ...HKKF_ROUTES.flatMap((route) => (["inbound", "outbound"] as const).map((direction) => ({
       key: `hkkf:${route.id}:${direction}`,
-      run: () => fetchHkkf(route, direction),
+      run: () => fetchHkkf(route, direction, signal),
     }))),
   ]
   const due = jobs.filter((job) => etaDue(clocks.get(job.key), now))
@@ -90,19 +93,22 @@ async function refreshFerryClock(now: number): Promise<true> {
       return
     }
     feedFaults.delete(job.key)
-    clocks.set(job.key, { at: now, rows: result.clocks })
+    clocks.set(job.key, { at: result.at, rows: result.clocks })
     if (job.key.startsWith("sun:")) {
       const prior = vessels.get(job.key)?.rows[0]
       const vessel = result.vessel
       if (vessel && prior?.id === vessel.id && prior.lng === vessel.lng && prior.lat === vessel.lat && prior.departAt === vessel.departAt) vessel.observedAt = prior.observedAt
-      vessels.set(job.key, { at: now, rows: vessel ? [vessel] : [] })
+      vessels.set(job.key, { at: result.at, rows: vessel ? [vessel] : [] })
     }
   })
-  await Promise.all([
-    live,
+  const metadata = keepWorkerRequestAlive(Promise.all([
     rememberFortune(now),
     rememberHolidays(now).then(() => Promise.all([rememberStar(now), rememberTimetables(now)])),
-  ])
+  ]))
+  void metadata.then(() => feedFaults.delete("metadata-deadline"), () => {})
+  await Promise.all([live, waitForRequest(metadata, signal).catch(() => {
+    feedFaults.set("metadata-deadline", "Ferry timetable refresh deadline exceeded")
+  })])
   return true
 }
 
@@ -246,16 +252,20 @@ function pierPoint(id: string): { lng: number; lat: number } | null {
   return pier ? { lng: pier.lng, lat: pier.lat } : null
 }
 
-async function fetchSun(route: (typeof SUN_ROUTES)[number], now: number): Promise<SunFix | null> {
+async function fetchSun(route: (typeof SUN_ROUTES)[number], now: number, signal: AbortSignal): Promise<SunFix | null> {
   try {
     const response = await etaQueue(() => fetchUpstream(`https://www.sunferry.com.hk/eta/?route=${encodeURIComponent(route.code)}`, ETA_FRESH_MS, {
       timeoutMs: 8_000,
+      signal,
       headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)" },
-    }))
+    }), signal)
     if (response.status !== 200) return null
     const body = JSON.parse(new TextDecoder().decode(response.body)) as { data?: Record<string, unknown>[] }
-    const row = body.data?.[0]
-    if (!row) return { vessel: null, clocks: [] }
+    const rows = arrivalRows<Record<string, unknown>>(body.data)
+    if (!rows) return null
+    const at = Date.parse(response.fetchedAt)
+    const row = rows[0]
+    if (!row) return { vessel: null, clocks: [], at }
     const depart = text(row.depart_time)
     const arrive = text(row.eta)
     const remarkTc = text(row.rmk_tc)
@@ -301,7 +311,7 @@ async function fetchSun(route: (typeof SUN_ROUTES)[number], now: number): Promis
     const vessel: FerryVessel | null = Number.isFinite(lng) && Number.isFinite(lat) && lat > 22 && lat < 23 && lng > 113 && lng < 115
       ? {
           id: `${route.code}-${text(row.vesselcode) || "boat"}`,
-          observedAt: new Date(now).toISOString(),
+          observedAt: response.fetchedAt,
           nameTc: `${route.fromTc} – ${route.destTc}`,
           nameEn: `${route.fromEn} – ${route.destEn}`,
           lng,
@@ -318,22 +328,26 @@ async function fetchSun(route: (typeof SUN_ROUTES)[number], now: number): Promis
           pathLat: path.map((point) => point.lat),
         }
       : null
-    return { vessel, clocks: next }
+    return { vessel, clocks: next, at }
   } catch {
     return null
   }
 }
 
-async function fetchHkkf(route: (typeof HKKF_ROUTES)[number], direction: "inbound" | "outbound"): Promise<SunFix | null> {
+async function fetchHkkf(route: (typeof HKKF_ROUTES)[number], direction: "inbound" | "outbound", signal: AbortSignal): Promise<SunFix | null> {
   try {
     const response = await etaQueue(() => fetchUpstream(`https://www.hkkfeta.com/opendata/eta/${route.id}/${direction}`, ETA_FRESH_MS, {
       timeoutMs: 8_000,
+      signal,
       headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)" },
-    }))
+    }), signal)
     if (response.status !== 200) return null
     const body = JSON.parse(new TextDecoder().decode(response.body)) as { data?: Record<string, unknown>[] }
-    const row = body.data?.[0]
-    if (!row) return { vessel: null, clocks: [] }
+    const rows = arrivalRows<Record<string, unknown>>(body.data)
+    if (!rows) return null
+    const at = Date.parse(response.fetchedAt)
+    const row = rows[0]
+    if (!row) return { vessel: null, clocks: [], at }
     const depart = text(row.session_time)
     const arrive = text(row.ETA)
     const towardsDest = direction === "outbound"
@@ -370,51 +384,55 @@ async function fetchHkkf(route: (typeof HKKF_ROUTES)[number], direction: "inboun
         remarkEn: "",
       })
     }
-    return { vessel: null, clocks: next }
+    return { vessel: null, clocks: next, at }
   } catch {
     return null
   }
 }
 
 async function rememberStar(now: number): Promise<void> {
-  if (!starText || now - starText.at > 24 * 60 * 60 * 1000) {
-    const sheets: { from: string; csv: string }[] = []
+  if (!starText || feedFaults.has("star") || now - starText.at > 24 * 60 * 60 * 1000 || starText.sheets.some(sheet => now - sheet.at >= 24 * 60 * 60 * 1000)) {
+    const sheets: { from: string; csv: string; at: number }[] = []
     await pool(STAR_SHEETS, FETCH_LIMIT, async (sheet) => {
       try {
-        const response = await fetchUpstream(sheet.url, 24 * 60 * 60 * 1000, { timeoutMs: 15_000, headers: { Accept: "text/csv" } })
+        // Parsed sheets own the daily cache. Keep unchecked bytes short-lived so
+        // a malformed successful download cannot suppress recovery for a day.
+        const response = await fetchUpstream(sheet.url, ETA_FRESH_MS, { timeoutMs: 15_000, headers: { Accept: "text/csv" } })
         if (response.status !== 200) return
-        sheets.push({ from: sheet.from, csv: new TextDecoder().decode(response.body) })
+        const csv = new TextDecoder().decode(response.body)
+        if (!starSailings([{ from: sheet.from, csv }], now, false).length && !starSailings([{ from: sheet.from, csv }], now, true).length) return
+        sheets.push({ from: sheet.from, csv, at: Date.parse(response.fetchedAt) })
       } catch {
         // The previous day's table stays in starText when a sheet fails.
       }
     })
-    if (sheets.length) starText = { at: now, sheets: [...sheets, ...(starText?.sheets ?? []).filter((old) => !sheets.some((sheet) => sheet.from === old.from))] }
+    if (sheets.length) starText = { at: now, sheets: [...sheets, ...(starText?.sheets ?? []).filter((old) => now - old.at <= 24 * 60 * 60 * 1000 && !sheets.some((sheet) => sheet.from === old.from))] }
     if (sheets.length === STAR_SHEETS.length) feedFaults.delete("star")
     else feedFaults.set("star", "Star Ferry timetable unavailable")
   }
   if (!starText) return
   const holiday = isHoliday(now)
   if (holiday == null) { clocks.delete("star"); return }
-  const rows = starSailings(starText.sheets, now, holiday, isHoliday(now - 24 * 60 * 60 * 1000) ?? false)
+  const rows = starSailings(starText.sheets.filter(sheet => now - sheet.at <= 24 * 60 * 60 * 1000), now, holiday, isHoliday(now - 24 * 60 * 60 * 1000) ?? false)
   clocks.set("star", { at: now, rows })
 }
 
 async function rememberFortune(now: number): Promise<void> {
-  if (!fortunePages || now - fortunePages.at > 60 * 60 * 1000 || hongKongDate(fortunePages.at) !== hongKongDate(now)) {
+  if (!fortunePages || feedFaults.has("fortune") || now - fortunePages.at > 60 * 60 * 1000 || hongKongDate(fortunePages.at) !== hongKongDate(now)) {
     const date = hongKongDate(now)
-    const pages: { pierId: string; destTc: string; destEn: string; html: string }[] = []
+    const pages: { pierId: string; destTc: string; destEn: string; html: string; at: number }[] = []
     let fault: string | null = null
     await pool(FORTUNE_LEGS, FETCH_LIMIT, async (leg) => {
       try {
         const url = `https://www.fortuneferry.com.hk/zh/route-and-fare?route=3&origin=${leg.origin}&destination=${leg.destination}&departure_date=${date}`
-        const response = await etaQueue(() => fetchUpstream(url, 60 * 60 * 1000, {
+        const response = await etaQueue(() => fetchUpstream(url, ETA_FRESH_MS, {
           timeoutMs: 15_000,
           headers: { Accept: "text/html", "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)" },
-        }))
+        }), AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS))
         if (response.status !== 200) throw new Error("Fortune Ferry timetable unavailable")
         const html = new TextDecoder().decode(response.body)
         fortuneDepartureTimes(html)
-        pages.push({ pierId: leg.pierId, destTc: leg.destTc, destEn: leg.destEn, html })
+        pages.push({ pierId: leg.pierId, destTc: leg.destTc, destEn: leg.destEn, html, at: Date.parse(response.fetchedAt) })
       } catch (error) {
         fault = error instanceof Error ? error.message : "Fortune Ferry timetable unavailable"
         // Keep the previous hour's page when one direction fails.
@@ -424,7 +442,7 @@ async function rememberFortune(now: number): Promise<void> {
     else feedFaults.delete("fortune")
     // A failed leg must not hide the other directions. Keep its last same-day table.
     if (pages.length) {
-      const previous = fortunePages && hongKongDate(fortunePages.at) === date ? fortunePages.pages : []
+      const previous = fortunePages?.pages.filter(page => hongKongDate(page.at) === date) ?? []
       fortunePages = { at: now, pages: [...pages, ...previous.filter((old) => !pages.some((page) => page.pierId === old.pierId && page.destEn === old.destEn))] }
     }
   }
@@ -434,6 +452,7 @@ async function rememberFortune(now: number): Promise<void> {
   }
   const rows: Clock[] = []
   for (const page of fortunePages.pages) {
+    if (hongKongDate(page.at) !== hongKongDate(now)) continue
     const times = fortuneDepartureTimes(page.html).sort()
     const departures = times.map((time) => `${hongKongDate(now)}T${time}:00+08:00`)
     if (!departures.some((eta) => Date.parse(eta) >= now)) departures.push("")
@@ -447,8 +466,8 @@ async function rememberFortune(now: number): Promise<void> {
         arriving: false,
         eta,
         pierId: page.pierId,
-        remarkTc: "船期",
-        remarkEn: "Timetable",
+        remarkTc: times.length ? "船期" : "本日沒有航班",
+        remarkEn: times.length ? "Timetable" : "No sailings today",
         scheduled: true,
         firstFerry: times[0],
         lastFerry: times[times.length - 1],

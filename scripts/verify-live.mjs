@@ -142,9 +142,14 @@ await check('health', async () => { await api('health'); return { serving: origi
 const wfs = (typeName) => 'https://www.hkemobility.gov.hk/api/drss/layer/map?' + new URLSearchParams({ service: 'WFS', version: '1.0.0', request: 'GetFeature', typeName, outputFormat: 'application/json', srsName: 'EPSG:4326' });
 for (const [kind, typeName, idKey] of [['works', 'DRSS:VW_ROAD_WORK_EN', 'ROADWORKS_ID'], ['tolls', 'DRSS:DRSS_TOLL_POINT', 'FeatureID']]) await check(kind, async () => {
   const [data, upstream] = await Promise.all([api(kind), json(wfs(typeName), officialHeaders)]);
-  const ids = [...new Set(upstream.features.filter((feature) => feature.geometry?.type === 'Point').map((feature) => String(feature.properties[idKey])))].sort();
+  const points = upstream.features.filter((feature) => feature.geometry?.type === 'Point');
+  // Toll inventories include overview points inside the crossing. The map
+  // retains those only when the same tunnel has no published plaza.
+  const plazaCodes = new Set(points.filter(feature => feature.properties.Scale !== '300+').map(feature => feature.properties.TunnelCode));
+  const located = kind === 'tolls' ? points.filter(feature => feature.properties.Scale !== '300+' || !plazaCodes.has(feature.properties.TunnelCode)) : points;
+  const ids = [...new Set(located.map((feature) => String(feature.properties[idKey])))].sort();
   assert.deepEqual([...new Set(data[kind].features.map((feature) => String(feature.properties.id)))].sort(), ids);
-  return { officialCount: ids.length, displayedCount: data[kind].features.length };
+  return { officialCount: ids.length, displayedCount: data[kind].features.length, ...(kind === 'tolls' ? { overviewPointsExcluded: points.length - located.length } : {}) };
 });
 await check('approaches', async () => {
   const [data, locations] = await Promise.all([api('approaches'), json(wfs('DRSS:VW_JOURNEY_TIME_LOCATION_EN'), officialHeaders)]);

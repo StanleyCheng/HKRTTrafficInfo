@@ -1,7 +1,8 @@
-import { loadMtrSnapshot } from "@/lib/mtr-feed"
-import { keepWorkerRequestAlive } from "@/lib/feed-cache"
-import { ETA_FRESH_MS } from "@/lib/place-arrivals"
-import type { MtrResponse } from "@/lib/types"
+import { loadMtrSnapshot } from "../../../lib/mtr-feed.ts"
+import { keepWorkerRequestAlive } from "../../../lib/feed-cache.ts"
+import { ETA_FRESH_MS } from "../../../lib/place-arrivals.ts"
+import { snapshotFallback } from "../../../lib/snapshot-cache.ts"
+import type { MtrResponse } from "../../../lib/types.ts"
 
 export const dynamic = "force-dynamic"
 
@@ -19,10 +20,12 @@ export async function GET() {
   }))
   try {
     const body = await pending
-    if (!body.ok && cached) return Response.json({ ...cached.body, stale: true, error: body.error })
+    const fallback = snapshotFallback(cached)
+    if (!body.ok && fallback) return Response.json({ ...fallback, stale: true, error: body.error })
     return Response.json(body, { status: body.ok ? 200 : 502 })
   } catch (error) {
-    if (cached) return Response.json({ ...cached.body, stale: true, error: error instanceof Error ? error.message : "Next train feed failed" })
+    const fallback = snapshotFallback(cached)
+    if (fallback) return Response.json({ ...fallback, stale: true, error: error instanceof Error ? error.message : "Next train feed failed" })
     const body: MtrResponse = {
       ok: false,
       error: error instanceof Error ? error.message : "Next train feed failed",

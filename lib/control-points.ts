@@ -1,13 +1,14 @@
 type Messages = { noFeed: string; clear: string; veryBusyCount: (n: number) => string; badApproachCount: (n: number) => string; busyCount: (n: number) => string; slowCount: (n: number) => string; closedCount: (n: number) => string }
 import type { SpeedBand } from "./types.ts"
 
-export type ControlPointCode = "HYW" | "HZM" | "LMC" | "LSC" | "LWS" | "MKT" | "SBC" | "STK"
+export type ControlPointCode = "HYW" | "HZM" | "HGP" | "LMC" | "LSC" | "LWS" | "MKT" | "SBC" | "STK"
 
-export type QueueFile = Record<ControlPointCode, { arrQueue: number; depQueue: number }>
+export type QueueFile = Partial<Record<ControlPointCode, { arrQueue: number; depQueue: number }>>
 
 const VEHICLE_ROADS: Record<ControlPointCode, string[]> = {
   HYW: ["HEUNG YUEN WAI"],
   HZM: ["TUEN MUN CHEK LAP KOK", "HONG KONG-ZHUHAI-MACAO", "HONG KONG ZHUHAI"],
+  HGP: ["SAN TIN HIGHWAY", "LOK MA CHAU"],
   LMC: ["SAN TIN HIGHWAY", "LOK MA CHAU"],
   LSC: ["SAN TIN HIGHWAY", "LOK MA CHAU"],
   LWS: [],
@@ -19,6 +20,9 @@ const VEHICLE_ROADS: Record<ControlPointCode, string[]> = {
 const POINTS: { code: ControlPointCode; name: string; coordinates: [number, number] }[] = [
   { code: "HYW", name: "Heung Yuen Wai", coordinates: [114.1516, 22.5592] },
   { code: "HZM", name: "Hong Kong-Zhuhai-Macao Bridge", coordinates: [113.9542, 22.3166] },
+  // ImmD's current facility link resolves to this official WGS84 point:
+  // https://www.map.gov.hk/mapviewer/map.do?gmid=myvo5nnWd6&lg=en
+  { code: "HGP", name: "Huanggang", coordinates: [114.06767839211346, 22.523171715604615] },
   { code: "LMC", name: "Lok Ma Chau", coordinates: [114.0757, 22.5122] },
   { code: "LSC", name: "Lok Ma Chau Spur Line", coordinates: [114.0655, 22.5143] },
   { code: "LWS", name: "Lo Wu", coordinates: [114.1133, 22.5281] },
@@ -28,7 +32,9 @@ const POINTS: { code: ControlPointCode; name: string; coordinates: [number, numb
 ]
 
 export function controlPointFeatures(resident: QueueFile, visitor: QueueFile): GeoJSON.Feature[] {
-  return POINTS.map((point) => {
+  // The live inventory replaced LMC with HGP in October 2026. Draw only points
+  // that at least one published file actually contains, retaining legacy feeds.
+  return POINTS.filter(point => resident[point.code] !== undefined || visitor[point.code] !== undefined).map((point) => {
     const residentArr = queueCode(resident[point.code]?.arrQueue)
     const residentDep = queueCode(resident[point.code]?.depQueue)
     const visitorArr = queueCode(visitor[point.code]?.arrQueue)
@@ -108,26 +114,35 @@ function rankBand(band: SpeedBand): number {
 }
 
 function textCode(value: unknown): ControlPointCode | null {
-  if (value === "HYW" || value === "HZM" || value === "LMC" || value === "LSC" || value === "LWS" || value === "MKT" || value === "SBC" || value === "STK") {
+  if (value === "HYW" || value === "HZM" || value === "HGP" || value === "LMC" || value === "LSC" || value === "LWS" || value === "MKT" || value === "SBC" || value === "STK") {
     return value
   }
   return null
 }
 
 export function isQueueFile(value: unknown): value is QueueFile {
-  if (typeof value !== "object" || value === null) return false
-  return POINTS.every((point) => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false
+  const published = POINTS.filter(point => Object.hasOwn(value, point.code))
+  if (!published.length) return false
+  return published.every((point) => {
     const row = (value as Record<string, unknown>)[point.code]
-    return typeof row === "object" && row !== null && "arrQueue" in row && "depQueue" in row
+    return typeof row === "object" && row !== null && !Array.isArray(row) && "arrQueue" in row && "depQueue" in row
+      && typeof row.arrQueue === "number" && Number.isSafeInteger(row.arrQueue)
+      && typeof row.depQueue === "number" && Number.isSafeInteger(row.depQueue)
   })
 }
 
+function isQueueCode(value: unknown): value is number {
+  return value === 0 || value === 1 || value === 2 || value === 4 || value === 99
+}
+
 function queueCode(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 4
+  return isQueueCode(value) ? value : 4
 }
 
 function worstQueue(codes: number[]): number {
-  return codes.reduce((worst, code) => (severity(code) > severity(worst) ? code : worst), 99)
+  // A new/unknown numeric status is unavailable, rather than an invented closure.
+  return codes.reduce((worst, code) => (severity(code) > severity(worst) ? code : worst), codes.includes(4) ? 4 : 99)
 }
 
 function severity(code: number): number {

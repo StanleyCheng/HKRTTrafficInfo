@@ -260,6 +260,24 @@ const results = [];
    assert.ok(result.ends<=2,'Animation must not emit viewport refreshes every frame');
    await page.context().close();
   });
+  await test('GPS motion: invalid, duplicate and reordered fixes cannot rewind the map',async()=>{
+   const {page}=await create({reducedMotion:'reduce'});
+   await success(page);
+   const result=await page.evaluate(()=>{
+    let dot;window.__map.eachLayer(layer=>{if(layer.options?.className==='user-location-dot')dot=layer});
+    const timestamp=Date.now()+1000;
+    const fix=(at,latitude=22.282,longitude=114.159,accuracy=15)=>window.__gpsRequests[0].success({coords:{latitude,longitude,accuracy},timestamp:at});
+    fix(timestamp);const current={point:dot.getLatLng(),center:window.__map.getCenter(),radius:[...Object.values(window.__map._layers)].find(layer=>layer.options?.className==='user-location-accuracy').getRadius()};
+    fix(timestamp-1,22.281,114.158);fix(timestamp,22.281,114.158);fix(timestamp+1,NaN);fix(timestamp+1,91);fix(timestamp+1,22.283,114.160,-1);
+    const guarded={point:dot.getLatLng(),center:window.__map.getCenter(),radius:[...Object.values(window.__map._layers)].find(layer=>layer.options?.className==='user-location-accuracy').getRadius()};
+    fix(timestamp+2,22.283,114.160,9);
+    return{current,guarded,recovered:dot.getLatLng()};
+   });
+   assert.deepEqual(result.guarded,result.current,'Rejected GPS samples must preserve the location, camera and accuracy');
+   assert.equal(result.recovered.lat,22.283);assert.equal(result.recovered.lng,114.160);
+   assert.deepEqual(await page.evaluate(()=>window.__errors),[]);
+   await page.context().close();
+  });
   await test('GPS motion: an in-flight update starts from the displayed location and stop cancels movement',async()=>{
    const {page,gps}=await create();
    await success(page);

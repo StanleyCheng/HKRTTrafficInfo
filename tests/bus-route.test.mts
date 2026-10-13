@@ -123,3 +123,32 @@ test('KMB route stop names drop the pole code but keep parenthetical place notes
     assert.deepEqual(result.route?.stops.map((stop) => stop.nameEn), ['COLLEGE ROAD', 'WONG TAI SIN BUS TERMINUS (ALIGHTING STOP)'], 'English names lose only the code, never the place note')
   } finally { globalThis.fetch = original }
 })
+
+test('whole-route arrivals distinguish malformed payloads, empty service and invalid source clocks', async (t) => {
+  const original = globalThis.fetch
+  let clock = now, phase = 'malformed'
+  t.mock.method(Date, 'now', () => clock)
+  globalThis.fetch = async (input) => {
+    const url = String(input)
+    if (url.includes('action=list')) return Response.json({ stops: stops.map(stop => ({ stopId: stop.id, longitude: stop.lng, latitude: stop.lat, stopName_e: 'Stop' })) })
+    if (url.includes('FeatureServer')) return Response.json({ features: [] })
+    if (phase === 'empty') return Response.json({ estimatedArrivals: [] })
+    if (phase === 'bad-clock') return Response.json({ estimatedArrivals: [{ estimatedArrivalTime: new Date(clock + 60_000).toISOString(), generateTime: 'invalid', departed: '1', noGPS: '0' }] })
+    return Response.json({ error: 'Provider layout changed' })
+  }
+  const selection = { operator: 'nlb' as const, route: 'TEST', stopId: '2', routeId: '999998' }
+  try {
+    const malformed = await loadBusRoute(selection, clock)
+    assert.equal(malformed.ok, true, 'the known route geometry remains usable')
+    assert.equal(malformed.stale, true)
+    assert.match(malformed.error ?? '', /could not refresh/)
+    phase = 'empty'; clock += 5_000
+    const empty = await loadBusRoute(selection, clock)
+    assert.equal(empty.stale, false, 'an explicit empty board is a successful no-service result')
+    assert.deepEqual(empty.vehicles, [])
+    phase = 'bad-clock'; clock += 5_000
+    const invalid = await loadBusRoute(selection, clock)
+    assert.equal(invalid.stale, true)
+    assert.deepEqual(invalid.vehicles, [])
+  } finally { globalThis.fetch = original }
+})

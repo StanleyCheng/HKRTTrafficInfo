@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createLocationMotion, locationTransitionDuration, type LocationPoint } from '../lib/location-motion.ts';
+import { createLocationMotion, locationTransitionDuration, validLocationFix, type LocationPoint } from '../lib/location-motion.ts';
 
 function fixture() {
   let now = 0, nextId = 0;
@@ -104,4 +104,19 @@ test('GPS cadence bounds limit interpolation delay after fast or infrequent fixe
   assert.equal(locationTransitionDuration(1000), 1000);
   assert.equal(locationTransitionDuration(30000), 1000);
   assert.equal(locationTransitionDuration(Number.NaN), 1000);
+});
+
+test('malformed, duplicate and reordered GPS fixes cannot move the map back to an old sample', () => {
+  const fix = (timestamp: number, overrides: Partial<GeolocationCoordinates> = {}) => ({ timestamp, coords: { latitude: 22.3, longitude: 114.2, accuracy: 20, altitude: null, altitudeAccuracy: null, heading: null, speed: null, toJSON: () => ({}), ...overrides } as GeolocationCoordinates });
+  assert.equal(validLocationFix(fix(2000), 1000), true);
+  assert.equal(validLocationFix(fix(1000), 1000), false);
+  assert.equal(validLocationFix(fix(999), 1000), false);
+  assert.equal(validLocationFix(fix(NaN)), false);
+  for (const invalid of [{ latitude: NaN }, { latitude: 91 }, { longitude: 181 }, { accuracy: -1 }, { accuracy: Infinity }]) assert.equal(validLocationFix(fix(2000, invalid)), false);
+  const f = fixture();
+  f.motion.moveTo([22, 114], 0);
+  f.motion.moveTo([23, 115], 1000);
+  f.motion.moveTo([NaN, 114], 0);
+  f.advance(1000);
+  assert.deepEqual(f.position(), [23, 115], 'An invalid point cannot cancel a valid pending transition');
 });

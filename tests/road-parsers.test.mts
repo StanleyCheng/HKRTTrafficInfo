@@ -36,6 +36,24 @@ test('boundary retains all eight control points and decorates approach speeds', 
   const decorated = decorateControlPoints({ type: 'FeatureCollection', features }, [{ roadEn: 'HEUNG YUEN WAI HIGHWAY', roadTc: '', speedKmh: 10, band: 'congested' }])
   assert.equal(decorated.features[0].properties?.vehicleKmh, 10)
 })
+test('boundary accepts the current Huanggang inventory without reviving unpublished Lok Ma Chau', () => {
+  // Actual Immigration Department inventory fetched on 2026-10-13.
+  const queue = Object.fromEntries(['HGP','HYW','HZM','LSC','LWS','MKT','SBC','STK'].map(code => [code, { arrQueue: 0, depQueue: code === 'STK' ? 99 : 0 }]))
+  assert.equal(isQueueFile(queue), true)
+  const features = controlPointFeatures(queue, queue)
+  assert.equal(features.length, 8)
+  assert.equal(features.some(feature => feature.properties?.code === 'LMC'), false)
+  const huanggang = features.find(feature => feature.properties?.code === 'HGP')!
+  assert.equal(huanggang.properties?.name, 'Huanggang')
+  assert.deepEqual((huanggang.geometry as GeoJSON.Point).coordinates, [114.06767839211346, 22.523171715604615])
+  assert.equal(isQueueFile({ ...queue, HGP: { arrQueue: '0', depQueue: 0 } }), false)
+  assert.equal(isQueueFile({ ...queue, HGP: { arrQueue: null, depQueue: 0 } }), false)
+  assert.equal(isQueueFile({ ...queue, HGP: { arrQueue: 1.5, depQueue: 0 } }), false)
+  const futureCode = { HGP: { arrQueue: 123, depQueue: 123 } }
+  assert.equal(isQueueFile(futureCode), true, 'A new numeric category must not disable unrelated control points')
+  assert.equal(controlPointFeatures(futureCode, futureCode)[0].properties?.worst, 4, 'Unknown categories remain unavailable rather than appearing closed')
+  assert.equal(isQueueFile([]), false)
+})
 test('warnings cancel and severity ordering; empty warning object is valid', () => {
   const warnings = parseWarnsum({ WHOT: { code: 'WHOT' }, WRAIN: { code: 'WRAINB', type: '黑色' }, WCOLD: { code: 'WCOLD', actionCode: 'CANCEL' } }, 'tc')
   assert.equal(warnings.length, 2)

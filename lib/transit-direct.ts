@@ -18,10 +18,10 @@ export async function loadDirectTransit(kind: DirectTransitKind, lng: number, la
   if (held && now < held.expires) {
     const arrivals = await held.promise
     const places = { kmb: loadKmbPlaces, citybus: loadCitybusPlaces, gmb: loadGmbPlaces, nlb: loadNlbPlaces }[kind](lng, lat, now, zoom)
-    const calls = new Map(arrivals.stops.map((stop) => [stop.id, stop.calls]))
+    const clocks = new Map(arrivals.stops.map((stop) => [stop.id, { calls: stop.calls, observedAt: stop.observedAt ?? null }]))
     // Show poles from the current viewport immediately. Only matching retained
     // clocks follow them; a pan must never relabel old clocks as newly observed.
-    return { ...arrivals, stops: places.stops.map((stop) => ({ ...stop, calls: calls.get(stop.id) ?? [] })) }
+    return { ...arrivals, stops: places.stops.map((stop) => ({ ...stop, ...(clocks.get(stop.id) ?? { calls: [], observedAt: null }) })) }
   }
   const entry = { expires: Infinity, promise: load(kind, lng, lat, now, zoom) }
   refreshes.set(kind, entry)

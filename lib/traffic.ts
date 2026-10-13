@@ -101,10 +101,11 @@ export function feedMaxAgeMs(kind: LayerKind): number {
 export function isFeedDataStale(kind: LayerKind, data: CameraData | undefined, now = Date.now()): boolean {
   if (!data) return false;
   const time = data.observedAt || data.fetchedAt;
-  return Boolean(data.stale || !Number.isFinite(Date.parse(time)) || now - Date.parse(time) > feedMaxAgeMs(kind));
+  const age = now - Date.parse(time);
+  return Boolean(data.stale || !Number.isFinite(age) || age < -300000 || age > feedMaxAgeMs(kind));
 }
 export function isCameraDataStale(camera: Camera, now = Date.now()): boolean {
-  if (!camera.dataUpdated) return camera.kind === 'crossing';
+  if (!camera.dataUpdated) return camera.kind === 'crossing' || camera.kind === 'kmb' || camera.kind === 'citybus' || camera.kind === 'gmb' || camera.kind === 'nlb';
   const age = now - Date.parse(camera.dataUpdated);
   return !Number.isFinite(age) || age < -300000 || age > feedMaxAgeMs(camera.kind);
 }

@@ -15,13 +15,14 @@ import { markerOffsets } from '@/lib/marker-layout';
 import { vehicleIcon, vehicleIconHeadingOffset } from '@/lib/vehicle-icons';
 import { busVehicleDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '@/lib/bus-route-motion';
 import { getBusStopArrivals } from '@/lib/bus-route-client';
-import { createLocationMotion, locationTransitionDuration, type LocationPoint } from '@/lib/location-motion';
+import { createLocationMotion, locationTransitionDuration, validLocationFix, type LocationPoint } from '@/lib/location-motion';
+import { vehicleCorrection, vehicleFrame, type VehicleCorrection } from '@/lib/vehicle-motion';
 import type { BusRouteStop } from '@/lib/bus-route';
 import type { TrafficMapProps } from './traffic-map';
 
 type Camera3D = { pitch: number; bearing: number };
 type Props = TrafficMapProps & { camera3D: Camera3D; onCamera3D: (camera: Camera3D) => void; onExit3D: () => void };
-type Entry = { marker: MapLibre.Marker; node: HTMLButtonElement; camera: Camera; html: string; distance?: number; feed?: unknown; correction?: { distance: number; at: number } };
+type Entry = { marker: MapLibre.Marker; node: HTMLButtonElement; camera: Camera; html: string; distance?: number; drawnAt?: number; heading?: number; feed?: unknown; correction?: VehicleCorrection };
 const isBusStop = (camera: Camera) => (busKinds as readonly string[]).includes(camera.kind) && camera.positionType !== 'vehicle';
 const motionDuration = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250;
 
@@ -83,7 +84,7 @@ export default function TrafficMap3D(props: Props) {
     const watch = { id: undefined as number | undefined, dispose: () => {} };
     locationWatch.current = watch;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
-    let latest: LocationPoint | undefined, lastAt: number | undefined;
+    let latest: LocationPoint | undefined, lastAt: number | undefined, lastTimestamp: number | undefined;
     const motion = createLocationMotion(point => locationMarker.current?.setLngLat([point[1], point[0]]));
     const settle = () => { if (latest && (document.hidden || reduced.matches)) { motion.finish(); m.stop().jumpTo({ center: [latest[1], latest[0]] }); } };
     document.addEventListener('visibilitychange', settle); reduced.addEventListener('change', settle);
@@ -96,6 +97,8 @@ export default function TrafficMap3D(props: Props) {
     try {
       watch.id = navigator.geolocation.watchPosition(position => {
         if (locationWatch.current !== watch || map.current !== m) return;
+        if (!validLocationFix(position, lastTimestamp)) return;
+        lastTimestamp = position.timestamp;
         const point: LocationPoint = [position.coords.latitude, position.coords.longitude];
         const now = performance.now(), duration = lastAt === undefined || reduced.matches || document.hidden ? 0 : locationTransitionDuration(now - lastAt);
         lastAt = now; latest = point;
@@ -315,18 +318,24 @@ export default function TrafficMap3D(props: Props) {
         }
         const feed = camera.id.startsWith('bus-vehicle:') ? busRoute : transitFeeds?.[camera.kind as 'mtr' | 'lrt' | 'ferry'];
         const position = camera.routePosition;
-        if (position && entry.feed !== feed && entry.distance !== undefined && entry.camera.routePosition?.key === position.key && !reduced.matches) entry.correction = { distance: entry.distance - position.distance, at: now };
+        const target = { point: [camera.lng, camera.lat] as [number, number], route: position };
+        if (entry.feed !== feed) {
+          const previous = entry.marker.getLngLat(), route = entry.camera.routePosition;
+          entry.correction = reduced.matches || entry.drawnAt === undefined ? undefined : vehicleCorrection({ point: [previous.lng, previous.lat], route: route && entry.distance !== undefined ? { key: route.key, distance: entry.distance } : undefined, at: entry.drawnAt }, target, now, camera.positionSource === 'gps', camera.id.startsWith('bus-vehicle:') ? 2000 : 1000);
+        }
         entry.feed = feed; entry.camera = camera;
-        const remaining = !reduced.matches && entry.correction ? Math.max(0, 1 - (now - entry.correction.at) / 2000) ** 3 : 0;
-        const distance = position ? position.distance + (entry.correction?.distance ?? 0) * remaining : undefined;
-        const point = position && distance !== undefined ? routePointAtDistance(position.coordinates, position.distances, distance) : null;
+        const displayed = vehicleFrame(target, reduced.matches ? undefined : entry.correction, now);
+        if (!displayed.active) entry.correction = undefined;
         if (entry.html !== html) { entry.node.innerHTML = html; entry.html = html; }
         entry.node.setAttribute('aria-label', `${name} · ${camera.estimated ? messages[language].estimatedPosition : layerText(camera.kind, language).name}`);
         entry.node.setAttribute('aria-haspopup', 'dialog');
-        const heading = position && distance !== undefined ? routeHeadingAtDistance(position.coordinates, position.distances, distance) : camera.rotation ?? 0;
+        const previous = entry.marker.getLngLat();
+        const dx = (displayed.point[0] - previous.lng) * Math.cos(displayed.point[1] * Math.PI / 180), dy = displayed.point[1] - previous.lat;
+        const heading = position && displayed.distance !== undefined ? routeHeadingAtDistance(position.coordinates, position.distances, displayed.distance) : Math.abs(dx) + Math.abs(dy) > 1e-10 ? Math.atan2(dx, dy) * 180 / Math.PI : camera.rotation;
+        if (heading != null) entry.heading = heading;
         const headingElement = entry.node.querySelector<HTMLElement>('.vehicle-heading');
-        if (headingElement && heading !== null) headingElement.style.transform = `rotate(${heading + vehicleIconHeadingOffset - m.getBearing()}deg)`;
-        entry.marker.setLngLat(point ?? [camera.lng, camera.lat]); entry.distance = distance;
+        if (headingElement) headingElement.style.transform = `rotate(${(entry.heading ?? 0) + vehicleIconHeadingOffset - m.getBearing()}deg)`;
+        entry.marker.setLngLat(displayed.point); entry.distance = displayed.distance; entry.drawnAt = now;
         if (popup.current && callbacks.current.selected?.id === camera.id) popup.current.setLngLat(entry.marker.getLngLat());
       }
     };

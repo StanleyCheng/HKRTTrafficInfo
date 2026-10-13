@@ -5,6 +5,13 @@ type FrameClock = { now: () => number; request: (callback: FrameRequestCallback)
 // one second behind. Linear motion avoids braking and restarting at each fix.
 export const locationTransitionDuration = (elapsed: number) => Math.max(150, Math.min(1000, Number.isFinite(elapsed) ? elapsed : 1000));
 
+export function validLocationFix(position: Pick<GeolocationPosition, 'coords' | 'timestamp'>, previousTimestamp?: number): boolean {
+  const { latitude, longitude, accuracy } = position.coords;
+  return [latitude, longitude, accuracy, position.timestamp].every(Number.isFinite)
+    && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 && accuracy >= 0
+    && (previousTimestamp === undefined || position.timestamp > previousTimestamp);
+}
+
 export function createLocationMotion(render: (point: LocationPoint) => void, clock: FrameClock = {
   now: () => performance.now(),
   request: callback => requestAnimationFrame(callback),
@@ -22,7 +29,7 @@ export function createLocationMotion(render: (point: LocationPoint) => void, clo
   };
   const draw = (point: LocationPoint) => { current = point; render(point); };
   const moveTo = (point: LocationPoint, duration: number) => {
-    if (disposed) return;
+    if (disposed || !point.every(Number.isFinite) || Math.abs(point[0]) > 90 || Math.abs(point[1]) > 180) return;
     cancel();
     target = [...point];
     if (!current || duration <= 0 || !Number.isFinite(duration) || current[0] === target[0] && current[1] === target[1]) {

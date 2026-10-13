@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import TrafficSearch from './traffic-search';
 import TrafficStatus from './traffic-status';
 import IntelPanel from './intel-panel';
-import { getIntegrationData, initialViewport, pollingMs, viewportNote, withBoundarySpeeds, movingCameras, busKinds, type MapViewport } from '@/lib/integration-client';
+import { getIntegrationData, initialViewport, integrationRequestKey, pollingMs, viewportNote, withBoundarySpeeds, movingCameras, retainTransitIdentities, busKinds, type MapViewport } from '@/lib/integration-client';
 import { linesThrough, mtrLineList } from '@/lib/mtr-network';
 import type { MtrResponse } from '@/lib/types';
 import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
@@ -283,13 +283,15 @@ export default function TrafficMonitor() {
     : defaultEnabled(), [enabledSelection]);
   const [states, setStates] = useState<Record<LayerKind, LayerState>>(() => Object.fromEntries(kinds.map(kind => [kind, { loading: originalKinds.includes(kind as OriginalLayerKind) || (kind === 'mtr' && layerAvailable(kind)), error: false }])) as Record<LayerKind, LayerState>);
   const [pendingActivity, setPendingActivity] = useState(0);
+  const mounted = useRef(false);
+  const lifecycle = useRef(0);
   const beginActivity = useCallback(() => {
     setPendingActivity(count => count + 1);
     let complete = false;
     return () => {
       if (complete) return;
       complete = true;
-      setPendingActivity(count => count - 1);
+      if (mounted.current) setPendingActivity(count => count - 1);
     };
   }, []);
   const [viewport, setViewport] = useState<MapViewport>(initialViewport);
@@ -324,6 +326,26 @@ export default function TrafficMonitor() {
   }, [language]);
 
   useEffect(() => {
+    mounted.current = true;
+    const generation = lifecycle.current + 1;
+    lifecycle.current = generation;
+    const pending = integrationPending.current;
+    const lastFetch = integrationLastFetch.current;
+    return () => {
+      mounted.current = false;
+      // Effect replay remounts synchronously. A real unmount must cancel every
+      // consumer, including transit, without interrupting that replay's loads.
+      queueMicrotask(() => {
+        if (lifecycle.current !== generation) return;
+        pending.forEach(request => request.controller.abort());
+        pending.clear();
+        lastFetch.clear();
+        refreshIntegration.current = async () => {};
+      });
+    };
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 30000);
     const onVisible = () => { if (document.visibilityState === 'visible') setNow(Date.now()); };
     document.addEventListener('visibilitychange', onVisible);
@@ -340,9 +362,11 @@ export default function TrafficMonitor() {
     setStates(state => ({ ...state, [kind]: { ...state[kind], loading: true, error: false } }));
     try {
       const data = await getCameraData(kind as OriginalLayerKind, { force });
+      if (!mounted.current) return;
       if (data.feedError) originalRetryAt.current.set(kind, Date.now() + 30000);
       setStates(state => ({ ...state, [kind]: { data, loading: false, error: Boolean(data.feedError) } }));
     } catch {
+      if (!mounted.current) return;
       originalRetryAt.current.set(kind, Date.now() + 30000);
       setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false, error: true } }));
     } finally {
@@ -371,25 +395,16 @@ export default function TrafficMonitor() {
       if (document.visibilityState === 'visible') originalKinds.forEach(kind => fetchLayer(kind));
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
+    const onOnline = () => originalKinds.forEach(kind => void fetchLayer(kind, true));
+    window.addEventListener('online', onOnline);
     return () => {
       clearInterval(flowInterval);
       clearInterval(otherInterval);
       clearInterval(retryInterval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('online', onOnline);
     };
   }, [fetchLayer]);
-
-  useEffect(() => () => {
-    integrationPending.current.forEach((request, kind) => {
-      // Preserve transit loads through React's effect replay: their pending-key
-      // guard already dedupes repeats, so replaying must not abort them.
-      if (['mtr', 'lrt', 'kmb', 'citybus', 'gmb', 'nlb', 'ferry'].includes(kind)) return;
-      request.controller.abort();
-      integrationPending.current.delete(kind);
-      integrationLastFetch.current.delete(kind);
-    });
-    refreshIntegration.current = async () => {};
-  }, []);
 
   useEffect(() => {
     integrationContext.current = { enabled, viewport, language };
@@ -403,10 +418,7 @@ export default function TrafficMonitor() {
     const refresh = async (kind: IntegrationKind, force = false) => {
       if (!enabled[kind] || !layerAvailable(kind) || document.visibilityState !== 'visible') return;
       const last = integrationLastFetch.current.get(kind);
-      const spatial = ['kmb', 'citybus', 'gmb', 'nlb'].includes(kind);
-      // Transit envelopes are bilingual and localized at render time, so the key
-      // tracks only the viewport: language toggles keep in-flight requests alive.
-      const key = spatial ? `${viewport.lng}:${viewport.lat}:${viewport.zoom}` : '';
+      const key = integrationRequestKey(kind, viewport, language);
       const pending = integrationPending.current.get(kind);
       if (pending && pending.key === key) return;
       if (!force && last?.key === key && Date.now() < (last.retryAt ?? last.at + pollingMs[kind])) return;
@@ -416,8 +428,8 @@ export default function TrafficMonitor() {
       const finishActivity = beginActivity();
       const isCurrent = () => {
         const current = integrationContext.current;
-        const currentKey = spatial ? `${current.viewport.lng}:${current.viewport.lat}:${current.viewport.zoom}` : '';
-        return integrationPending.current.get(kind) === request && current.enabled[kind] && currentKey === key;
+        const currentKey = integrationRequestKey(kind, current.viewport, current.language);
+        return mounted.current && integrationPending.current.get(kind) === request && current.enabled[kind] && currentKey === key;
       };
       integrationLastFetch.current.set(kind, { key, at: Date.now() });
       setStates(state => ({ ...state, [kind]: { ...state[kind], loading: true } }));
@@ -432,7 +444,8 @@ export default function TrafficMonitor() {
         const partialMiss = Boolean(data.feedError && /\(\d+ of \d+\)/.test(data.feedError))
         const error = !partialMiss && (Boolean(data.stale) || Boolean(data.feedError) || ((kind === 'mtr' || kind === 'lrt') && !data.complete))
         if (error) integrationLastFetch.current.set(kind, { key, at: Date.now(), retryAt: Date.now() + 30000 });
-        setStates(state => ({ ...state, [kind]: { data, loading: false, error } }));
+        const completedAt = Date.now();
+        setStates(state => ({ ...state, [kind]: { data: retainTransitIdentities(kind, data, state[kind].data, completedAt), loading: false, error } }));
       } catch {
         if (isCurrent()) {
           integrationLastFetch.current.set(kind, { key, at: Date.now(), retryAt: Date.now() + 30000 });
@@ -448,7 +461,9 @@ export default function TrafficMonitor() {
     refreshAll();
     const timer = setInterval(refreshAll, ETA_FRESH_MS);
     document.addEventListener('visibilitychange', refreshAll);
-    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refreshAll); };
+    const onOnline = () => integrationKinds.forEach(kind => void refresh(kind, true));
+    window.addEventListener('online', onOnline);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refreshAll); window.removeEventListener('online', onOnline); };
   }, [enabled, language, viewport, beginActivity]);
 
   const segments = useMemo(() => displayFlowSegments(states.flow.data?.segments, states.flow.data?.segmentsUpdated, now), [states.flow.data, now]);
@@ -534,7 +549,8 @@ export default function TrafficMonitor() {
     const timer = setInterval(() => void refresh(), 30000);
     const visible = () => void refresh();
     document.addEventListener('visibilitychange', visible);
-    return () => { disposed = true; clearInterval(timer); document.removeEventListener('visibilitychange', visible); };
+    window.addEventListener('online', visible);
+    return () => { disposed = true; clearInterval(timer); document.removeEventListener('visibilitychange', visible); window.removeEventListener('online', visible); };
   }, [activeBusSelection, busRouteRetry]);
   const searchItems = useMemo<TrafficSearchItem[]>(() => [
     ...segments.map(segment => ({ camera: cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated), segment })),

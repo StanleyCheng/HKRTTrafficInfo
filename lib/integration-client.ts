@@ -11,10 +11,17 @@ import { ferryInstant } from './ferry-clock.ts';
 import { ferryVehicleIcon } from './vehicle-icons.ts';
 import { decorateControlPoints } from './control-points.ts';
 import { waitForRequest } from './request-wait.ts';
+import { reconcileTransitIdentities, type TransitIdentitySample } from './transit-identity.ts';
 
 export type MapViewport = { lng: number; lat: number; zoom: number };
 export const initialViewport: MapViewport = { lng: 114.13, lat: 22.355, zoom: 11 };
 export const busKinds = ['kmb', 'citybus', 'gmb', 'nlb'] as const;
+export function integrationRequestKey(kind: IntegrationKind, view: MapViewport, language: Language): string {
+  if (busKinds.includes(kind as typeof busKinds[number])) return `${view.lng}:${view.lat}:${view.zoom}`;
+  // Warning names and details are returned in the requested language. Other
+  // envelopes carry both languages and can survive a language switch.
+  return kind === 'weather-warning' ? language : '';
+}
 export function viewportNote(kind: string, view: MapViewport): 'viewportBus' | 'viewportGmb' | 'viewportNlb' | undefined {
   if ((kind === 'kmb' || kind === 'citybus') && view.zoom < 13) return 'viewportBus';
   if (kind === 'gmb' && view.zoom < 17) return 'viewportGmb';
@@ -89,6 +96,7 @@ function featureCameras(kind: IntegrationKind, collection: GeoJSON.FeatureCollec
   });
 }
 export function normalizeIntegration(kind: IntegrationKind, payload: Envelope): CameraData {
+  validateIntegrationShape(kind, payload);
   const data = base(kind, payload);
   if (kind === 'crossing') {
     data.cameras = (payload as ApproachesResponse).points.map(point => {
@@ -123,7 +131,7 @@ export function normalizeIntegration(kind: IntegrationKind, payload: Envelope): 
       return { ...camera, dataUpdated: observed[0], positionType: 'station', color: lineColors[0] ?? (kind === 'lrt' ? lrtColor() : layers[kind].color), ...(lineColors.length > 1 ? { lineColors } : {}), arrivals: arrivals.sort((a, b) => (a.minutes ?? Infinity) - (b.minutes ?? Infinity)).slice(0, 12) };
     });
   } else if (kind === 'kmb' || kind === 'citybus' || kind === 'gmb' || kind === 'nlb') {
-    data.cameras = (payload as CitybusResponse).stops.map(stop => ({ id: `${kind}-${stop.id}`, sourceId: stop.id, kind, name: stop.nameTc, nameEn: stop.nameEn, lng: stop.lng, lat: stop.lat, routes: stop.routes, badge: stop.routes.slice(0, 3).join(' · '), arrivals: stop.calls.slice(0, 12).map(call => ({ route: call.route, destination: call.destTc, destinationEn: call.destEn, minutes: call.minutes, eta: call.eta, scheduled: call.scheduled, remark: call.remarkTc, remarkEn: call.remarkEn, tracking: call.tracking })) }));
+    data.cameras = (payload as CitybusResponse).stops.map(stop => ({ id: `${kind}-${stop.id}`, sourceId: stop.id, kind, name: stop.nameTc, nameEn: stop.nameEn, lng: stop.lng, lat: stop.lat, dataUpdated: stop.observedAt === undefined ? data.observedAt ?? undefined : validDate(stop.observedAt) ?? undefined, routes: stop.routes, badge: stop.routes.slice(0, 3).join(' · '), arrivals: stop.calls.slice(0, 12).map(call => ({ route: call.route, destination: call.destTc, destinationEn: call.destEn, minutes: call.minutes, eta: call.eta, scheduled: call.scheduled, remark: call.remarkTc, remarkEn: call.remarkEn, tracking: call.tracking })) }));
   } else if (kind === 'ferry') {
     data.cameras = (payload as FerryResponse).piers.map(pier => ({ id: `ferry-${pier.id}`, sourceId: pier.id, kind, name: pier.nameTc, nameEn: pier.nameEn, lng: pier.lng, lat: pier.lat, positionType: 'pier', arrivals: pier.calls.filter(call => !call.arriving).map(call => {
       const eta = ferryInstant(call.eta, Date.parse(data.observedAt ?? data.fetchedAt));
@@ -131,10 +139,23 @@ export function normalizeIntegration(kind: IntegrationKind, payload: Envelope): 
     }) }));
     data.paths = ferryPaths().map(path => ({ id: path.id, color: layers.ferry.color, points: path.pathLng.map((lng, i) => [path.pathLat[i], lng] as [number, number]) }));
   }
-  data.cameras = data.cameras.map(camera => ({ ...camera, dataUpdated: kind === 'crossing' || kind === 'mtr' || kind === 'lrt' ? camera.dataUpdated : camera.dataUpdated || data.observedAt || undefined }));
+  data.cameras = data.cameras.map(camera => ({ ...camera, dataUpdated: kind === 'crossing' || kind === 'mtr' || kind === 'lrt' || busKinds.includes(kind as typeof busKinds[number]) ? camera.dataUpdated : camera.dataUpdated || data.observedAt || undefined }));
   data.count = kind === 'weather-warning' ? (payload as WarningsResponse).warnings.length : data.cameras.length;
   data.expectedCount = data.count;
   return data;
+}
+function validateIntegrationShape(kind: IntegrationKind, payload: Envelope) {
+  const body = payload as unknown as Record<string, unknown>;
+  const arrays: Partial<Record<IntegrationKind, string[]>> = {
+    crossing: ['points'], 'weather-warning': ['warnings'], mtr: ['boards', 'trains'], lrt: ['boards', 'trains'],
+    kmb: ['stops'], citybus: ['stops'], gmb: ['stops'], nlb: ['stops'], ferry: ['piers', 'vessels'],
+  };
+  const collectionKey = kind === 'works' ? 'works' : kind === 'toll' ? 'tolls' : kind === 'boundary' ? 'points' : undefined;
+  const collection = collectionKey ? body?.[collectionKey] as GeoJSON.FeatureCollection | undefined : undefined;
+  if (!body || typeof body !== 'object' || Array.isArray(body) || (arrays[kind] ?? []).some(key => !Array.isArray(body[key])) ||
+      (collectionKey && (collection?.type !== 'FeatureCollection' || !Array.isArray(collection.features)))) {
+    throw new Error(`${kind} feed was not in the published shape`);
+  }
 }
 export function boundaryCameras(collection: GeoJSON.FeatureCollection): Camera[] {
   return featureCameras('boundary', collection).map(camera => {
@@ -158,30 +179,40 @@ export function withBoundarySpeeds(data: CameraData | undefined, segments: FlowS
 // A ferry corridor is the same fixed geometry on every poll, so its cumulative metre offsets are
 // computed once per distinct path and reused by every boat that sails it.
 const ferryCorridors = new Map<string, { key: string; coordinates: [number, number][]; distances: number[] }>();
+const vesselCorridors = new WeakMap<FerryVessel, { key: string; coordinates: [number, number][]; distances: number[] }>();
 
 function ferryCorridor(vessel: FerryVessel): { key: string; coordinates: [number, number][]; distances: number[] } | null {
+  const held = vesselCorridors.get(vessel);
+  if (held) return held;
   const coordinates: [number, number][] = vessel.pathLng
     ? vessel.pathLng.map((lng, index) => [lng, vessel.pathLat?.[index] ?? NaN])
     : [[vessel.fromLng ?? vessel.lng, vessel.fromLat ?? vessel.lat], [vessel.toLng ?? vessel.lng, vessel.toLat ?? vessel.lat]];
   if (coordinates.length < 2 || coordinates.some(([lng, lat]) => !Number.isFinite(lng) || !Number.isFinite(lat))) return null;
-  const first = coordinates[0]!, last = coordinates[coordinates.length - 1]!;
-  const key = `ferry-${first[0]},${first[1]}>${last[0]},${last[1]}`;
+  const key = `ferry-${vessel.route}:${coordinates.map(point => point.join(',')).join('>')}`;
   const cached = ferryCorridors.get(key);
-  if (cached) return cached;
+  if (cached) { vesselCorridors.set(vessel, cached); return cached; }
   const entry = { key, coordinates, distances: routeDistances(coordinates) };
   ferryCorridors.set(key, entry);
+  vesselCorridors.set(vessel, entry);
   return entry;
 }
 
 export function movingCameras(kind: 'mtr' | 'lrt' | 'ferry', data: CameraData, now: number): Camera[] {
-  if (!data.payload || !data.observedAt || now - Date.parse(data.observedAt) > 180000) return [];
+  const age = now - Date.parse(data.observedAt ?? '');
+  if (!data.payload || !Number.isFinite(age) || age < -300000 || age > 180000) return [];
   if (kind === 'ferry') return (data.payload as FerryResponse).vessels.flatMap(vessel => {
+    if (!vessel || typeof vessel !== 'object' || !Number.isFinite(vessel.lng) || !Number.isFinite(vessel.lat) || (vessel.pathLng !== undefined && !Array.isArray(vessel.pathLng)) || (vessel.pathLat !== undefined && !Array.isArray(vessel.pathLat))) return [];
+    const sourceAge = now - Date.parse(vessel.observedAt ?? data.observedAt!);
+    if (!Number.isFinite(sourceAge) || sourceAge < -300000 || sourceAge > 180000) return [];
     const spot = ferryVesselPoint(vessel, Date.parse(data.observedAt!), now);
-    if (!spot) return [];
+    if (!spot || !Number.isFinite(spot.lng) || !Number.isFinite(spot.lat)) return [];
     const route = spot.distance === undefined ? null : ferryCorridor(vessel);
     return [{ id: `ferry-vessel-${vessel.id}`, sourceId: vessel.id, kind, vehicleIcon: ferryVehicleIcon(vessel.route, vessel.id), name: vessel.nameTc, nameEn: vessel.nameEn, lat: spot.lat, lng: spot.lng, estimated: spot.estimated, positionType: 'vehicle', positionSource: vessel.fix === 'gps' ? 'gps' : 'timetable', ...(route ? { routePosition: { key: route.key, distance: spot.distance!, coordinates: route.coordinates, distances: route.distances } } : {}), dataUpdated: vessel.observedAt ?? data.observedAt ?? undefined, arrivals: [{ route: vessel.route, destination: vessel.destTc || vessel.nameTc, destinationEn: vessel.destEn || vessel.nameEn, minutes: spot.minutes, eta: vessel.eta }] }];
   });
   return (data.payload as MtrResponse | LrtResponse).trains.flatMap(train => {
+    if (!train || typeof train !== 'object') return [];
+    const sourceAge = now - Date.parse(train.observedAt);
+    if (!Number.isFinite(sourceAge) || sourceAge < -300000 || sourceAge > 180000 || !Number.isFinite(train.ttnt) || !Array.isArray(train.path) || !Array.isArray(train.hold)) return [];
     const spot = kind === 'mtr' ? projectNetworkTrain(train, now) : projectLrtTrain(train, now);
     if (!spot) return [];
     const dest = kind === 'mtr' ? stationRecord(train.dest) : lrtStation(train.dest);
@@ -190,6 +221,22 @@ export function movingCameras(kind: 'mtr' | 'lrt' | 'ferry', data: CameraData, n
     const position = railPosition(kind, train.line, train.path, spot.from, spot.to, spot.progress);
     return [{ id: `${kind}-train-${train.id}`, sourceId: train.id, kind, name: `${train.line} → ${dest?.tc || train.dest}`, nameEn: `${train.line} → ${dest?.en || train.dest}`, nextStation: { name: next?.tc || nextCode, nameEn: next?.en || nextCode }, lat: spot.lat, lng: spot.lng, ...(position ? { routePosition: position } : {}), color: kind === 'mtr' ? lineRecord(train.line)?.color : lrtColor(), estimated: true, positionType: 'vehicle', dataUpdated: train.observedAt, arrivals: [{ route: train.line, destination: dest?.tc || train.dest, destinationEn: dest?.en || train.dest, minutes: spot.minutes, eta: new Date(now + spot.minutes * 60000).toISOString(), observedAt: train.observedAt, platform: train.plat }] }];
   });
+}
+export function retainTransitIdentities(kind: IntegrationKind, data: CameraData, previous: CameraData | undefined, now: number): CameraData {
+  if ((kind !== 'mtr' && kind !== 'lrt' && kind !== 'ferry') || !previous?.payload || !data.payload) return data;
+  const samples = (snapshot: CameraData): TransitIdentitySample[] => movingCameras(kind, snapshot, now).flatMap(camera => camera.routePosition && (kind !== 'ferry' || camera.positionSource !== 'gps') ? [{
+    id: camera.sourceId, key: camera.routePosition.key, destination: camera.arrivals?.[0]?.destinationEn ?? '',
+    distance: camera.routePosition.distance, observedAt: Date.parse(camera.dataUpdated ?? ''),
+  }] : []);
+  const next = samples(data);
+  const identities = reconcileTransitIdentities(samples(previous), next, now);
+  const ids = new Map(next.map((sample, index) => [sample.id, identities[index]]));
+  if (kind === 'ferry') {
+    const payload = data.payload as FerryResponse;
+    return { ...data, payload: { ...payload, vessels: payload.vessels.filter(vessel => vessel && typeof vessel === 'object').map(vessel => ({ ...vessel, id: vessel.fix === 'clock' ? ids.get(vessel.id) ?? vessel.id : vessel.id })) } };
+  }
+  const payload = data.payload as MtrResponse | LrtResponse;
+  return { ...data, payload: { ...payload, trains: payload.trains.filter(train => train && typeof train === 'object').map(train => ({ ...train, id: ids.get(train.id) ?? train.id })) } };
 }
 
 export function railHoverText(camera: Camera, language: Language, now = Date.now()): string {

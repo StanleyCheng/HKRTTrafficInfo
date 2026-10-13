@@ -9,12 +9,17 @@ export function readSchedule(
 ): { board: MtrBoard; observations: TrainObservation[] } | null {
   if (!payload || typeof payload !== "object") return null
   const root = payload as Record<string, unknown>
+  if (root.status === 0) return null
   const data = root.data
   if (!data || typeof data !== "object") return null
   const block = (data as Record<string, unknown>)[`${line}-${station}`]
   if (!block || typeof block !== "object") return null
   const body = block as Record<string, unknown>
-  const clock = text(body.curr_time) || text(root.curr_time)
+  // Kwun Tong Line currently publishes '-' for a missing clock in otherwise
+  // successful station responses. It carries the same meaning as an absent field.
+  const publishedClock = text(body.curr_time) || text(root.curr_time)
+  const clock = publishedClock === "-" ? "" : publishedClock
+  if (clock && parseHongKongTime(clock) == null) return null
   const observedAt = parseHongKongTime(clock) ?? (Number.isFinite(fallbackObservedAt) ? fallbackObservedAt! : null)
   if (observedAt === null) return null
   const delay = root.isdelay === "Y" || body.isdelay === "Y"

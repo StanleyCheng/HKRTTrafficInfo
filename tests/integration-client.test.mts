@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { movingCameras, normalizeIntegration, railHoverText, viewportNote } from "../lib/integration-client.ts"
+import { integrationRequestKey, movingCameras, normalizeIntegration, railHoverText, retainTransitIdentities, viewportNote } from "../lib/integration-client.ts"
 import { stationRecord } from "../lib/mtr-network.ts"
 import { railPoint } from "../lib/rail-geometry.ts"
 import { routePointAtDistance } from "../lib/bus-route-motion.ts"
@@ -166,4 +166,71 @@ test("rail stations carry their line colour and interchange line colours", () =>
   assert.ok(lightRail.cameras.length > 0)
   assert.ok(lightRail.cameras.every(camera => camera.color === "#F5C400"), "light rail uses the network colour")
   assert.ok(lightRail.cameras.every(camera => camera.lineColors === undefined))
+})
+
+test("localized warnings invalidate the request key while bilingual transit does not", () => {
+  const view = { lng: 114.18, lat: 22.3, zoom: 17 }
+  assert.notEqual(integrationRequestKey("weather-warning", view, "en"), integrationRequestKey("weather-warning", view, "zh"))
+  for (const kind of ["mtr", "lrt", "kmb", "citybus", "gmb", "nlb", "ferry"] as const) {
+    assert.equal(integrationRequestKey(kind, view, "en"), integrationRequestKey(kind, view, "zh"))
+  }
+  assert.notEqual(integrationRequestKey("kmb", view, "en"), integrationRequestKey("kmb", { ...view, lng: 114.19 }, "en"))
+})
+
+test("malformed success envelopes cannot replace retained integration inventories", () => {
+  for (const kind of ["crossing", "works", "toll", "boundary", "weather-warning", "mtr", "lrt", "kmb", "citybus", "gmb", "nlb", "ferry"] as const) {
+    assert.throws(() => normalizeIntegration(kind, { ok: true }), /published shape/)
+  }
+  assert.equal(normalizeIntegration("works", { ok: true, works: { type: "FeatureCollection", features: [] } } as never).count, 0)
+})
+
+test("bus stops keep their own retained clock even when neighbours refresh", () => {
+  const retained = new Date(now - 240000).toISOString()
+  const payload: CitybusResponse = { ok: true, observedAt: new Date(now).toISOString(), stops: [
+    { id: "old", observedAt: retained, nameTc: "舊", nameEn: "Old", lng: 114.18, lat: 22.3, routes: [], calls: [] },
+    { id: "unavailable", observedAt: null, nameTc: "無", nameEn: "Unavailable", lng: 114.19, lat: 22.3, routes: [], calls: [] },
+  ] }
+  const data = normalizeIntegration("citybus", payload)
+  assert.equal(data.cameras[0].dataUpdated, retained)
+  assert.equal(data.cameras[1].dataUpdated, undefined)
+})
+
+test("a fresh global rail snapshot cannot revive expired or malformed trains", () => {
+  const train = { id: "expired", line: "TWL", dest: "TSW", plat: "1", ttnt: 3, observedAt: new Date(now - 180001).toISOString(), delay: false, timeType: "A", anchor: "ADM", path: ["CEN", "ADM", "TST"], hold: ["CEN", "ADM", "TST"] }
+  const snapshot = (value: unknown) => normalizeIntegration("mtr", { ok: true, observedAt: new Date(now).toISOString(), boards: [], trains: [value] } as MtrResponse)
+  assert.deepEqual(movingCameras("mtr", snapshot(train), now), [])
+  assert.deepEqual(movingCameras("mtr", snapshot({ ...train, observedAt: "invalid" }), now), [])
+  assert.deepEqual(movingCameras("mtr", snapshot({ ...train, observedAt: new Date(now).toISOString(), path: null }), now), [])
+  assert.deepEqual(movingCameras("mtr", snapshot(null), now), [])
+  assert.deepEqual(movingCameras("ferry", normalizeIntegration("ferry", { ...ferry, observedAt: new Date(now + 300001).toISOString() }), now), [])
+  const futureBoat: FerryResponse = { ...ferry, vessels: [{ ...ferry.vessels[0], fix: "gps", observedAt: new Date(now + 300001).toISOString() }] }
+  assert.deepEqual(movingCameras("ferry", normalizeIntegration("ferry", futureBoat), now), [])
+})
+
+test("rail marker identity survives changed upstream anchor serials at the adapter boundary", () => {
+  const payload: MtrResponse = { ok: true, observedAt: new Date(now).toISOString(), boards: [], trains: [{ id: "old-serial", line: "TWL", dest: "TSW", plat: "1", ttnt: 1, observedAt: new Date(now).toISOString(), delay: false, timeType: "A", anchor: "ADM", path: ["CEN", "ADM", "TST"], hold: ["CEN", "ADM", "TST"] }] }
+  const previous = normalizeIntegration("mtr", payload)
+  const next = normalizeIntegration("mtr", { ...payload, trains: [{ ...payload.trains[0], id: "new-serial" }] } as MtrResponse)
+  const retained = retainTransitIdentities("mtr", next, previous, now)
+  assert.equal(movingCameras("mtr", retained, now)[0]?.id, "mtr-train-old-serial")
+  assert.equal((next.payload as MtrResponse).trains[0].id, "new-serial", "reconciliation must not mutate the response")
+})
+
+test("estimated ferry marker identity survives sailing-clock changes while operator GPS IDs stay intact", () => {
+  const previous = normalizeIntegration("ferry", ferry)
+  const payload: FerryResponse = { ...ferry, vessels: [{ ...ferry.vessels[0], id: "updated-sailing" }, { ...ferry.vessels[0], id: "operator-gps", fix: "gps", observedAt: new Date(now).toISOString() }] }
+  const next = normalizeIntegration("ferry", payload)
+  const retained = retainTransitIdentities("ferry", next, previous, now)
+  assert.equal(movingCameras("ferry", retained, now)[0]?.id, "ferry-vessel-vessel")
+  assert.equal((retained.payload as FerryResponse).vessels[1].id, "operator-gps")
+})
+
+test("ferry corridors distinguish operators and revised water paths with shared endpoints", () => {
+  const first = movingCameras("ferry", normalizeIntegration("ferry", ferry), now)[0].routePosition!
+  const changed: FerryResponse = { ...ferry, vessels: [{ ...ferry.vessels[0], pathLng: [114, 114.05, 114.1], pathLat: [22.3, 22.31, 22.3] }] }
+  const next = movingCameras("ferry", normalizeIntegration("ferry", changed), now)[0].routePosition!
+  assert.notEqual(next.key, first.key)
+  assert.equal(next.coordinates.length, 3)
+  const operator: FerryResponse = { ...ferry, vessels: [{ ...ferry.vessels[0], route: "other-operator" }] }
+  assert.notEqual(movingCameras("ferry", normalizeIntegration("ferry", operator), now)[0].routePosition?.key, first.key)
 })

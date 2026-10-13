@@ -5,14 +5,14 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const origin = process.argv[2] || 'http://localhost:5173';
 const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || 'chrome', headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
-const calls = { snapshot: 0, works: 0, tolls: 0 };
+const calls = { snapshot: 0, works: 0, tolls: 0, warnings: 0 };
 let snapshotFail = false, integrationFail = true;
 const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgQIAI7mY6QAAAABJRU5ErkJggg==', 'base64');
 const page = await context.newPage();
 await context.addInitScript(() => {
   localStorage.setItem('hk-traffic-language-v1', 'en');
   localStorage.setItem('hk-traffic-basemap-v1', 'osm');
-  localStorage.setItem('hk-traffic-layers-v1', JSON.stringify({ snapshot: true, works: true, toll: true }));
+  localStorage.setItem('hk-traffic-layers-v1', JSON.stringify({ snapshot: true, works: true, toll: true, 'weather-warning': true }));
   Object.defineProperty(navigator, 'geolocation', { value: { watchPosition() { return 0; }, clearWatch() {} } });
   let leaflet;
   Object.defineProperty(window, 'L', { get() { return leaflet; }, set(value) { leaflet = value; value.Map.addInitHook(function() { window.__map = this; }); } });
@@ -28,6 +28,11 @@ await context.route(url => url.hostname.endsWith('.gov.hk'), route => {
 });
 await context.route('**/api/**', route => {
   const kind = new URL(route.request().url()).pathname.split('/').at(-1);
+  if (kind === 'warnings') {
+    calls.warnings++;
+    const english = new URL(route.request().url()).searchParams.get('lang') === 'en';
+    return route.fulfill({ json: { ok: true, observedAt: new Date().toISOString(), warnings: [{ id: 'warning-fixture', code: 'WTS', name: english ? 'Localized thunderstorm' : '本地化雷暴', shortName: english ? 'Storm' : '雷暴', detail: '', tone: 'amber', urgent: false, score: 260000 }], conditions: { temperatureC: null, rainfallMm: null, rainfallPlace: '' } } });
+  }
   if (!['works', 'tolls'].includes(kind)) return route.fulfill({ json: { ok: true, boards: [], trains: [], stops: [] } });
   calls[kind]++;
   if (integrationFail) return route.fulfill({ status: 503, body: 'Unavailable' });
@@ -63,9 +68,22 @@ try {
   await page.locator('.layer-card.snapshot .layer-error').waitFor({ state: 'detached' });
   assert.notEqual(await marker.getAttribute('aria-label'), label);
   const recovered = { ...calls };
+  delete recovered.warnings;
   for (let i = 0; i < 12; i++) await page.clock.runFor(5000);
-  assert.deepEqual(calls, recovered, 'Recovery restores the normal successful refresh cadence');
-  console.log('PASS manual refresh bypasses cache; failures preserve data; original, works and toll feeds automatically recover within 60 seconds');
+  const withoutWarnings = { ...calls };
+  delete withoutWarnings.warnings;
+  assert.deepEqual(withoutWarnings, recovered, 'Recovery restores the normal successful refresh cadence');
+  const warningCalls = calls.warnings;
+  await page.getByRole('button', { name: 'Chinese', exact: true }).click();
+  await page.locator('.intel-trigger').filter({ hasText: '本地化雷暴' }).waitFor();
+  assert.equal(calls.warnings, warningCalls + 1, 'Warnings refetch immediately in the selected language');
+  await page.locator('.language-toggle button').nth(0).click();
+  await page.locator('.intel-trigger').filter({ hasText: 'Localized thunderstorm' }).waitFor();
+  const beforeOnline = calls.tolls;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await settled();
+  assert.equal(calls.tolls, beforeOnline + 1, 'Reconnecting refreshes enabled integration feeds immediately');
+  console.log('PASS forced refresh, retained failure data, automatic recovery, localized warnings and immediate reconnect refresh');
 } finally {
   await context.close();
   await browser.close();

@@ -3,6 +3,8 @@ import { lrtPoint, lrtRoutes, lrtStation, lrtStationId } from "./lrt-network.ts"
 import { pool } from "./pool.ts"
 import { oldestDue } from "./refresh-slice.ts"
 import { ETA_FRESH_MS } from "./place-arrivals.ts"
+import { etaQueue, takeEtaTurn, ETA_REFRESH_TIMEOUT_MS } from "./polite-fetch.ts"
+import { parseHongKongTime } from "./mtr-schedule.ts"
 import { fetchUpstream } from "./upstream.ts"
 import type { LrtBoard, LrtCalling, LrtResponse, MtrTrain } from "./types.ts"
 
@@ -26,19 +28,27 @@ type Parsed = { observations: TrainObservation[]; calls: LrtCalling[] }
 type Remembered = { at: number; parsed: Parsed }
 
 const remembered = new Map<string, Remembered>()
+const attempted = new Map<string, number>()
 
 // Station positions stay in the network file. These calls only refresh arrival minutes.
 export async function loadLrtSnapshot(now = Date.now()): Promise<LrtResponse> {
+  return takeEtaTurn("lrt", () => collectLrtSnapshot(now))
+}
+
+async function collectLrtSnapshot(now: number): Promise<LrtResponse> {
   let missed = 0
+  const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
   const stations = lrtRoutes().flatMap((route) => route.stations)
   const ids = [...new Set(stations)]
-  const due = oldestDue(ids, (stationId) => remembered.get(stationId)?.at ?? null, now, ETA_FRESH_MS, REFRESH_SLICE)
+  const due = oldestDue(ids, (stationId) => attempted.get(stationId) ?? remembered.get(stationId)?.at ?? null, now, ETA_FRESH_MS, REFRESH_SLICE)
   await pool(due, FETCH_LIMIT, async (stationId) => {
-    const parsed = await fetchStation(stationId, now)
+    attempted.set(stationId, now)
+    const result = await fetchStation(stationId, signal)
+    const parsed = result?.parsed
     if (!parsed) { missed += 1; return }
     const previous = remembered.get(stationId)
     remembered.set(stationId, {
-      at: now,
+      at: result!.at,
       parsed: {
         calls: parsed.calls,
         observations: carryArrivalClock(previous?.parsed.observations ?? [], parsed.observations),
@@ -76,23 +86,28 @@ export async function loadLrtSnapshot(now = Date.now()): Promise<LrtResponse> {
   return { ok: true, complete: ids.every(id => remembered.has(id)), observedAt: new Date(observedAt).toISOString(), trains, boards, ...(missed > 0 ? { stale: true, error: "Some Light Rail station boards could not refresh" } : {}) }
 }
 
-async function fetchStation(stationId: string, now: number): Promise<Parsed | null> {
+async function fetchStation(stationId: string, signal: AbortSignal): Promise<{ at: number; parsed: Parsed } | null> {
   const url = `https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=${encodeURIComponent(stationId)}&with_special=1`
   try {
-    const response = await fetchUpstream(url, ETA_FRESH_MS, {
+    const response = await etaQueue(() => fetchUpstream(url, ETA_FRESH_MS, {
       timeoutMs: 5_000,
+      signal,
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; HKTrafficIntelligence/1.0; +https://hktraffic.keith-li.workers.dev)",
       },
-    })
+    }), signal)
     if (response.status !== 200) return null
     const body = JSON.parse(new TextDecoder().decode(response.body)) as {
       status?: number
+      system_time?: string
       platform_list?: { platform_id?: number; route_list?: TrainRow[] }[]
     }
-    if (body.status === 0) return { observations: [], calls: [] }
-    return parsePlatforms(stationId, body.platform_list ?? [], now)
+    if (body.status === 0 || !Array.isArray(body.platform_list) || body.platform_list.some(platform => !platform || typeof platform !== "object" || !Array.isArray(platform.route_list))) return null
+    const at = body.system_time ? parseHongKongTime(body.system_time) : Date.parse(response.fetchedAt)
+    if (at == null) return null
+    if (!Number.isFinite(at) || Date.now() - at > REMEMBER_MS || at > Date.now() + 30_000) return null
+    return { at, parsed: parsePlatforms(stationId, body.platform_list, at) }
   } catch {
     return null
   }
