@@ -2,11 +2,8 @@
 
 ## Communication
 
-- Reply to the user in **Traditional Chinese (zh-HK)**, keeping technical terms in English
-  (commit, push, deploy, workflow, marker, tooltip, popup, …). No need to translate API,
-  library or platform names.
-- Code, code comments, commit messages, `README.md` and `docs/` stay in English unless the
-  user asks otherwise.
+- Reply to the user in **English**. Code, code comments, commit messages, `README.md` and
+  `docs/` are English too; no need to translate API, library or platform names.
 
 ## Verified workflow facts
 
