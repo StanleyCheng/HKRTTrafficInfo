@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
+import type { BusEta } from '../lib/bus-route.ts'
 import { inferBusVehicles, loadBusRoute, validBusSelection, type BusRouteStop } from '../lib/bus-route.ts'
 import { busVehicleDistanceAtTime } from '../lib/bus-route-motion.ts'
 import { matchBusGeometry } from '../lib/bus-route-geometry.ts'
@@ -21,7 +23,7 @@ test('fleet inference is bounded and rejects stale, past and missing observation
   for (const row of [{ ...eta, observed: now - 180_000 }, { ...eta, observed: now + 60_000 }, { ...eta, at: NaN }, { ...eta, at: now - 1000 }]) assert.deepEqual(inferBusVehicles(stops, [row], now, 'route'), [], 'Stale or already-arrived ETAs place no bus')
   assert.deepEqual(inferBusVehicles(stops, [{ ...eta, seq: 1 }], now, 'route'), [], 'A first-stop ETA is a departure bracket, not a vehicle')
   assert.deepEqual(inferBusVehicles(stops, [], now, 'route'), [])
-  assert.deepEqual(inferBusVehicles(stops, [eta, { ...eta, seq: 3, at: eta.at + 100 }], now, 'route'), [], 'An impossible bracket speed rejects the chain')
+  assert.equal(inferBusVehicles(stops, [eta, { ...eta, seq: 3, at: eta.at + 100 }], now, 'route').length, 1, 'An impossible link is ignored without discarding the usable earlier observation')
   const distant = inferBusVehicles(stops, [{ ...eta, at: now + 600_000 }], now, 'route')[0]!
   assert.equal(distant.fromDistance, 0)
   assert.ok(distant.departureAt > now, 'The cruise has not started yet')
@@ -90,7 +92,7 @@ test('selection requires exact operator direction/variant and rejects unsafe or 
   assert.equal((await GET(new Request('https://test/api/bus-route?operator=kmb&route=1A&stopId=ABC'))).status, 400)
 })
 
-test('full NLB route survives ETA failure and scheduled-only data has no vehicles', async () => {
+test('full NLB route survives ETA failure without inventing vehicles', async () => {
   const original = globalThis.fetch
   globalThis.fetch = async (input) => {
     const url = String(input)
@@ -152,3 +154,111 @@ test('whole-route arrivals distinguish malformed payloads, empty service and inv
     assert.deepEqual(invalid.vehicles, [])
   } finally { globalThis.fetch = original }
 })
+
+
+test('KMB 115 recorded rank changes describe three services, without phantom origin buses', () => {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/kmb-115-rank-shift.json', import.meta.url), 'utf8')) as { sampledAt: string; stops: BusRouteStop[]; etas: BusEta[] }
+  const at = Date.parse(fixture.sampledAt)
+  const fleet = inferBusVehicles(fixture.stops, fixture.etas, at, '115')
+  assert.equal(fleet.length, 3, 'Two live approaches and one scheduled departure; ranks change at stops 3 and 13')
+  const ahead = fleet.find(bus => bus.id === '115:1:13')!
+  assert.ok(ahead)
+  assert.ok(busVehicleDistanceAtTime(ahead, at)! >= fixture.stops[11].distance, 'The bus approaching stop 13 has already passed stop 12')
+  assert.ok(busVehicleDistanceAtTime(ahead, at)! <= fixture.stops[12].distance)
+  const waiting = fleet.filter(bus => busVehicleDistanceAtTime(bus, at) === 0)
+  assert.equal(waiting.length, 1, 'The same scheduled departure is not recreated at each rank shift')
+})
+
+test('slow traffic, bunched services and onward movement do not remove or freeze buses', () => {
+  const observed = now - 1000
+  const fleet = inferBusVehicles(stops, [
+    { seq: 1, rank: 1, at: now - 1000, observed, scheduled: false },
+    { seq: 2, rank: 1, at: now + 1000, observed, scheduled: false },
+    { seq: 3, rank: 1, at: now + 2000, observed, scheduled: false },
+  ], now, 'rounded')
+  // The deliberately impossible short intervals must never create 50-100 m/s travel.
+  assert.ok(fleet.every(bus => (bus.toDistance - bus.fromDistance) / ((bus.arrivalAt - bus.departureAt) / 1000) <= 25))
+  const moving = inferBusVehicles(stops, [
+    { seq: 1, rank: 1, at: now - 10_000, observed, scheduled: false },
+    { seq: 2, rank: 1, at: now + 10_000, observed, scheduled: false },
+    { seq: 3, rank: 1, at: now + 30_000, observed, scheduled: false },
+  ], now, 'route')[0]
+  assert.equal(busVehicleDistanceAtTime(moving, now + 20_000), 150, 'The bus continues past its first arrival between polls')
+  const slow = inferBusVehicles(stops, [
+    { seq: 2, rank: 1, at: now + 10_000, observed, scheduled: false },
+    { seq: 3, rank: 1, at: now + 610_000, observed, scheduled: false },
+    { seq: 2, rank: 2, at: now + 40_000, observed, scheduled: false },
+    { seq: 3, rank: 2, at: now + 640_000, observed, scheduled: false },
+  ], now, 'slow')
+  assert.equal(slow.length, 2, 'Two buses closer than 200 m are both retained during congestion')
+  assert.ok(slow.every(bus => busVehicleDistanceAtTime(bus, now) !== null))
+})
+
+test('one stale KMB row cannot remove fresh buses or the opposite direction', async (t) => {
+  t.mock.method(Date, 'now', () => now)
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    const url = String(input)
+    if (url.includes('/route-stop/')) return Response.json({ data: [{ stop: 'EE3EA981F3D6485D', seq: 1 }, { stop: '6C15579CA43DF72E', seq: 2 }] })
+    if (url.includes('FeatureServer')) return Response.json({ features: [] })
+    return Response.json({ generated_timestamp: new Date(now).toISOString(), data: [
+      { dir: 'O', service_type: '1', seq: 1, eta_seq: 1, eta: new Date(now + 60_000).toISOString(), data_timestamp: new Date(now - 240_000).toISOString() },
+      ...['O', 'I'].map(dir => ({ dir, service_type: '1', seq: 2, eta_seq: 1, eta: new Date(now + 20_000).toISOString(), data_timestamp: new Date(now).toISOString() })),
+    ] })
+  })
+  const result = await loadBusRoute({ operator: 'kmb', route: '115', stopId: 'EE3EA981F3D6485D', bound: 'O', serviceType: '1' }, now)
+  assert.equal(result.stale, true, 'Partial failure remains visible')
+  assert.equal(result.vehicles.length, 1)
+  assert.equal(result.reverse[0].vehicles.length, 1)
+  assert.equal(result.reverse[0].stale, false, 'The healthy opposite direction is independent')
+})
+
+test('one failed NLB stop preserves other arrivals and all published ranks', async (t) => {
+  t.mock.method(Date, 'now', () => now)
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    const url = String(input)
+    if (url.includes('action=list')) return Response.json({ stops: stops.map(stop => ({ stopId: stop.id, longitude: stop.lng, latitude: stop.lat, stopName_e: 'Stop' })) })
+    if (url.includes('FeatureServer')) return Response.json({ features: [] })
+    if (url.includes('stopId=1')) return Response.json({ error: 'Stop temporarily unavailable' })
+    const seq = Number(new URL(url).searchParams.get('stopId'))
+    return Response.json({ generateTime: new Date(now).toISOString(), estimatedArrivals: [0, 240_000].map(offset => ({ estimatedArrivalTime: new Date(now + offset + (seq - 1) * 20_000).toISOString(), departed: '1', noGPS: '0' })) })
+  })
+  const result = await loadBusRoute({ operator: 'nlb', route: 'TEST', stopId: '2', routeId: '999997' }, now)
+  assert.equal(result.stale, true)
+  assert.equal(result.vehicles.length, 2, 'A stop failure cannot erase successful boards, or the second published bus')
+})
+
+test('newer downstream observations cannot renew an older trajectory anchor', () => {
+  const fleet = inferBusVehicles(stops, [
+    { seq: 2, rank: 1, at: now + 10_000, observed: now - 170_000, scheduled: false },
+    { seq: 3, rank: 1, at: now + 30_000, observed: now, scheduled: false },
+  ], now, 'route');
+  assert.equal(fleet[0].validUntil, now + 10_000);
+  assert.equal(busVehicleDistanceAtTime(fleet[0], now + 10_000), null);
+});
+
+for (const operator of ['citybus', 'gmb'] as const) test(`${operator} partial stop failures leave healthy route estimates available`, async (t) => {
+  t.mock.method(Date, 'now', () => now);
+  const ids = ['900001', '900002', '900003'];
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes('FeatureServer')) return Response.json({ features: [] });
+    if (url.includes('/route-stop/') && !url.includes('/eta/')) return Response.json({ data: operator === 'gmb'
+      ? { route_stops: ids.map((stop_id, index) => ({ stop_id, stop_seq: index + 1 })) }
+      : ids.map((stop, index) => ({ stop, seq: index + 1 })) });
+    if (url.includes('/stop/')) {
+      const index = ids.indexOf(url.split('/').at(-1)!);
+      return Response.json({ data: { name_en: 'Stop', long: 114 + index * .001, lat: 22.3, coordinates: { wgs84: { longitude: 114 + index * .001, latitude: 22.3 } } } });
+    }
+    const seq = operator === 'gmb' ? Number(url.split('/').at(-1)) : ids.indexOf(url.split('/').at(-2)!) + 1;
+    if (seq === 1) return Response.json({ error: 'Stop temporarily unavailable' });
+    const timestamp = new Date(now + seq * 20_000).toISOString();
+    return Response.json({ generated_timestamp: new Date(now).toISOString(), data: operator === 'gmb'
+      ? { eta: [{ timestamp, eta_seq: 1 }] }
+      : ['O', 'I'].map(dir => ({ route: 'TEST', dir, seq, eta_seq: 1, eta: timestamp })) });
+  });
+  const result = await loadBusRoute({ operator, route: 'TEST', stopId: ids[0], bound: 'O', routeId: '999995', routeSeq: 1 }, now);
+  assert.equal(result.ok, true);
+  assert.equal(result.stale, true);
+  assert.equal(result.vehicles.length, 1);
+  assert.equal(result.reverse[0].vehicles.length, 1);
+});

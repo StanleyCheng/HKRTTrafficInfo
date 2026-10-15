@@ -34,6 +34,11 @@ function response(selection, mode = 'live', correction = 0, reverse = false) {
     { id: `${key}:1`, fromDistance: 0, toDistance: distance[3], departureAt: now - 60000 - correction, arrivalAt: now + 120000 - correction, validUntil: now + 180000 },
     { id: `${key}:2`, fromDistance: 0, toDistance: distance[3], departureAt: now - 30000, arrivalAt: now + 150000, validUntil: now + 180000 },
   ] : [];
+  if (mode === 'timeline') {
+    vehicles.splice(1);
+    Object.assign(vehicles[0], { fromDistance: 0, toDistance: 50, departureAt: now - 1000, arrivalAt: now + 1000,
+      timeline: [{ distance: 0, at: now - 1000 }, { distance: 50, at: now + 1000 }, { distance: 300, at: now + 11000 }] });
+  }
   const opposite = reverse && moving ? [{ route: { key: `${key}:reverse`, operator: selection.operator, company: selection.company, route: selection.route, geometry: 'road', coordinates: [...coordinates].reverse(), stops: [...routeStops].reverse().map((stop, index) => ({ ...stop, seq: index + 1 })) }, vehicles: [{ id: `${key}:r1`, fromDistance: 0, toDistance: distance[3], departureAt: now - 30000, arrivalAt: now + 150000, validUntil: now + 180000 }] }] : [];
   return { ok: true, observedAt: new Date(now).toISOString(), stale: mode === 'stale', route: { key, operator: selection.operator, company: selection.company, route: selection.route, geometry: mode === 'approximate' ? 'stops' : 'road', coordinates, stops: routeStops }, vehicles, reverse: opposite };
 }
@@ -289,14 +294,29 @@ try {
     assert.ok(new Set(await samples(f.page)).size >= 10);
     assert.equal(await f.page.evaluate(() => window.__map.getZoom()), 16, 'Refresh must preserve the user camera');
     f.controls.mode = 'stale'; await refresh(f.page);
+    await openLayers(f.page);
+    await f.page.getByText('Retained data · refresh failed or overdue', { exact: true }).waitFor();
+    assert.equal(await f.page.locator('.bus-route-marker').count(), 2, 'A transient refresh failure keeps unexpired observations');
+    assert.equal(await f.page.evaluate(() => window.__originalBus === document.querySelector('.bus-route-marker')), true);
+    await closeControls(f.page);
+    await f.page.evaluate(() => { const realNow = Date.now; Date.now = () => realNow() + 181000; });
     await f.page.waitForFunction(() => !document.querySelector('.bus-route-marker'));
-    assert.equal(await f.page.locator('.bus-route-polyline').count(), 1, 'Stale route stays visible without misleading movement');
+    assert.equal(await f.page.locator('.bus-route-polyline').count(), 1, 'Expired estimates disappear but the route stays visible');
     await assertRouteLabels(f.page, 'kmb', 'en', false);
     await openLayers(f.page);
     await f.page.getByRole('button', { name: 'Close route', exact: true }).click();
     await f.page.locator('.bus-route-polyline').waitFor({ state: 'detached' });
     await f.page.waitForFunction(() => document.querySelectorAll('.bus-route-stop-label').length === 0);
     assert.equal(await f.page.locator('.bus-route-stop-label').count(), 0, 'Closing the route removes its stop labels');
+    await f.context.close();
+  });
+  await test('Multi-stop trajectory continues beyond the first ETA without another request', async () => {
+    const f = await create(); f.controls.mode = 'timeline'; await select(f, variants[0]);
+    await f.page.locator('.bus-route-marker').waitFor();
+    const before = f.requests.length;
+    await f.page.waitForTimeout(2200);
+    assert.ok(new Set(await samples(f.page)).size >= 10, 'Motion continues after the first predicted stop');
+    assert.equal(f.requests.length, before, 'Movement uses the remaining published stop times, without a new poll');
     await f.context.close();
   });
   await test('Stop-label toggle clears names while route, circles and the moving bus remain, and exists only with a route', async () => {

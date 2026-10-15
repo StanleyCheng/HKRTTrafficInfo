@@ -47,13 +47,22 @@ export function routeHeadingAtDistance(coordinates: [number, number][], distance
   return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
 }
 
-// A vehicle entry describes one bus running fromDistance→toDistance between
-// departureAt→arrivalAt. Before departure it holds at the segment start — the
-// route origin for inferred approaches — instead of vanishing.
+// Follow every observed stop time between polls. Older single-segment payloads
+// remain supported. Before departure hold at the inferred segment start.
 export function busVehicleDistanceAtTime(vehicle: BusVehicle, now: number): number | null {
   if (![now, vehicle.fromDistance, vehicle.toDistance, vehicle.departureAt, vehicle.arrivalAt, vehicle.validUntil].every(Number.isFinite)
     || vehicle.fromDistance < 0 || vehicle.toDistance < vehicle.fromDistance || vehicle.arrivalAt <= vehicle.departureAt) return null;
-  if (now > vehicle.validUntil) return null;
+  if (now >= vehicle.validUntil) return null;
+  if (vehicle.timeline) {
+    const points = vehicle.timeline;
+    if (points.length < 2 || points.some((point, index) => !Number.isFinite(point.distance) || !Number.isFinite(point.at) || point.distance < 0
+      || index > 0 && (point.distance <= points[index - 1].distance || point.at <= points[index - 1].at))) return null;
+    if (now <= points[0].at) return points[0].distance;
+    const next = points.findIndex(point => point.at > now);
+    if (next < 0) return points.at(-1)!.distance;
+    const from = points[next - 1], to = points[next];
+    return from.distance + (to.distance - from.distance) * (now - from.at) / (to.at - from.at);
+  }
   if (now < vehicle.departureAt) return vehicle.fromDistance;
   const duration = vehicle.arrivalAt - vehicle.departureAt;
   const progress = Math.min(1, (now - vehicle.departureAt) / duration);

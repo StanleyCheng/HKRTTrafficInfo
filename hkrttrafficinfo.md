@@ -14,6 +14,12 @@ i18n: two languages, `zh` (Traditional Chinese, default) and `en`, implemented a
 
 The app is also a PWA: `public/site.webmanifest` (name `HK RT Traffic Info`, short name `HK RT Traffic`, `display: standalone`, theme `#08244d`), icons in `public/` (`hkrttrafficinfo-logo.png` is the 1254px source art the rasters are cut from), wired in `app/layout.tsx` metadata (title `HK RT Traffic Info · 香港實時交通資訊`; the in-app brand reads `HK RT Traffic Info` in English and `香港實時交通資訊` in Chinese, compacting to `HK RT Traffic` and `香港實時交通` in the mobile top bar).
 
+### Bus position estimates (15 October 2026)
+
+The selected bus route uses `lib/bus-route.ts` to load operator-specific stops and ETAs in both directions. ETA rank is local to a stop, so chronological matching permits ranks to change after a bus passes a stop. Live and scheduled observations are kept separate. A newly appearing earlier downstream arrival is bounded by the preceding stop; sparse observations use an approximate approach speed. `lib/bus-route-motion.ts` follows the complete matched timeline between refreshes, including congested segments, and `lib/bus-route-state.ts` preserves nearby marker identities and unexpired trajectories during failures. The two map renderers consume the same calculation. Individual stop/row failures leave healthy observations visible; healthy empty boards clear estimates. Retained data never extends a vehicle's original observation lifetime.
+
+These are ETA-derived estimates, not vehicle GPS or a complete fleet inventory. They can differ from the rider's GPS and cannot identify the bus being ridden. KMB 115 regression evidence, partial-failure behavior and validation are documented in `docs/bus-motion-review-2026-10-15.md`.
+
 ## 2. Technical framework
 
 ### 2.1 Toolchain versions (`package.json`)

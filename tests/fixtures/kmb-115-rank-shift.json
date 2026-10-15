@@ -1,0 +1,475 @@
+{
+  "source": "https://data.etabus.gov.hk/v1/transport/kmb/route-eta/115/1",
+  "sampledAt": "2026-10-15T15:18:02+08:00",
+  "stops": [
+    {
+      "id": "60C1F7910C07C52B",
+      "seq": 1,
+      "lng": 114.193507,
+      "lat": 22.318592,
+      "distance": 0,
+      "nameTc": "九龍城碼頭巴士總站 (KC949)",
+      "nameEn": "KOWLOON CITY FERRY BUS TERMINUS (KC949)"
+    },
+    {
+      "id": "D46ED62A04D37ECE",
+      "seq": 2,
+      "lng": 114.191562,
+      "lat": 22.318125,
+      "distance": 206.70165694164677,
+      "nameTc": "貴州街 (KC763)",
+      "nameEn": "KWEI CHOW STREET (KC763)"
+    },
+    {
+      "id": "AD78D43BCE88067A",
+      "seq": 3,
+      "lng": 114.190539,
+      "lat": 22.317082,
+      "distance": 363.30365931256483,
+      "nameTc": "落山道 (KC765)",
+      "nameEn": "LOK SHAN ROAD (KC765)"
+    },
+    {
+      "id": "E706C4DB589B84E1",
+      "seq": 4,
+      "lng": 114.187857,
+      "lat": 22.314297,
+      "distance": 778.0510379353448,
+      "nameTc": "啟明街 (KC773)",
+      "nameEn": "KAI MING STREET (KC773)"
+    },
+    {
+      "id": "5134E170C222E516",
+      "seq": 5,
+      "lng": 114.187752,
+      "lat": 22.311557,
+      "distance": 1082.9165389937884,
+      "nameTc": "紅磡庇利街 (HH780)",
+      "nameEn": "BAILEY STREET HUNG HOM (HH780)"
+    },
+    {
+      "id": "ED03E689B88CE0E8",
+      "seq": 6,
+      "lng": 114.18775,
+      "lat": 22.309978,
+      "distance": 1258.4934487096364,
+      "nameTc": "紅磡鶴園街 (HH785)",
+      "nameEn": "HOK YUEN STREET HUNG HOM (HH785)"
+    },
+    {
+      "id": "997CCAB996935BD7",
+      "seq": 7,
+      "lng": 114.187135,
+      "lat": 22.307337,
+      "distance": 1558.8969181928846,
+      "nameTc": "紅磡街市 (HH788)",
+      "nameEn": "HUNG HOM MARKET (HH788)"
+    },
+    {
+      "id": "438AFA4E9E76C953",
+      "seq": 8,
+      "lng": 114.188304,
+      "lat": 22.30588,
+      "distance": 1760.6638530688667,
+      "nameTc": "德民街 (HH346)",
+      "nameEn": "TAK MAN STREET (HH346)"
+    },
+    {
+      "id": "7055FEADC58CB1F1",
+      "seq": 9,
+      "lng": 114.190806,
+      "lat": 22.30484,
+      "distance": 2042.841299716924,
+      "nameTc": "黃埔花園總站 (HH923)",
+      "nameEn": "WHAMPOA GARDEN BUS TERMINUS (HH923)"
+    },
+    {
+      "id": "36F7DCE4723C2C44",
+      "seq": 10,
+      "lng": 114.185478,
+      "lat": 22.302752,
+      "distance": 2638.1088277323233,
+      "nameTc": "紅樂道 (HH300)",
+      "nameEn": "HUNG LOK ROAD (HH300)"
+    },
+    {
+      "id": "95FAB1D2AD752ECE",
+      "seq": 11,
+      "lng": 114.185074,
+      "lat": 22.305121,
+      "distance": 2904.788205816879,
+      "nameTc": "紅磡南道 (HH321)",
+      "nameEn": "HUNG HOM SOUTH ROAD (HH321)"
+    },
+    {
+      "id": "AC48794DF1F3332C",
+      "seq": 12,
+      "lng": 114.184489,
+      "lat": 22.307406,
+      "distance": 3165.8986078291073,
+      "nameTc": "機利士南路 (HH332)",
+      "nameEn": "GILLIES AVENUE SOUTH (HH332)"
+    },
+    {
+      "id": "5029C93BB80545B1",
+      "seq": 13,
+      "lng": 114.1806,
+      "lat": 22.301884,
+      "distance": 3898.7587061442778,
+      "nameTc": "紅隧轉車站 (HH508)",
+      "nameEn": "CROSS HARBOUR TUNNEL BBI (HH508)"
+    },
+    {
+      "id": "2BF5780A30BB85E1",
+      "seq": 14,
+      "lng": 114.181313,
+      "lat": 22.281581,
+      "distance": 6157.540793424201,
+      "nameTc": "伊利莎伯大廈",
+      "nameEn": "ELIZABETH HOUSE"
+    },
+    {
+      "id": "C9109584C37A5B98",
+      "seq": 15,
+      "lng": 114.175241,
+      "lat": 22.279372,
+      "distance": 6828.858012065535,
+      "nameTc": "國際調解院",
+      "nameEn": "INTERNATIONAL ORGANIZATION FOR MEDIATION"
+    },
+    {
+      "id": "970DA2E578488682",
+      "seq": 16,
+      "lng": 114.170839,
+      "lat": 22.279162,
+      "distance": 7282.398428554994,
+      "nameTc": "分域街",
+      "nameEn": "FENWICK STREET"
+    },
+    {
+      "id": "38C9E6D10257D167",
+      "seq": 17,
+      "lng": 114.16,
+      "lat": 22.281958,
+      "distance": 8440.179320814994,
+      "nameTc": "皇后像廣場",
+      "nameEn": "STATUE SQUARE"
+    },
+    {
+      "id": "D29F8DE10E3417AD",
+      "seq": 18,
+      "lng": 114.157236,
+      "lat": 22.283641,
+      "distance": 8780.620673982708,
+      "nameTc": "砵典乍街",
+      "nameEn": "POTTINGER STREET"
+    },
+    {
+      "id": "F0B6112380784741",
+      "seq": 19,
+      "lng": 114.154064,
+      "lat": 22.286445,
+      "distance": 9231.983148373756,
+      "nameTc": "林士街",
+      "nameEn": "RUMSEY STREET"
+    },
+    {
+      "id": "A5E0FE9BA2C37E30",
+      "seq": 20,
+      "lng": 114.150108,
+      "lat": 22.288593,
+      "distance": 9703.911580698892,
+      "nameTc": "中環(港澳碼頭)",
+      "nameEn": "CENTRAL (MACAO FERRY)"
+    }
+  ],
+  "etas": [
+    {
+      "seq": 1,
+      "rank": 1,
+      "at": 1792050000000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 2,
+      "rank": 1,
+      "at": 1792050079000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 3,
+      "rank": 1,
+      "at": 1792048686000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 3,
+      "rank": 2,
+      "at": 1792050186000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 4,
+      "rank": 1,
+      "at": 1792048833000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 4,
+      "rank": 2,
+      "at": 1792050333000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 5,
+      "rank": 1,
+      "at": 1792048923000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 5,
+      "rank": 2,
+      "at": 1792050423000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 6,
+      "rank": 1,
+      "at": 1792048984000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 6,
+      "rank": 2,
+      "at": 1792050484000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 7,
+      "rank": 1,
+      "at": 1792049118000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 7,
+      "rank": 2,
+      "at": 1792050618000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 8,
+      "rank": 1,
+      "at": 1792049261000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 8,
+      "rank": 2,
+      "at": 1792050761000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 9,
+      "rank": 1,
+      "at": 1792049354000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 9,
+      "rank": 2,
+      "at": 1792050854000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 10,
+      "rank": 1,
+      "at": 1792049663000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 10,
+      "rank": 2,
+      "at": 1792051163000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 11,
+      "rank": 1,
+      "at": 1792049818000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 11,
+      "rank": 2,
+      "at": 1792051318000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 12,
+      "rank": 1,
+      "at": 1792049980000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 12,
+      "rank": 2,
+      "at": 1792051480000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 13,
+      "rank": 1,
+      "at": 1792048865000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 13,
+      "rank": 2,
+      "at": 1792050280000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 13,
+      "rank": 3,
+      "at": 1792051780000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 14,
+      "rank": 1,
+      "at": 1792049162000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 14,
+      "rank": 2,
+      "at": 1792050570000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 14,
+      "rank": 3,
+      "at": 1792052070000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 15,
+      "rank": 1,
+      "at": 1792049250000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 15,
+      "rank": 2,
+      "at": 1792050658000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 15,
+      "rank": 3,
+      "at": 1792052158000,
+      "observed": 1792048670000,
+      "scheduled": true
+    },
+    {
+      "seq": 16,
+      "rank": 1,
+      "at": 1792049325000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 16,
+      "rank": 2,
+      "at": 1792050734000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 17,
+      "rank": 1,
+      "at": 1792049481000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 17,
+      "rank": 2,
+      "at": 1792050889000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 18,
+      "rank": 1,
+      "at": 1792049593000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 18,
+      "rank": 2,
+      "at": 1792051000000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 19,
+      "rank": 1,
+      "at": 1792049700000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 19,
+      "rank": 2,
+      "at": 1792051106000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 20,
+      "rank": 1,
+      "at": 1792049915000,
+      "observed": 1792048670000,
+      "scheduled": false
+    },
+    {
+      "seq": 20,
+      "rank": 2,
+      "at": 1792051321000,
+      "observed": 1792048670000,
+      "scheduled": false
+    }
+  ]
+}

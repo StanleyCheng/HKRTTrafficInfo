@@ -19,6 +19,8 @@ import { linesThrough, mtrLineList } from '@/lib/mtr-network';
 import type { MtrResponse } from '@/lib/types';
 import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
 import { getBusRoute } from '@/lib/bus-route-client';
+import { retainBusRoute } from '@/lib/bus-route-state';
+import { busVehicleDistanceAtTime } from '@/lib/bus-route-motion';
 import { ETA_FRESH_MS } from '@/lib/place-arrivals';
 
 const TrafficMap3D = lazy(() => import('./traffic-map-3d'));
@@ -527,12 +529,13 @@ export default function TrafficMonitor() {
       let cached = busRouteCache.current.get(key);
       if (!cached || !cached.pending) {
         const previous = cached;
-        const promise = getBusRoute(selection).then<BusRouteState>(data => {
-          if (!data.ok) throw new Error(data.error || 'Bus route unavailable');
-          return { selection, data, error: Boolean(data.error || data.stale), loading: false };
+        const promise = getBusRoute(selection).then<BusRouteState>(async result => {
+          const retained = await previous?.promise;
+          const data = retainBusRoute(retained?.data, result, Date.now());
+          return { selection, data, error: Boolean(!data.ok || data.error || data.stale), loading: false };
         }).catch(async () => {
           const retained = await previous?.promise;
-          return { selection, data: retained?.data ? { ...retained.data, stale: true, vehicles: [], reverse: retained.data.reverse.map(direction => ({ ...direction, vehicles: [] })) } : undefined, error: true, loading: false };
+          return { selection, data: retained?.data ? retainBusRoute(retained.data, { ok: false, vehicles: [], reverse: [], observedAt: null, stale: true }, Date.now()) : undefined, error: true, loading: false };
         });
         const entry = { promise, pending: true };
         void promise.then(() => { entry.pending = false; });
@@ -630,14 +633,14 @@ export default function TrafficMonitor() {
 
   const routeLoading = Boolean(activeBusSelection && (busRouteState?.selection !== activeBusSelection || busRouteState.loading));
   const routeError = Boolean(activeBusSelection && busRouteState?.selection === activeBusSelection && busRouteState.error);
-  const busCount = busRoute ? busRoute.vehicles.length + busRoute.reverse.reduce((count, direction) => count + direction.vehicles.length, 0) : 0;
+  const busCount = busRoute ? [busRoute.vehicles, ...busRoute.reverse.map(direction => direction.vehicles)].flat().filter(vehicle => busVehicleDistanceAtTime(vehicle, now) !== null).length : 0;
   const routeControlLabel = activeBusSelection ? `${copy.mapLayers} · ${extra.selectedBusRoute} ${activeBusSelection.route}${routeLoading ? ` · ${extra.loadingBusRoute}` : routeError ? ` · ${extra.busRouteError}` : ''}` : copy.mapLayers;
   const routeStatus = activeBusSelection && <section className="bus-route-status" aria-label={`${extra.selectedBusRoute} ${activeBusSelection.route}`}>
     <div className="bus-route-heading"><strong>{extra.selectedBusRoute} · {activeBusSelection.route}</strong><button type="button" className="text-button" onClick={() => setBusSelection(null)}>{extra.closeBusRoute}</button></div>
     <div role="status" aria-live="polite">
       {routeLoading && <p><LoaderCircle size={13} className="spin"/>{extra.loadingBusRoute}</p>}
       {routeError && <p className="warning-text">{extra.busRouteError} <button type="button" className="text-button" onClick={() => setBusRouteRetry(value => value + 1)}>{copy.retry}</button></p>}
-      {busRoute?.route && <><p>{busCount ? extra.estimatedBuses(busCount) : extra.noBusPosition}</p><p>{extra.estimated}</p>{busRoute.route.geometry === 'stops' && <p>{extra.busRouteStops}</p>}{busRoute.stale && <p className="warning-text">{extra.stale}</p>}</>}
+      {busRoute?.route && <><p>{busCount ? extra.estimatedBuses(busCount) : extra.noBusPosition}</p><p>{extra.busPositionNote}</p>{busRoute.route.geometry === 'stops' && <p>{extra.busRouteStops}</p>}{busRoute.stale && <p className="warning-text">{extra.stale}</p>}</>}
     </div>
   </section>;
 

@@ -59,3 +59,14 @@ test('route heading follows travel direction and clamps at the terminus', () => 
   assert.equal(routeHeadingAtDistance([[114, 22.3], [114, 22.3]], routeDistances([[114, 22.3], [114, 22.3]]), 0), null);
   assert.equal(routeHeadingAtDistance(east, eastDistances, NaN), null);
 });
+
+test('multi-stop timelines reject invalid anchors and expire at the original boundary', () => {
+  const vehicle: BusVehicle = { id: 'bus', fromDistance: 0, toDistance: 100, departureAt: 1000, arrivalAt: 2000, validUntil: 4000,
+    timeline: [{ distance: 0, at: 1000 }, { distance: 100, at: 2000 }, { distance: 200, at: 3000 }] };
+  assert.equal(busVehicleDistanceAtTime(vehicle, 2500), 150);
+  assert.equal(busVehicleDistanceAtTime(vehicle, 3500), 200);
+  assert.equal(busVehicleDistanceAtTime(vehicle, 4000), null);
+  for (const bad of [{ distance: 90, at: 3000 }, { distance: 200, at: 2000 }, { distance: NaN, at: 3000 }]) {
+    assert.equal(busVehicleDistanceAtTime({ ...vehicle, timeline: [...vehicle.timeline!.slice(0, 2), bad] }, 2500), null);
+  }
+});
