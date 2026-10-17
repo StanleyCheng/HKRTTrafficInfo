@@ -10,6 +10,15 @@ The 3D view shares traffic roads, rail/ferry routes, stop and camera details, sn
 [![Cloudflare Worker deploy](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/deploy-cloudflare.yml/badge.svg)](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/deploy-cloudflare.yml)
 [![Verify](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/verify.yml/badge.svg)](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/verify.yml)
 
+## Architecture
+
+![HKRTTrafficInfo architecture](docs/architecture-light.png)
+
+Data moves through three tiers. **Upstream** feeds — the Transport Department and HKO (`speeds`, `incidents`, `works`) plus six operator APIs (KMB, Citybus, GMB, NLB, MTR/LRT, ferries) — enter the same-origin **Next.js API routes** (18 routes with shared caching). Those routes call the adapter and cache layer (`lib/*-feed`, `lib/*-network`, `polite-fetch`, cache) together with bundled static geodata (`data/*.json`, 15 networks) and return payloads to the **Leaflet 2D / MapLibre 3D map** and the ranked intelligence panel.
+
+- [Interactive HTML (light)](docs/architecture-light.html) · [Dark](docs/architecture-dark.html) · [Animated](docs/architecture-motion.html) · [SVG](docs/architecture.svg)
+- Rendered in the project's own tokens from `app/globals.css` (paper `#f5f7fa`, ink `#172c39`, teal `#137f87`).
+
 ## Run and validate
 
 Node 22.13 or later:

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1160 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hkrtt-architecture-title-light hkrtt-architecture-desc-light" id="architecture-light-root">
+    <title id="hkrtt-architecture-title-light">HKRTTrafficInfo architecture</title>
+    <desc id="hkrtt-architecture-desc-light">Transport Department and operator feeds enter Next.js API routes, pass through the adapter and cache layer with static geodata, and reach the Leaflet 2D / MapLibre 3D map and intelligence panel.</desc>
+    <defs>
+      <style>@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;family=Noto+Serif:ital@0;1&amp;family=Noto+Sans+KR:wght@400;500;600&amp;family=Noto+Serif+KR:wght@400&amp;family=Noto+Sans+TC:wght@400;500;600&amp;family=Noto+Serif+TC:wght@400&amp;display=swap');
+      #architecture-light-root { --color-paper:  #f5f7fa;
+    --color-ink:    #172c39;
+    --color-muted:  #526975;
+    --color-accent: #137f87;
+    --font-sans: 'Inter', 'Noto Sans HK', system-ui, sans-serif;
+    --font-mono: 'Geist Mono', ui-monospace, monospace; }
+      #architecture-light-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #architecture-light-root .scroller { overflow-x: auto; }</style>
+      <pattern id="architecture-light-dots" width="22" height="22" patternUnits="userSpaceOnUse">
+        <circle cx="1" cy="1" r="0.9" fill="#172c39" fill-opacity="0.10"/>
+      </pattern>
+      <marker id="architecture-light-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#526975"/></marker>
+      <marker id="architecture-light-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#137f87"/></marker>
+      <marker id="architecture-light-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#318dbe"/></marker>
+    </defs>
+
+      <rect width="100%" height="100%" fill="#f5f7fa"/>
+      <rect width="100%" height="100%" fill="url(#architecture-light-dots)" opacity="0.55"/>
+
+      <!-- ZONES -->
+      <rect x="32" y="120" width="268" height="300" rx="8" fill="#172c39" stroke="#172c39" stroke-width="0.8" fill-opacity="0.02" stroke-opacity="0.10"/>
+      <rect x="112" y="124" width="108" height="12" rx="2" fill="#f5f7fa"/>
+      <text x="166" y="133" fill="#8a9aa5" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">上游資料源</text>
+
+      <rect x="330" y="120" width="350" height="392" rx="8" fill="#172c39" stroke="#172c39" stroke-width="0.8" fill-opacity="0.02" stroke-opacity="0.10"/>
+      <rect x="452" y="124" width="106" height="12" rx="2" fill="#f5f7fa"/>
+      <text x="505" y="133" fill="#8a9aa5" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">伺服器層</text>
+
+      <rect x="712" y="120" width="416" height="300" rx="8" fill="#172c39" stroke="#172c39" stroke-width="0.8" fill-opacity="0.02" stroke-opacity="0.10"/>
+      <rect x="864" y="124" width="112" height="12" rx="2" fill="#f5f7fa"/>
+      <text x="920" y="133" fill="#8a9aa5" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">前端 / 瀏覽器</text>
+
+      <!-- ARROWS (behind nodes) -->
+      <line x1="276" y1="212" x2="346" y2="212" stroke="#318dbe" stroke-width="1.2" marker-end="url(#architecture-light-arrow-link)"/>
+      <path d="M 276,336 H 382 Q 390,336 390,328 V 264" fill="none" stroke="#318dbe" stroke-width="1.2" marker-end="url(#architecture-light-arrow-link)"/>
+      <line x1="505" y1="256" x2="505" y2="292" stroke="#526975" stroke-width="1.2" marker-end="url(#architecture-light-arrow)"/>
+      <line x1="505" y1="428" x2="505" y2="388" stroke="#526975" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#architecture-light-arrow)"/>
+      <path d="M 656,330 H 696 Q 704,330 704,322 V 236 Q 704,228 712,228 H 728" fill="none" stroke="#137f87" stroke-width="1.4" marker-end="url(#architecture-light-arrow-accent)"/>
+      <path d="M 656,368 H 684 Q 692,368 692,360 V 348 Q 692,340 700,340 H 728" fill="none" stroke="#526975" stroke-width="1.2" marker-end="url(#architecture-light-arrow)"/>
+
+      <!-- LABELS -->
+      <rect x="286" y="192" width="56" height="12" rx="2" fill="#f5f7fa"/>
+      <text x="314" y="201" fill="#318dbe" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">HTTPS</text>
+      <rect x="358" y="286" width="64" height="12" rx="2" fill="#f5f7fa"/>
+      <text x="390" y="295" fill="#318dbe" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">FEED</text>
+      <rect x="473" y="266" width="64" height="12" rx="2" fill="#f5f7fa"/>
+      <text x="505" y="275" fill="#526975" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CLEAN</text>
+      <rect x="473" y="398" width="64" height="12" rx="2" fill="#f5f7fa"/>
+      <text x="505" y="407" fill="#526975" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">GEO</text>
+      <rect x="668" y="266" width="72" height="12" rx="2" fill="#f5f7fa"/>
+      <text x="704" y="275" fill="#137f87" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">JSON</text>
+      <rect x="654" y="322" width="72" height="12" rx="2" fill="#f5f7fa"/>
+      <text x="690" y="331" fill="#526975" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">RANKED</text>
+
+      <!-- NODES -->
+      <!-- 1 上游：運輸署 + 天氣 -->
+      <rect x="56" y="176" width="220" height="72" rx="6" fill="#f5f7fa"/>
+      <rect x="56" y="176" width="220" height="72" rx="6" fill="#318dbe" stroke="#318dbe" stroke-width="1" fill-opacity="0.10"/>
+      <rect x="64" y="184" width="32" height="12" rx="2" fill="none" stroke="#318dbe" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="80" y="193" fill="#318dbe" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+      <text x="166" y="216" fill="#172c39" font-size="12" font-weight="600" font-family="'Inter', 'Noto Sans HK', sans-serif" text-anchor="middle">運輸署 · 天氣</text>
+      <text x="166" y="234" fill="#526975" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">speeds · incidents · works</text>
+
+      <!-- 2 上游：6 間營運商 -->
+      <rect x="56" y="300" width="220" height="72" rx="6" fill="#f5f7fa"/>
+      <rect x="56" y="300" width="220" height="72" rx="6" fill="#318dbe" stroke="#318dbe" stroke-width="1" fill-opacity="0.10"/>
+      <rect x="64" y="308" width="32" height="12" rx="2" fill="none" stroke="#318dbe" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="80" y="317" fill="#318dbe" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+      <text x="166" y="340" fill="#172c39" font-size="12" font-weight="600" font-family="'Inter', 'Noto Sans HK', sans-serif" text-anchor="middle">6 間交通營運商</text>
+      <text x="166" y="358" fill="#526975" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">KMB · Citybus · GMB · NLB · MTR · Ferry</text>
+
+      <!-- 3 API routes (焦點) -->
+      <rect x="354" y="176" width="302" height="80" rx="6" fill="#f5f7fa"/>
+      <rect x="354" y="176" width="302" height="80" rx="6" fill="#137f87" stroke="#137f87" stroke-width="1" fill-opacity="0.08"/>
+      <rect x="362" y="184" width="36" height="12" rx="2" fill="none" stroke="#137f87" stroke-width="0.8" stroke-opacity="0.50"/>
+      <text x="380" y="193" fill="#137f87" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">API</text>
+      <text x="634" y="240" fill="#137f87" font-size="32" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end" fill-opacity="0.10">01</text>
+      <text x="505" y="220" fill="#172c39" font-size="12" font-weight="600" font-family="'Inter', 'Noto Sans HK', sans-serif" text-anchor="middle">Next.js API routes</text>
+      <text x="505" y="238" fill="#526975" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">18 routes · same-origin · shared cache</text>
+
+      <!-- 4 適配層 -->
+      <rect x="354" y="300" width="302" height="80" rx="6" fill="#f5f7fa"/>
+      <rect x="354" y="300" width="302" height="80" rx="6" fill="#ffffff" stroke="#172c39" stroke-width="1"/>
+      <rect x="362" y="308" width="36" height="12" rx="2" fill="none" stroke="#172c39" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="380" y="317" fill="#172c39" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">LIB</text>
+      <text x="634" y="364" fill="#172c39" font-size="32" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end" fill-opacity="0.06">02</text>
+      <text x="505" y="344" fill="#172c39" font-size="12" font-weight="600" font-family="'Inter', 'Noto Sans HK', sans-serif" text-anchor="middle">適配層 · 快取</text>
+      <text x="505" y="362" fill="#526975" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">*-feed · *-network · polite-fetch · cache</text>
+
+      <!-- 5 靜態地理 -->
+      <rect x="354" y="428" width="302" height="64" rx="6" fill="#f5f7fa"/>
+      <rect x="354" y="428" width="302" height="64" rx="6" fill="#172c39" stroke="#526975" stroke-width="1" fill-opacity="0.05"/>
+      <rect x="362" y="436" width="36" height="12" rx="2" fill="none" stroke="#172c39" stroke-width="0.8" stroke-opacity="0.35"/>
+      <text x="380" y="445" fill="#526975" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">DATA</text>
+      <text x="505" y="468" fill="#172c39" font-size="12" font-weight="600" font-family="'Inter', 'Noto Sans HK', sans-serif" text-anchor="middle">離線地理資料</text>
+      <text x="505" y="484" fill="#526975" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">data/*.json · 15 networks</text>
+
+      <!-- 6 地圖 (焦點) -->
+      <rect x="736" y="176" width="364" height="80" rx="6" fill="#f5f7fa"/>
+      <rect x="736" y="176" width="364" height="80" rx="6" fill="#137f87" stroke="#137f87" stroke-width="1" fill-opacity="0.08"/>
+      <rect x="744" y="184" width="36" height="12" rx="2" fill="none" stroke="#137f87" stroke-width="0.8" stroke-opacity="0.50"/>
+      <text x="762" y="193" fill="#137f87" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">MAP</text>
+      <text x="1092" y="240" fill="#137f87" font-size="32" font-weight="600" font-family="'Geist Mono', monospace" text-anchor="end" fill-opacity="0.10">03</text>
+      <text x="918" y="220" fill="#172c39" font-size="12" font-weight="600" font-family="'Inter', 'Noto Sans HK', sans-serif" text-anchor="middle">地圖 2D / 3D</text>
+      <text x="918" y="238" fill="#526975" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Leaflet · MapLibre GL · OpenFreeMap</text>
+
+      <!-- 7 情報面板 -->
+      <rect x="736" y="300" width="364" height="80" rx="6" fill="#f5f7fa"/>
+      <rect x="736" y="300" width="364" height="80" rx="6" fill="#ffffff" stroke="#172c39" stroke-width="1"/>
+      <rect x="744" y="308" width="36" height="12" rx="2" fill="none" stroke="#172c39" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="762" y="317" fill="#172c39" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">UI</text>
+      <text x="918" y="344" fill="#172c39" font-size="12" font-weight="600" font-family="'Inter', 'Noto Sans HK', sans-serif" text-anchor="middle">情報面板 · 搜尋</text>
+      <text x="918" y="362" fill="#526975" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ranked incidents · layers · GPS follow</text>
+
+      <!-- DEPLOY -->
+      <text x="32" y="530" fill="#8a9aa5" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">DEPLOY</text>
+      <text x="92" y="530" fill="#526975" font-size="9" font-family="'Inter', 'Noto Sans HK', sans-serif">Vercel（Next.js）· Cloudflare Worker（Vinext）· GitHub CI verify</text>
+
+      <!-- LEGEND -->
+      <line x1="32" y1="552" x2="1128" y2="552" stroke="#172c39" stroke-width="0.8" stroke-opacity="0.10"/>
+      <text x="32" y="568" fill="#526975" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+      <rect x="96" y="560" width="14" height="10" rx="2" fill="#137f87" stroke="#137f87" stroke-width="1" fill-opacity="0.08"/>
+      <text x="116" y="568" fill="#526975" font-size="8.5" font-family="'Inter', 'Noto Sans HK', sans-serif">焦點</text>
+      <rect x="176" y="560" width="14" height="10" rx="2" fill="#ffffff" stroke="#172c39" stroke-width="1"/>
+      <text x="196" y="568" fill="#526975" font-size="8.5" font-family="'Inter', 'Noto Sans HK', sans-serif">後端 / 適配</text>
+      <rect x="300" y="560" width="14" height="10" rx="2" fill="#172c39" stroke="#526975" stroke-width="1" fill-opacity="0.05"/>
+      <text x="320" y="568" fill="#526975" font-size="8.5" font-family="'Inter', 'Noto Sans HK', sans-serif">資料</text>
+      <rect x="384" y="560" width="14" height="10" rx="2" fill="#318dbe" stroke="#318dbe" stroke-width="1" fill-opacity="0.10"/>
+      <text x="404" y="568" fill="#526975" font-size="8.5" font-family="'Inter', 'Noto Sans HK', sans-serif">外部</text>
+      <line x1="470" y1="565" x2="498" y2="565" stroke="#137f87" stroke-width="1.4" marker-end="url(#architecture-light-arrow-accent)"/>
+      <text x="506" y="568" fill="#526975" font-size="8.5" font-family="'Inter', 'Noto Sans HK', sans-serif">主流程</text>
+      <line x1="586" y1="565" x2="614" y2="565" stroke="#318dbe" stroke-width="1.2" marker-end="url(#architecture-light-arrow-link)"/>
+      <text x="622" y="568" fill="#526975" font-size="8.5" font-family="'Inter', 'Noto Sans HK', sans-serif">HTTP / API</text>
+      <line x1="722" y1="565" x2="750" y2="565" stroke="#526975" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#architecture-light-arrow)"/>
+      <text x="758" y="568" fill="#526975" font-size="8.5" font-family="'Inter', 'Noto Sans HK', sans-serif">靜態資料</text>
+
+  </svg>
