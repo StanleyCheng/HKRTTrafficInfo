@@ -29,10 +29,10 @@ npm run dev             # Next.js on Windows, Vinext elsewhere; port 5173
 npm run verify          # lint, TypeScript and Node tests
 npm run build           # Vinext / Cloudflare Worker build
 npm start               # local Worker preview
-npm run build:static    # optional static export in out/ (limited feeds)
+npm run build:static    # static export to out/, no server routes (GitHub Pages)
 ```
 
-Use `npx next build` for standard hosted Next.js; Vercel uses this build. GitHub CI validates source and builds the Worker without publishing a Pages site. The optional static script backs up API routes under `node_modules/.cache`, restores them even after build failure, and verifies restored file hashes. `node scripts/build-static.mjs --check-routes` checks that move/restore operation without compiling.
+Use `npx next build` for standard hosted Next.js; Vercel uses this build. GitHub CI validates source, builds the Worker, and publishes the static export to Pages. The static script backs up API routes under `node_modules/.cache`, restores them even after build failure, and verifies restored file hashes. `node scripts/build-static.mjs --check-routes` checks that move/restore operation without compiling.
 
 ```sh
 npm run verify:live -- http://localhost:5173
@@ -46,8 +46,9 @@ The live verifier imports the actual browser adapter for the original seven laye
 
 - [Full hosted version](https://hkrttrafficinfo.vercel.app/): new feeds use same-origin routes with shared caching.
 - [Cloudflare Worker](https://hk-rt-traffic-info.stanley-it.workers.dev/): the full dynamic app with Workers-compatible server routes.
+- [GitHub Pages](https://stanleycheng.github.io/HKRTTrafficInfo/): the reduced static export, which cannot serve same-origin routes.
 
-GitHub Pages deployment is retired because the full app depends on dynamic API routes. The optional static export remains available for limited browser-direct feeds.
+GitHub Pages runs the static export from `scripts/build-static.mjs`. The full app needs the 18 dynamic `app/api` routes, which `output: "export"` cannot emit, so the static build moves `app/api` aside and restores it afterwards. Layers that require a same-origin route show their static-mode notice and link to the hosted version.
 
 The original seven layers fetch official data directly in both modes. New integrations use same-origin routes when hosted and direct adapters when static and CORS permits. `NEXT_PUBLIC_STATIC_EXPORT` is derived from `STATIC_EXPORT=1`. Server-only toggles explain their limitation in both languages and link to the hosted version; override that link with `NEXT_PUBLIC_HOSTED_URL`.
 

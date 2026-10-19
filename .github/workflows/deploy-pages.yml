@@ -1,0 +1,68 @@
+name: GitHub Pages deploy
+
+# Trigger after `Verify` succeeds on `main`, matching the Vercel and Cloudflare
+# deploys. Pages serves the reduced static export produced by
+# `scripts/build-static.mjs`: dynamic `app/api` route handlers are incompatible
+# with `output: "export"`, so the script moves `app/api` aside for the build and
+# restores it afterwards. Layers that need same-origin routes therefore render
+# their static-mode notice and link to the hosted version.
+
+on:
+  workflow_run:
+    workflows: ["Verify"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy per commit at a time; do not cancel in flight so a half-uploaded
+# artifact never becomes the live site.
+concurrency:
+  group: "pages-${{ github.event.workflow_run.head_sha || github.sha }}"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 1
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Build static export
+        run: npm run build:static
+      # Jekyll would strip the `_next` asset directory; the Actions Pages
+      # pipeline serves the artifact verbatim, and this makes that explicit.
+      - name: Disable Jekyll processing
+        run: touch out/.nojekyll
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

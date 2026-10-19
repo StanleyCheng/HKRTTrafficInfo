@@ -98,7 +98,7 @@ The database is **scaffolding only**. `db/schema.ts` is intentionally empty (`ex
 | `public/` | PWA icons/manifest, `images/layers*.png` (Leaflet assets), `vendor/maplibre-gl/` (generated, gitignored). |
 | `vendor/` | `shadcn-tailwind-4.13.0.css` + LICENSE — a shadcn Tailwind 4 theme CSS. **Not imported anywhere** (grep: no references); dead weight. |
 | `build/` | `sites-vite-plugin.ts` + LICENSE — vendored Vite plugin used by `vite.config.ts`. |
-| `.github/workflows/deploy.yml` | GitHub Pages CI (§6.4). |
+| `.github/workflows/deploy-pages.yml` | GitHub Pages CI (§6.4). |
 | `.vercel/`, `.openai/` | Vercel project link and hosting config (§2.4). |
 
 ## 4. Architecture
@@ -252,9 +252,9 @@ Current tree: none needed — the browser calls upstream hosts directly and the 
 
 ### 6.4 Deployment targets
 
-1. **GitHub Pages** — `.github/workflows/deploy.yml`: on push to `main` / dispatch → `npm ci` → `npm run verify` → `npm run build:static` → upload `out/` → `actions/deploy-pages`. This is the only CI in the repo.
-2. **Vercel** — auto-deploy from `main` using `vercel.json` (plain `next build`), project linked in `.vercel/project.json`.
-3. **Cloudflare Worker** — Vinext build (`npm run build` → `dist/server/wrangler.json`) previewed locally with `npm start` (Wrangler `--local`). No wrangler deploy script and no `wrangler.jsonc` at repo root; Worker deployment appears to be preview-only in-repo [INFERENCE].
+1. **GitHub Pages** — `.github/workflows/deploy-pages.yml`: after `Verify` succeeds on `main` (or on dispatch) → `npm ci` → `npm run build:static` → upload `out/` → `actions/deploy-pages`. Serves the reduced static export at https://stanleycheng.github.io/HKRTTrafficInfo/; the 18 `app/api` routes are omitted, so route-dependent layers degrade to their static-mode notice.
+2. **Vercel** — `.github/workflows/deploy-vercel.yml`, triggered by `workflow_run` on a successful `Verify`, running `vercel deploy --prod` (plain `next build`), project linked in `.vercel/project.json`.
+3. **Cloudflare Worker** — `.github/workflows/deploy-cloudflare.yml`, also triggered by `workflow_run` on a successful `Verify`, publishing the Vinext build (`npm run build` → `dist/server/wrangler.json`). `npm start` previews it locally with Wrangler `--local`.
 
 ## 7. Known issues and limitations
 
