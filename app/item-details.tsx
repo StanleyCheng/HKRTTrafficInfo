@@ -6,6 +6,7 @@ import { formatRecordDate, integrationMessages, messages } from '@/lib/i18n';
 import { hkTime, layerText, layers, parkingCounts, speedLevelColors, type Camera, type Language } from '@/lib/traffic';
 import type { BusRouteSelection } from '@/lib/bus-route';
 import SnapshotImage from './snapshot-image';
+import { currentArrivals } from '@/lib/arrival-display';
 
 export default function ItemDetails({ camera, language, now, stale, onActivity, activeBusSelection, onShowRoute, routeStatus, status = 'ready', onRetry }: {
   camera: Camera;
@@ -25,6 +26,7 @@ export default function ItemDetails({ camera, language, now, stale, onActivity, 
   const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
   const district = language === 'en' ? camera.districtEn || camera.district : camera.district;
   const region = language === 'en' ? camera.regionEn || camera.region : camera.region;
+  const arrivals = currentArrivals(camera, now);
 
   return <div className="detail item-detail">
     <h2 className="item-detail-title" id="item-detail-title">{name}</h2>
@@ -52,12 +54,13 @@ export default function ItemDetails({ camera, language, now, stale, onActivity, 
       ? camera.positionSource !== 'gps' && <p className="detail-note">{extra.estimated}</p>
       : camera.estimated && <p className="detail-note">{extra.estimated}</p>}
     {routeStatus}
+    {camera.information && <p className="detail-note">{camera.information[language === 'en' ? 'en' : 'zh']}</p>}
     {camera.positionType === 'vehicle' && camera.kind === 'ferry' && camera.positionSource === 'gps' && <p className="detail-note">{extra.gps}</p>}
     {stale && <p className="warning-text">{extra.stale}</p>}
     {status !== 'ready' && <p className="item-detail-status" role={status === 'error' ? 'alert' : 'status'}>
       {status === 'loading' ? <><LoaderCircle size={13} className="spin"/>{copy.loadingOfficialData}</> : <>{extra.busRouteError}{onRetry && <> <button type="button" className="text-button" onClick={onRetry}>{copy.retry}</button></>}</>}
     </p>}
-    {status === 'ready' && camera.arrivals && <section className="arrival-board"><h5>{extra.arrivals}</h5>{camera.arrivals.length ? <ul>{camera.arrivals.map((call, index) => {
+    {status === 'ready' && camera.arrivals && <section className="arrival-board"><h5>{extra.arrivals}</h5>{arrivals.length ? <ul>{arrivals.map((call, index) => {
       const eta = call.eta ? Date.parse(call.eta) : NaN;
       const minutes = Number.isFinite(eta) ? Math.max(0, Math.ceil((eta - now) / 60000)) : call.minutes;
       return <li key={`${call.route}-${index}`}><span className="arrival-route-choice"><strong className="arrival-route">{call.route}</strong>{call.tracking && <button type="button" className="bus-route-button" aria-pressed={Boolean(activeBusSelection && JSON.stringify(activeBusSelection) === JSON.stringify(call.tracking))} aria-label={`${extra.showBusRoute} ${call.route} · ${language === 'en' ? call.destinationEn || call.destination : call.destination}`} onClick={() => onShowRoute(call.tracking!)}>{extra.showBusRoute}</button>}</span><span className="arrival-destination">{language === 'en' ? call.destinationEn || call.destination : call.destination}{call.platform && <small>{extra.platform} {call.platform}</small>}<small>{call.timeType ? call.timeType === 'D' ? extra.departure : extra.arrival : call.scheduled ? extra.scheduled : extra.live}{(language === 'en' ? call.remarkEn : call.remark) ? ` · ${language === 'en' ? call.remarkEn : call.remark}` : ''}</small></span><strong className="arrival-minutes">{minutes ?? '—'}<small>{extra.minutes}</small></strong></li>;

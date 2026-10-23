@@ -23,16 +23,16 @@ export const GET = cachedFeed<ApproachesResponse>(FRESH_MS, loadApproaches, (err
 let places: { at: number; locations: unknown; traditional: unknown } | null = null
 
 async function loadApproaches(): Promise<ApproachesResponse> {
-  const placed = await loadPlaces()
-  const details = await Promise.all(
+  const signal = AbortSignal.timeout(45_000)
+  const [placed, details] = await Promise.all([loadPlaces(signal), Promise.all(
     DETAIL_IDS.map(async (id) => {
       try {
-        return [id, await readJson(detailUrl(id))] as const
+        return [id, await readJson(detailUrl(id), FRESH_MS, signal)] as const
       } catch (error) {
         return [id, error instanceof Error ? error.message : "Journey time board failed"] as const
       }
     }),
-  )
+  )])
 
   const detailsById: Record<string, unknown> = {}
   const failures: string[] = []
@@ -54,12 +54,14 @@ async function loadApproaches(): Promise<ApproachesResponse> {
   }
 }
 
-async function loadPlaces(): Promise<{ at: number; locations: unknown; traditional: unknown }> {
+async function loadPlaces(signal: AbortSignal): Promise<{ at: number; locations: unknown; traditional: unknown }> {
   const now = Date.now()
   if (places && now - places.at < PLACE_MS) return places
   try {
-    const locations = await readJson(LOCATIONS_URL, PLACE_MS)
-    const traditional = await readJson(LOCATIONS_TC_URL, PLACE_MS).catch(() => places?.traditional ?? null)
+    const [locations, traditional] = await Promise.all([
+      readJson(LOCATIONS_URL, PLACE_MS, signal),
+      readJson(LOCATIONS_TC_URL, PLACE_MS, AbortSignal.any([signal, AbortSignal.timeout(5_000)])).catch(() => places?.traditional ?? null),
+    ])
     places = { at: now, locations, traditional }
     return places
   } catch (error) {
@@ -72,9 +74,10 @@ function detailUrl(id: string): string {
   return `https://www.hkemobility.gov.hk/api/drss/getTextInfo/JourneyTime/en/${encodeURIComponent(id)}`
 }
 
-async function readJson(url: string, ttlMs = FRESH_MS): Promise<unknown> {
+async function readJson(url: string, ttlMs = FRESH_MS, signal?: AbortSignal): Promise<unknown> {
   const response = await fetchUpstream(url, ttlMs, {
     timeoutMs: 40_000,
+    signal,
     headers: {
       Accept: "application/json",
       Referer: "https://www.hkemobility.gov.hk/en/",

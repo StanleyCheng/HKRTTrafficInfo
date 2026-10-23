@@ -487,7 +487,7 @@ function hongKongDate(now: number): string {
 async function rememberHolidays(now: number): Promise<void> {
   if (holidays && now - holidays.at < 24 * 60 * 60 * 1000) return
   try {
-    const response = await fetchUpstream("https://www.1823.gov.hk/common/ical/en.json", 24 * 60 * 60 * 1000, { timeoutMs: 8_000 })
+    const response = await fetchUpstream("https://www.1823.gov.hk/common/ical/en.json", ETA_FRESH_MS, { timeoutMs: 8_000 })
     if (response.status !== 200) throw new Error("Holiday calendar unavailable")
     const body = JSON.parse(new TextDecoder().decode(response.body).replace(/^\uFEFF/, "")) as { vcalendar?: { vevent?: { dtstart?: unknown[] }[] }[] }
     const dates = (body.vcalendar?.[0]?.vevent ?? []).map((event) => event.dtstart?.[0])
@@ -510,7 +510,9 @@ async function rememberTimetables(now: number): Promise<void> {
   await pool(TIMETABLE_URLS, FETCH_LIMIT, async (url) => {
     if (now - (timetableText.get(url)?.at ?? 0) < 24 * 60 * 60 * 1000) return
     try {
-      const response = await fetchUpstream(url, 24 * 60 * 60 * 1000, { timeoutMs: 8_000, headers: { Accept: "text/csv" } })
+      // Only parsed timetables receive the daily lifetime below. Bad HTTP-200
+      // maintenance pages must leave the wire cache on the next retry.
+      const response = await fetchUpstream(url, ETA_FRESH_MS, { timeoutMs: 8_000, headers: { Accept: "text/csv" } })
       if (response.status !== 200) throw new Error("Timetable unavailable")
       const csv = new TextDecoder().decode(response.body)
       const parsed = url.includes("sunferry") ? parseSunTimetable(csv, now, holiday) : parseHkkfTimetable(csv, now, holiday, HKKF_ROUTES)

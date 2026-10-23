@@ -2,6 +2,10 @@ import type { Camera, Language } from './traffic';
 import { vehicleIconHeadingOffset } from './vehicle-icons';
 
 export const symbols = {
+  'mtr-bus': '<rect x="4" y="4" width="16" height="15" rx="3"/><path d="M4 11h16M7 19v3m10-3v3M7 15h1m8 0h1"/>',
+  tram: '<rect x="5" y="5" width="14" height="14" rx="3"/><path d="M8 2h8M12 2v3M5 11h14M8 19l-2 3m10-3 2 3"/>',
+  access: '<circle cx="12" cy="4" r="2"/><path d="M10 8v7h7l3 6M10 10h6M7 11a6 6 0 1 0 8 9"/>',
+  taxi: '<path d="M3 17V11l3-5h12l3 5v6H3ZM3 11h18M7 17v3m10-3v3M9 3h6"/>',
   redlight: '<rect x="8" y="2" width="8" height="20" rx="3"/><path d="M5 5h3m8 0h3M5 12h3m8 0h3M5 19h3m8 0h3"/><circle cx="12" cy="7" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="17" r="1"/>',
   speed: '<path d="M4 18a9 9 0 1 1 16 0M12 13l5-5M6 9l1 1M12 5v2M4 15h2m12 0h2"/><circle cx="12" cy="14" r="2"/>',
   snapshot: '<rect x="3" y="6" width="14" height="12" rx="2"/><path d="m17 10 4-3v10l-4-3"/>',

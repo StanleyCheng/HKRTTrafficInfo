@@ -135,7 +135,7 @@ async function fetchEta(routeId: string, stopId: string, signal: AbortSignal): P
     const text = new TextDecoder().decode(response.body)
     if (!text) return null
     const body = JSON.parse(text) as { estimatedArrivals?: Arrival[]; generateTime?: string }
-    const rows = arrivalRows<Arrival>(body.estimatedArrivals)
+    const rows = arrivalRows<Arrival>(body.estimatedArrivals, "nlb")
     return arrivalSnapshot(rows, response.fetchedAt, [body.generateTime, ...(rows ?? []).map(row => row.generateTime)])
   } catch {
     return null

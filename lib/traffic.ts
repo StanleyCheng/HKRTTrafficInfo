@@ -1,7 +1,8 @@
 import { integrationLayerNames } from './i18n.ts';
 import type { BusRouteSelection } from './bus-route.ts';
 export type OriginalLayerKind = 'redlight' | 'speed' | 'snapshot' | 'flow' | 'incident' | 'parking' | 'rainfall';
-export type IntegrationKind = 'crossing' | 'works' | 'toll' | 'boundary' | 'weather-warning' | 'mtr' | 'lrt' | 'kmb' | 'citybus' | 'gmb' | 'nlb' | 'ferry';
+export type CommuterKind = 'mtr-bus' | 'tram' | 'access' | 'taxi';
+export type IntegrationKind = 'crossing' | 'works' | 'toll' | 'boundary' | 'weather-warning' | 'mtr' | 'lrt' | 'kmb' | 'citybus' | 'gmb' | 'nlb' | 'ferry' | CommuterKind;
 export type LayerKind = OriginalLayerKind | IntegrationKind;
 export type DetailRow = { label: string; labelEn: string; value: string; valueEn?: string };
 export type Arrival = { route: string; destination: string; destinationEn: string; minutes: number | null; eta?: string; firstFerry?: string; lastFerry?: string; observedAt?: string; timeType?: 'A' | 'D'; platform?: string; scheduled?: boolean; remark?: string; remarkEn?: string; tracking?: BusRouteSelection };
@@ -26,6 +27,7 @@ export type Camera = {
   rainfallMm?: number;
   text?: string; textEn?: string;
   dataUpdated?: string;
+  information?: { en: string; zh: string };
   nextStation?: { name: string; nameEn: string };
   // Where a moving vehicle sits along the path it follows, as [lng, lat] pairs with cumulative
   // metre offsets. Refresh corrections travel with this distance instead of chording across a
@@ -63,7 +65,9 @@ export type CameraData = {
   stale?: boolean; observedAt?: string | null; paths?: MapPath[]; payload?: unknown; feedNote?: string; feedError?: string;
 };
 export const originalKinds: OriginalLayerKind[] = ['flow', 'incident', 'redlight', 'speed', 'snapshot', 'parking', 'rainfall'];
-export const integrationKinds: IntegrationKind[] = ['crossing', 'works', 'toll', 'boundary', 'weather-warning', 'mtr', 'lrt', 'kmb', 'citybus', 'gmb', 'nlb', 'ferry'];
+export const commuterKinds: CommuterKind[] = ['mtr-bus', 'tram', 'access', 'taxi'];
+export const isCommuterKind = (kind: string): kind is CommuterKind => commuterKinds.some(value => value === kind);
+export const integrationKinds: IntegrationKind[] = ['crossing', 'works', 'toll', 'boundary', 'weather-warning', 'mtr', 'lrt', 'kmb', 'citybus', 'gmb', 'nlb', 'ferry', ...commuterKinds];
 export const kinds: LayerKind[] = [...originalKinds, ...integrationKinds];
 type Layer = { name: string; nameEn: string; short: string; shortEn: string; caption: string; captionEn: string; color: string; dataset: string; source: string; serverOnly?: boolean };
 const extraLayer = (kind: IntegrationKind, color: string, source: string, serverOnly = false): Layer => ({ ...integrationLayerNames[kind], color, source, dataset: '', serverOnly });
@@ -87,11 +91,16 @@ export const layers: Record<LayerKind, Layer> = {
   gmb: extraLayer('gmb', '#2f8f5b', 'https://data.etagmb.gov.hk/'),
   nlb: extraLayer('nlb', '#3b6ea5', 'https://www.nlb.com.hk/'),
   ferry: extraLayer('ferry', '#1f7a8c', 'https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/', true),
+  'mtr-bus': extraLayer('mtr-bus', '#a43b55', 'https://data.gov.hk/en-data/dataset/mtr-mtr_bus-mtr-bus-eta-data', true),
+  tram: extraLayer('tram', '#278273', 'https://www.hktramways.com/en/schedules-fares/'),
+  access: extraLayer('access', '#426fb6', 'https://data.gov.hk/en-data/dataset/mtr-data-routes-fares-barrier-free-facilities'),
+  taxi: extraLayer('taxi', '#a56a12', 'https://data.gov.hk/en-data/dataset/hk-td-tis_37-taxi-stands'),
 };
 export const staticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === '1';
 export const hostedUrl = process.env.NEXT_PUBLIC_HOSTED_URL || 'https://hkrttrafficinfo.vercel.app/';
 export const layerAvailable = (kind: LayerKind) => !staticExport || !layers[kind].serverOnly;
 export function feedMaxAgeMs(kind: LayerKind): number {
+  if (kind === 'tram' || kind === 'access' || kind === 'taxi') return 24 * 60 * 60000;
   if (kind === 'toll') return 12 * 60 * 60000;
   if (kind === 'mtr' || kind === 'lrt') return 300000;
   if (kind === 'works' || originalKinds.includes(kind as OriginalLayerKind)) return 10 * 60000;
@@ -105,15 +114,15 @@ export function isFeedDataStale(kind: LayerKind, data: CameraData | undefined, n
   return Boolean(data.stale || !Number.isFinite(age) || age < -300000 || age > feedMaxAgeMs(kind));
 }
 export function isCameraDataStale(camera: Camera, now = Date.now()): boolean {
-  if (!camera.dataUpdated) return camera.kind === 'crossing' || camera.kind === 'kmb' || camera.kind === 'citybus' || camera.kind === 'gmb' || camera.kind === 'nlb';
+  if (!camera.dataUpdated) return camera.kind === 'crossing' || camera.kind === 'kmb' || camera.kind === 'citybus' || camera.kind === 'gmb' || camera.kind === 'nlb' || camera.kind === 'mtr-bus';
   const age = now - Date.parse(camera.dataUpdated);
   return !Number.isFinite(age) || age < -300000 || age > feedMaxAgeMs(camera.kind);
 }
 export const layerGroups: { id: 'roads' | 'conditions' | 'rail' | 'bus' | 'ferry'; kinds: LayerKind[] }[] = [
   { id: 'roads', kinds: ['flow', 'incident', 'crossing', 'works', 'toll', 'redlight', 'speed', 'snapshot', 'parking'] },
-  { id: 'conditions', kinds: ['boundary', 'rainfall', 'weather-warning'] },
-  { id: 'rail', kinds: ['mtr', 'lrt'] },
-  { id: 'bus', kinds: ['kmb', 'citybus', 'gmb', 'nlb'] },
+  { id: 'conditions', kinds: ['boundary', 'rainfall', 'weather-warning', 'access'] },
+  { id: 'rail', kinds: ['mtr', 'lrt', 'tram'] },
+  { id: 'bus', kinds: ['kmb', 'citybus', 'gmb', 'nlb', 'mtr-bus', 'taxi'] },
   { id: 'ferry', kinds: ['ferry'] },
 ];
 export const speedLevelColors: Record<SpeedLevel, string> = { free: '#1f9d63', moderate: '#d49b25', slow: '#e15d69', unknown: '#8a9aa5' };

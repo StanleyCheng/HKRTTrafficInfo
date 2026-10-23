@@ -43,10 +43,13 @@ export function parseWarnsum(payload: unknown, lang: HkoLang = "tc"): WeatherWar
   }
   const warnings: WeatherWarning[] = []
   for (const [key, value] of Object.entries(payload)) {
-    if (typeof value !== "object" || value === null) continue
+    if (!(key in SHORT_NAME.en) || typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error("Weather warnings were not in the published shape")
+    }
     const row = value as Record<string, unknown>
     const action = text(row.actionCode)
     const code = text(row.code) || key
+    if (!text(row.code) && !text(row.name) && !action) throw new Error("Weather warning record unavailable")
     if (action === "CANCEL" || code === "CANCEL") continue
     const name = text(row.name) || SHORT_NAME[lang][key] || SHORT_NAME.en[key] || "Weather warning"
     const type = text(row.type)

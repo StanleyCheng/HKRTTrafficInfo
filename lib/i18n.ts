@@ -385,6 +385,10 @@ export function formatRecordDate(value: string, language: Language) {
 }
 
 export const integrationLayerNames = {
+  'mtr-bus': { name: '港鐵巴士及接駁巴士', nameEn: 'MTR buses and feeder buses', short: '港鐵巴士', shortEn: 'MTR bus', caption: '附近車站及公布的到站時間', captionEn: 'Nearby stops and published arrivals' },
+  tram: { name: '電車', nameEn: 'Trams', short: '電車', shortEn: 'Trams', caption: '車站、路線及公布車費', captionEn: 'Stops, routes and published fares' },
+  access: { name: '無障礙設施及步行連接', nameEn: 'Accessible access and walking links', short: '無障礙', shortEn: 'Access', caption: '港鐵設施及附近已公布行人路網', captionEn: 'MTR facilities and nearby published paths' },
+  taxi: { name: '的士站', nameEn: 'Taxi stands', short: '的士', shortEn: 'Taxis', caption: '已公布的士站位置及類型', captionEn: 'Published stand locations and types' },
   crossing: { name: '過海行車時間', nameEn: 'Harbour journey times', short: '過海', shortEn: 'Crossings', caption: '官方行車時間顯示屏', captionEn: 'Official journey time boards' },
   works: { name: '道路工程', nameEn: 'Road works', short: '工程', shortEn: 'Works', caption: '進行中及籌備中的道路工程', captionEn: 'Active and planned road works' },
   toll: { name: '收費位置', nameEn: 'Toll points', short: '收費', shortEn: 'Tolls', caption: '隧道及道路收費位置', captionEn: 'Tunnel and road toll locations' },

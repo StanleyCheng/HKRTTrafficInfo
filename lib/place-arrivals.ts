@@ -5,8 +5,17 @@ export type HeldRows<T> = { at: number; rows: T[] }
 
 // A successful HTTP response with a changed/error payload must not replace the
 // last usable arrival board. An explicit empty array is a valid no-service board.
-export function arrivalRows<T>(value: unknown): T[] | null {
-  if (!Array.isArray(value) || value.some(row => !row || typeof row !== "object" || Array.isArray(row))) return null
+export type ArrivalRowKind = 'bus' | 'gmb' | 'nlb' | 'gmb-eta'
+const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
+export function validArrivalRow(row: Record<string, unknown>, kind: ArrivalRowKind): boolean {
+  if (kind === 'bus') return typeof row.route === 'string' && row.route.length > 0 && (row.dir === 'I' || row.dir === 'O') && (row.eta === null || typeof row.eta === 'string')
+  if (kind === 'nlb') return typeof row.estimatedArrivalTime === 'string' && row.estimatedArrivalTime.length > 0
+  if (kind === 'gmb-eta') return typeof row.timestamp === 'string' || typeof row.diff === 'number' && Number.isFinite(row.diff)
+  return (typeof row.route_id === 'number' || typeof row.route_id === 'string') && (row.route_seq === 1 || row.route_seq === 2)
+    && (row.eta === null || Array.isArray(row.eta) && row.eta.every(item => record(item) && validArrivalRow(item, 'gmb-eta')))
+}
+export function arrivalRows<T>(value: unknown, kind?: ArrivalRowKind): T[] | null {
+  if (!Array.isArray(value) || value.some(row => !record(row) || !Object.keys(row).length || kind && !validArrivalRow(row, kind))) return null
   return value as T[]
 }
 

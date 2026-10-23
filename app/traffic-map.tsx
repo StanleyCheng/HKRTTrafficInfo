@@ -40,7 +40,7 @@ const OPENFREEMAP_ATTRIBUTION = '<a href="https://openfreemap.org/" target="_bla
 
 // Bus stops are the four bus operators' published stops; the list comes from the
 // shared bus feed kinds so a new operator only needs wiring in one place.
-const isBusStop = (camera: Camera) => (busKinds as readonly LayerKind[]).includes(camera.kind);
+const isBusStop = (camera: Camera) => camera.kind === 'mtr-bus' || (busKinds as readonly LayerKind[]).includes(camera.kind);
 const hasDelayedHover = (camera: Camera) => camera.kind === 'snapshot' || camera.kind === 'ferry' && camera.positionType === 'pier';
 // Red-light and speed-camera points never carry the browser's delayed native title, and
 // their instant hover tooltip is a desktop-pointer affordance only: a tap opens the

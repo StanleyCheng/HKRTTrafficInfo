@@ -1,5 +1,5 @@
 import { integrationMessages as labels, messages, boundaryNames, tollNames } from './i18n.ts';
-import { hkTime, layers, staticExport, type Arrival, type Camera, type CameraData, type DetailRow, type FlowSegment, type IntegrationKind, type Language, type MapPath } from './traffic.ts';
+import { hkTime, layers, staticExport, isCommuterKind, type CommuterKind, type Arrival, type Camera, type CameraData, type DetailRow, type FlowSegment, type IntegrationKind, type Language, type MapPath } from './traffic.ts';
 import type { ApproachesResponse, ControlPointsResponse, FerryResponse, FerryVessel, LrtResponse, MtrResponse, CitybusResponse, WarningsResponse } from './types.ts';
 import { linesThrough, lineRecord, mtrStationCollection, mtrTrackCollection, projectNetworkTrain, stationRecord } from './mtr-network.ts';
 import { lrtColor, lrtStation, lrtStationCollection, lrtTrackCollection, projectLrtTrain } from './lrt-network.ts';
@@ -17,22 +17,23 @@ export type MapViewport = { lng: number; lat: number; zoom: number };
 export const initialViewport: MapViewport = { lng: 114.13, lat: 22.355, zoom: 11 };
 export const busKinds = ['kmb', 'citybus', 'gmb', 'nlb'] as const;
 export function integrationRequestKey(kind: IntegrationKind, view: MapViewport, language: Language): string {
+  if (kind === 'mtr-bus' || kind === 'access' || kind === 'taxi') return `${view.lng.toFixed(3)}:${view.lat.toFixed(3)}:${Math.floor(view.zoom)}`;
   if (busKinds.includes(kind as typeof busKinds[number])) return `${view.lng}:${view.lat}:${view.zoom}`;
   // Warning names and details are returned in the requested language. Other
   // envelopes carry both languages and can survive a language switch.
   return kind === 'weather-warning' ? language : '';
 }
 export function viewportNote(kind: string, view: MapViewport): 'viewportBus' | 'viewportGmb' | 'viewportNlb' | undefined {
-  if ((kind === 'kmb' || kind === 'citybus') && view.zoom < 13) return 'viewportBus';
+  if ((kind === 'kmb' || kind === 'citybus' || kind === 'mtr-bus') && view.zoom < 13) return 'viewportBus';
   if (kind === 'gmb' && view.zoom < 17) return 'viewportGmb';
   if (kind === 'nlb' && (view.lng < 113.8 || view.lng > 114.05 || view.lat < 22.18 || view.lat > 22.34)) return 'viewportNlb';
 }
-const endpoints: Record<IntegrationKind, string> = { crossing: 'approaches', works: 'works', toll: 'tolls', boundary: 'control-points', 'weather-warning': 'warnings', mtr: 'mtr', lrt: 'lrt', kmb: 'kmb', citybus: 'citybus', gmb: 'gmb', nlb: 'nlb', ferry: 'ferry' };
+const endpoints: Record<Exclude<IntegrationKind, CommuterKind>, string> = { crossing: 'approaches', works: 'works', toll: 'tolls', boundary: 'control-points', 'weather-warning': 'warnings', mtr: 'mtr', lrt: 'lrt', kmb: 'kmb', citybus: 'citybus', gmb: 'gmb', nlb: 'nlb', ferry: 'ferry' };
 // Visible pages keep every transit schedule live on this cadence. Rail slices
 // (16 MTR / 12 LRT station boards per request) need 30-second turns to cycle all
 // 121 MTR and 68 LRT boards inside the feeds' five-minute memory without
 // tripping the upstream rate limit; buses and ferries turn over more slowly.
-export const pollingMs: Record<IntegrationKind, number> = { crossing: 120000, works: 300000, toll: 21600000, boundary: 60000, 'weather-warning': 60000, mtr: 30000, lrt: 30000, kmb: 30000, citybus: 30000, gmb: 30000, nlb: 30000, ferry: 60000 };
+export const pollingMs: Record<IntegrationKind, number> = { crossing: 120000, works: 300000, toll: 21600000, boundary: 60000, 'weather-warning': 60000, mtr: 30000, lrt: 30000, kmb: 30000, citybus: 30000, gmb: 30000, nlb: 30000, ferry: 60000, 'mtr-bus': 30000, tram: 86400000, access: 300000, taxi: 86400000 };
 type Envelope = { ok: boolean; complete?: boolean; error?: string; fetchedAt?: string; observedAt?: string | null; capturedAt?: string | null; stale?: boolean };
 type FeaturesResponse = Envelope & { works?: GeoJSON.FeatureCollection; tolls?: GeoJSON.FeatureCollection };
 
@@ -46,6 +47,10 @@ export async function getIntegrationData(kind: IntegrationKind, view: MapViewpor
   signal?.throwIfAborted();
   const note = viewportNote(kind, view);
   if (note) return { ...base(kind, { ok: true }), feedNote: note };
+  if (isCommuterKind(kind)) {
+    const { getCommuterData } = await import('./commuter-client.ts');
+    return getCommuterData(kind, view, signal);
+  }
   let payload: Envelope;
   if (staticExport) {
     const timeout = AbortSignal.timeout(55000);

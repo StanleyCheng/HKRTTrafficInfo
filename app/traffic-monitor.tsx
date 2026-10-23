@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, lazy, Suspense, type CSSProperties } from 'react';
 import Image from 'next/image';
-import { Box, Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, Search, ShieldCheck, SlidersHorizontal, SquareParking, TrafficCone, TrainFront, TriangleAlert, Video, X } from 'lucide-react';
+import { Box, Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, Search, ShieldCheck, SlidersHorizontal, SquareParking, TrafficCone, TrainFront, TriangleAlert, Video, X, BusFront, TramFront, Accessibility, CarTaxiFront } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { messages, integrationMessages } from '@/lib/i18n';
 import { getCameraData } from '@/lib/traffic-client';
@@ -28,7 +28,7 @@ const TrafficMap3D = lazy(() => import('./traffic-map-3d'));
 type LayerState = { data?: CameraData; loading: boolean; error: boolean };
 type BusRouteState = { selection: BusRouteSelection; data?: BusRouteResponse; error?: boolean; loading: boolean };
 
-const icons = { redlight: TrafficCone, speed: Gauge, snapshot: Video, flow: Navigation, incident: TriangleAlert, parking: SquareParking, rainfall: CloudRain, crossing: Clock3, works: TrafficCone, toll: MapPin, boundary: ShieldCheck, 'weather-warning': CloudRain, mtr: Navigation, lrt: Navigation, kmb: MapPin, citybus: MapPin, gmb: MapPin, nlb: MapPin, ferry: Navigation };
+const icons = { 'mtr-bus': BusFront, tram: TramFront, access: Accessibility, taxi: CarTaxiFront, redlight: TrafficCone, speed: Gauge, snapshot: Video, flow: Navigation, incident: TriangleAlert, parking: SquareParking, rainfall: CloudRain, crossing: Clock3, works: TrafficCone, toll: MapPin, boundary: ShieldCheck, 'weather-warning': CloudRain, mtr: Navigation, lrt: Navigation, kmb: MapPin, citybus: MapPin, gmb: MapPin, nlb: MapPin, ferry: Navigation };
 const languageStorageKey = 'hk-traffic-language-v1';
 const basemapStorageKey = 'hk-traffic-basemap-v1';
 const languageListeners = new Set<() => void>();

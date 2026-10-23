@@ -361,13 +361,26 @@ export default function TrafficMap3D(props: Props) {
   useEffect(() => {
     if (!routeStop || !busSelection || routeStop.key !== routeKey || !stopCamera) return;
     const controller = new AbortController(), camera = stopCamera;
-    queueMicrotask(() => { if (!controller.signal.aborted) setRouteDetails({ camera, language, status: 'loading' }); });
-    getBusStopArrivals({ ...busSelection, stopId: routeStop.stop.id, stopSeq: routeStop.stop.seq }, controller.signal).then(data => {
-      if (controller.signal.aborted) return;
-      if (!data.ok || data.stale || data.error || !data.observedAt) throw new Error('Stop arrivals unavailable');
-      setRouteDetails({ camera: { ...camera, arrivals: data.arrivals, dataUpdated: data.observedAt }, language, status: 'ready' });
-    }).catch(() => { if (!controller.signal.aborted) setRouteDetails({ camera, language, status: 'error' }); });
-    return () => controller.abort();
+    let pending = false;
+    const refresh = async () => {
+      if (pending || controller.signal.aborted || document.visibilityState !== 'visible') return;
+      pending = true;
+      try {
+        const data = await getBusStopArrivals({ ...busSelection, stopId: routeStop.stop.id, stopSeq: routeStop.stop.seq }, controller.signal);
+        if (controller.signal.aborted) return;
+        if (!data.ok || data.stale || data.error || !data.observedAt) throw new Error('Stop arrivals unavailable');
+        setRouteDetails({ camera: { ...camera, arrivals: data.arrivals, dataUpdated: data.observedAt }, language, status: 'ready' });
+      } catch {
+        if (!controller.signal.aborted) setRouteDetails(previous => previous?.camera.id === camera.id && previous.language === language
+          ? { ...previous, status: 'error' } : { camera, language, status: 'error' });
+      } finally { pending = false; }
+    };
+    queueMicrotask(() => { if (!controller.signal.aborted) { setRouteDetails({ camera, language, status: 'loading' }); void refresh(); } });
+    const timer = setInterval(() => void refresh(), 30_000);
+    const resume = () => void refresh();
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('online', resume);
+    return () => { controller.abort(); clearInterval(timer); document.removeEventListener('visibilitychange', resume); window.removeEventListener('online', resume); };
     // camera is derived from this stop and route; feed refreshes should not reset its popup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeStop, routeKey, busSelection, language]);

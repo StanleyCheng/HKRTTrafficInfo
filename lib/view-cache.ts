@@ -14,13 +14,29 @@ export function readViewport(request: Request): { lng: number; lat: number; zoom
 export function viewportAllowed(feed: string, lng: number, lat: number, zoom: number): boolean {
   if (![lng, lat, zoom].every(Number.isFinite) || Math.abs(lng) > 180 || Math.abs(lat) > 90 || zoom < 0 || zoom > 24) return false
   if (feed === "gmb") return zoom >= 17
-  if (feed === "kmb" || feed === "citybus") return zoom >= 13
+  if (feed === "kmb" || feed === "citybus" || feed === "mtr-bus") return zoom >= 13
   if (feed === "nlb") return lng >= 113.8 && lng <= 114.05 && lat >= 22.18 && lat <= 22.34
   return true
 }
 
+type Cached<T> = { at: number; body: T }
+
+/**
+ * Last-good bodies stay available to failed refreshes for as long as the
+ * process holds them. A caller whose observations expire quickly passes
+ * `keepMs` so an expired reading is reported as a failure instead of being
+ * relabelled `stale`.
+ */
+function cacheHit<T extends OkBody>(candidate: Cached<T> | undefined, now: number, keepMs: number | undefined): Cached<T> | undefined {
+  if (!candidate || keepMs == null) return candidate
+  const observed = "observedAt" in candidate.body ? Date.parse(String(candidate.body.observedAt)) : Number.NaN
+  const sourceAt = Number.isFinite(observed) ? observed : candidate.at
+  return now - candidate.at <= keepMs && now - sourceAt <= keepMs ? candidate : undefined
+}
+
 export function viewCachedGet<T extends OkBody>(options: {
   freshMs: number
+  keepMs?: number
   load: (lng: number, lat: number, now: number, zoom: number) => Promise<T>
   missing: () => T
   failed: (error: unknown) => T
@@ -39,7 +55,7 @@ export function viewCachedGet<T extends OkBody>(options: {
     }
     const key = options.cacheKey?.(lng, lat, zoom) ?? `${lng.toFixed(3)},${lat.toFixed(3)},${Math.floor(zoom)}`
     const now = Date.now()
-    const hit = cached.get(key)
+    const hit = cacheHit(cached.get(key), now, options.keepMs)
     if (hit && now - hit.at < options.freshMs) return Response.json(hit.body)
     let task = pending.get(key)
     if (!task) {
@@ -74,6 +90,7 @@ export function viewCachedGet<T extends OkBody>(options: {
  */
 export function selectionCachedGet<T extends OkBody>(options: {
   freshMs: number
+  keepMs?: number
   cacheKey: (request: Request) => string | null
   load: (request: Request, now: number) => Promise<T>
   invalid: () => T
@@ -85,7 +102,7 @@ export function selectionCachedGet<T extends OkBody>(options: {
     const key = options.cacheKey(request)
     if (key == null) return Response.json(options.invalid(), { status: 400 })
     const now = Date.now()
-    const hit = cached.get(key)
+    const hit = cacheHit(cached.get(key), now, options.keepMs)
     if (hit && now - hit.at < options.freshMs) return Response.json(hit.body)
     let task = pending.get(key)
     if (!task) {

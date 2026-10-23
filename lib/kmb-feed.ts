@@ -167,7 +167,7 @@ async function fetchStop(stopId: string, signal: AbortSignal): Promise<HeldRows<
     }), signal)
     if (response.servedFromCache || response.status < 200 || response.status >= 300) return null
     const body = JSON.parse(new TextDecoder().decode(response.body)) as { data?: EtaRow[]; generated_timestamp?: string }
-    const rows = arrivalRows<EtaRow>(body.data)
+    const rows = arrivalRows<EtaRow>(body.data, "bus")
     return arrivalSnapshot(rows, response.fetchedAt, [body.generated_timestamp, ...(rows ?? []).map(row => row.data_timestamp)])
   } catch {
     return null
