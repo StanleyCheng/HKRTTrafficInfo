@@ -17,6 +17,7 @@ export type MapSession = {
   routeLabels: boolean
   revealedRoute: string | null
   nearbyRadius: number
+  showNearbyOnMap: boolean
   followLocation: boolean
   routeStop: { key: string; stop: BusRouteStop } | null
   intelOpen: boolean
@@ -27,7 +28,7 @@ export type MapSession = {
   searchPage: number
 }
 export const sessionStorageKey = 'hk-traffic-session-v1'
-export const defaultSession: MapSession = { version: 1, view: null, mapMode: '2d', camera3D: { pitch: 55, bearing: -20 }, busSelection: null, selectedPlace: null, openControl: null, dockGroup: 'roads', showDetectors: false, showBusStops: true, routeLabels: true, revealedRoute: null, nearbyRadius: 1000, followLocation: true, routeStop: null, intelOpen: false, intelTab: 'ranked', statusExpanded: false, searchQuery: '', searchScope: 'roads', searchPage: 0 }
+export const defaultSession: MapSession = { version: 1, view: null, mapMode: '2d', camera3D: { pitch: 55, bearing: -20 }, busSelection: null, selectedPlace: null, openControl: null, dockGroup: 'roads', showDetectors: false, showBusStops: true, routeLabels: true, revealedRoute: null, nearbyRadius: 1000, showNearbyOnMap: false, followLocation: true, routeStop: null, intelOpen: false, intelTab: 'ranked', statusExpanded: false, searchQuery: '', searchScope: 'roads', searchPage: 0 }
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const numberBetween = (value: unknown, min: number, max: number): value is number => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 const string = (value: unknown, limit = 200): value is string => typeof value === 'string' && value.length <= limit
@@ -54,7 +55,7 @@ export function parseSession(value: unknown): MapSession {
   if (record(place) && kinds.some(kind => kind === place.kind) && string(place.id) && string(place.sourceId) && string(place.name) && (place.nameEn === undefined || string(place.nameEn)) && numberBetween(place.lat, 22, 22.7) && numberBetween(place.lng, 113.7, 114.6)) session.selectedPlace = savedPlace(place as Camera)
   if (value.openControl === 'search' || value.openControl === 'layers' || value.openControl === 'rail' || value.openControl === 'nearby') session.openControl = value.openControl
   if (value.dockGroup === 'roads' || value.dockGroup === 'conditions' || value.dockGroup === 'rail' || value.dockGroup === 'bus' || value.dockGroup === 'ferry') session.dockGroup = value.dockGroup
-  for (const key of ['showDetectors', 'showBusStops', 'routeLabels', 'followLocation', 'intelOpen', 'statusExpanded'] as const) if (typeof value[key] === 'boolean') session[key] = value[key]
+  for (const key of ['showDetectors', 'showBusStops', 'routeLabels', 'showNearbyOnMap', 'followLocation', 'intelOpen', 'statusExpanded'] as const) if (typeof value[key] === 'boolean') session[key] = value[key]
   if (value.intelTab === 'ranked' || value.intelTab === 'roads' || value.intelTab === 'boundary' || value.intelTab === 'weather' || value.intelTab === 'systems' || value.intelTab === 'notes') session.intelTab = value.intelTab
   if (string(value.searchQuery, 1000)) session.searchQuery = value.searchQuery
   if (value.searchScope === 'roads' || value.searchScope === 'locations') session.searchScope = value.searchScope

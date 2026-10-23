@@ -22,6 +22,8 @@ Trams provide published fares and approximate connections between ordered stops,
 
 Nearby uses a 500 m, 1 km or 2 km straight-line radius around the map centre. It loads eligible sources independently of the map switches and groups rail, buses, trams, ferries, accessibility and taxi options. Selecting an item enables its layer and opens details. Static exports support published-information layers; hosted-only modes have an explanation and link.
 
+The saved **Show nearby on map** switch defaults off and adds the panel's radius-filtered locations in 2D and 3D. It preserves existing layers and list results, deduplicates overlapping markers, and continues refreshing with the panel closed. The bus-stop visibility control applies to nearby bus stops. Nearby rail results load independently of the main rail switch and its line filters.
+
 ## Saved context
 
 Versioned local storage restores map view, 2D/3D mode, tilt/bearing, GPS preference, selected route/place/route-stop, stop and route-label controls, dock group, open panels, intelligence tab, search and Nearby radius. Existing stores retain language, basemap, layers, topbar and rail filters. The saved route does not automatically refit the map after reopening. Invalid saved values are discarded; unavailable storage has an in-memory fallback. Storage is per browser or installed app, without cross-device synchronization.
@@ -31,7 +33,7 @@ Only context is saved. No arrival payloads, interpolated vehicle trajectories or
 ## Acceptance evidence
 
 - `npm run verify`: lint, TypeScript and 200 deterministic tests.
-- `tests/commuter-session.browser.mjs`: desktop English, mobile Traditional Chinese, desktop 3D and mobile 3D. Covers Nearby, departures, viewport containment, panel/radius restoration, independent popup polling and reopening a route with its prior camera and controls.
+- `tests/commuter-session.browser.mjs`: eight scenarios across desktop English, mobile Traditional Chinese and both renderers. Covers Nearby, departures, viewport containment, panel/radius restoration, independent popup polling and reopening a route with its prior camera and controls. The map switch cases check radius filtering, unchanged lists and layer preferences, marker deduplication, refresh with the panel closed and persistence after reopening.
 - Existing refresh recovery scenario and all five transit refresh browser scenarios.
 - Eight movement scenarios, including vehicle details, GPS ferry correction, identity continuity, reduced motion and both renderers.
 - Five startup/GPS scenarios, including desktop and mobile native location permission.

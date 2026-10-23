@@ -19,6 +19,7 @@ export default function NearbyPanel({ states, view, language, now, onSelect, onR
 }) {
   const copy = text[language], extra = integrationMessages[language]
   const [radius, setRadius] = useSessionField('nearbyRadius')
+  const [showOnMap, setShowOnMap] = useSessionField('showNearbyOnMap')
   const [expanded, setExpanded] = useState<string[]>([])
   const kinds = nearbyGroups.flatMap(group => group.kinds).filter(layerAvailable)
   const loading = kinds.some(kind => states[kind].loading)
@@ -27,17 +28,18 @@ export default function NearbyPanel({ states, view, language, now, onSelect, onR
     <div className="nearby-context"><span><MapPin size={14}/>{copy.centre}</span><button type="button" className="nearby-refresh" aria-label={copy.refresh} disabled={loading} onClick={onRefresh}>{loading ? <LoaderCircle size={16} className="spin"/> : <RefreshCw size={16}/>}</button></div>
     <p className="nearby-distance-note">{copy.distance}</p>
     <label className="nearby-radius">{copy.radius}<select value={radius} onChange={event => setRadius(Number(event.target.value))}>{[500, 1000, 2000].map(metres => <option value={metres} key={metres}>{metres < 1000 ? `${metres} m` : `${metres / 1000} km`}</option>)}</select></label>
+    <button type="button" className="nearby-map-toggle" role="switch" aria-checked={showOnMap} onClick={() => setShowOnMap(value => !value)}><span>{language === 'en' ? 'Show nearby on map' : '在地圖顯示附近交通'}</span><span className="switch" aria-hidden="true"/></button>
     {loading && <p className="nearby-status" role="status">{copy.loading}</p>}
     {failed && <p className="nearby-status warning-text" role="status">{copy.failed}</p>}
     {kinds.length < nearbyGroups.flatMap(group => group.kinds).length && <p className="nearby-status">{copy.unavailable} <a href={hostedUrl}>{extra.hostedLink}</a></p>}
     {nearbyGroups.map(group => {
-      const feeds = group.kinds.filter(layerAvailable)
+      const feeds = group.kinds.filter(kind => layerAvailable(kind) && !viewportNote(kind, view))
       const places = nearbyPlaces(feeds.map(kind => states[kind].data), view, radius, now)
       const shown = expanded.includes(group.id) ? places : places.slice(0, 6)
       return <section className={`nearby-group nearby-${group.id}`} key={group.id} aria-label={copy.groups[group.id]}>
         <h3>{copy.groups[group.id]}<span>{places.length}</span></h3>
         {group.id === 'access' && <><p className="nearby-group-note">{copy.access}</p>{states.access.data?.complete === false && !states.access.error && <p className="nearby-group-note">{copy.partial}</p>}</>}
-        {!places.length && <p className="nearby-empty">{feeds.some(kind => viewportNote(kind, view)) ? copy.zoom : copy.none}</p>}
+        {!places.length && <p className="nearby-empty">{group.kinds.some(kind => layerAvailable(kind) && viewportNote(kind, view)) ? copy.zoom : copy.none}</p>}
         <ul>{shown.map(({ camera, metres }) => {
           const arrival = nextArrivalText(camera, now)
           const source = states[camera.kind]

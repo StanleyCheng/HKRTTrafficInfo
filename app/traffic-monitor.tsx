@@ -13,7 +13,7 @@ import ItemDetails from './item-details';
 import NearbyPanel from './nearby-panel';
 import { useSessionField } from './use-session-field';
 import { savedPlace, sessionStore } from '@/lib/session-state';
-import { nearbyKinds } from '@/lib/nearby';
+import { nearbyKinds, nearbyPlaces } from '@/lib/nearby';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import TrafficSearch from './traffic-search';
 import TrafficStatus from './traffic-status';
@@ -316,7 +316,10 @@ export default function TrafficMonitor() {
   const busRouteCache = useRef(new Map<string, { promise: Promise<BusRouteState>; pending: boolean }>());
   const [showDetectors, setShowDetectors] = useSessionField('showDetectors');
   const [openControl, setOpenControl] = useSessionField('openControl');
-  const requested = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, enabled[kind] || openControl === 'nearby' && nearbyKinds.includes(kind as IntegrationKind)])) as Record<LayerKind, boolean>, [enabled, openControl]);
+  const [showNearbyOnMap] = useSessionField('showNearbyOnMap');
+  const [nearbyRadius] = useSessionField('nearbyRadius');
+  const mapEnabled = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, enabled[kind] || showNearbyOnMap && nearbyKinds.includes(kind as IntegrationKind)])) as Record<LayerKind, boolean>, [enabled, showNearbyOnMap]);
+  const requested = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, mapEnabled[kind] || openControl === 'nearby' && nearbyKinds.includes(kind as IntegrationKind)])) as Record<LayerKind, boolean>, [mapEnabled, openControl]);
   const [now, setNow] = useState(() => Date.now());
   const [focusTarget, setFocusTarget] = useState<TrafficSearchItem | null>(null);
   const topbarCollapsed = useSyncExternalStore(topbarFlag.subscribe, topbarFlag.getSnapshot, topbarFlag.getServerSnapshot);
@@ -501,13 +504,25 @@ export default function TrafficMonitor() {
   const paths = useMemo(() => [railMtrData, lrtData, ferryData, ...(['tram', 'access'] as const).map(kind => enabled[kind] ? states[kind].data : undefined)].flatMap(data => data?.paths ?? []), [railMtrData, lrtData, ferryData, enabled, states]);
   const viewStates = useMemo(() => ({ ...displayStates, mtr: { ...displayStates.mtr, data: railMtrData }, lrt: { ...displayStates.lrt, data: lrtData } }), [displayStates, railMtrData, lrtData]);
   const flowFresh = isLiveTrafficDataFresh(states.flow.data?.segmentsUpdated, now);
-  const cameras = useMemo(() => kinds.flatMap(kind => {
-    if (!enabled[kind]) return [];
-    if (kind === 'flow') return showDetectors ? (states.flow.data?.cameras ?? []).map(camera => flowFresh ? camera : { ...camera, speedKmh: null, level: 'unknown' as const, color: speedLevelColors.unknown }) : [];
-    if (viewportNote(kind, viewport)) return [];
-    const data = viewStates[kind].data;
-    return (data?.cameras ?? []).map(camera => isFeedDataStale(kind, data, now) || isCameraDataStale(camera, now) ? { ...camera, color: speedLevelColors.unknown } : camera);
-  }), [states, viewStates, enabled, showDetectors, flowFresh, viewport, now]);
+  const cameras = useMemo(() => {
+    const visible = kinds.flatMap(kind => {
+      if (!enabled[kind]) return [];
+      if (kind === 'flow') return showDetectors ? (states.flow.data?.cameras ?? []).map(camera => flowFresh ? camera : { ...camera, speedKmh: null, level: 'unknown' as const, color: speedLevelColors.unknown }) : [];
+      if (viewportNote(kind, viewport)) return [];
+      const data = viewStates[kind].data;
+      return (data?.cameras ?? []).map(camera => isFeedDataStale(kind, data, now) || isCameraDataStale(camera, now) ? { ...camera, color: speedLevelColors.unknown } : camera);
+    });
+    if (showNearbyOnMap) {
+      const seen = new Set(visible.map(camera => camera.id));
+      const feeds = nearbyKinds.filter(kind => layerAvailable(kind) && !viewportNote(kind, viewport)).map(kind => displayStates[kind].data);
+      for (const { camera } of nearbyPlaces(feeds, viewport, nearbyRadius, now)) {
+        if (seen.has(camera.id)) continue;
+        seen.add(camera.id);
+        visible.push(isFeedDataStale(camera.kind, displayStates[camera.kind].data, now) || isCameraDataStale(camera, now) ? { ...camera, color: speedLevelColors.unknown } : camera);
+      }
+    }
+    return visible;
+  }, [states, viewStates, displayStates, enabled, showDetectors, flowFresh, viewport, now, showNearbyOnMap, nearbyRadius]);
   const selected = useMemo(() => {
     if (selectedSnapshot?.positionType === 'vehicle') {
       const kind = selectedSnapshot.kind as 'mtr' | 'lrt' | 'ferry';
@@ -526,7 +541,7 @@ export default function TrafficMonitor() {
   const activeBusSelection = busSelection && enabled[busSelection.operator] ? busSelection : null;
   // The map's stop switch is offered while any enabled bus layer can draw stops;
   // the switch state itself belongs to the map, next to the other map buttons.
-  const hasBusStopLayers = enabled['mtr-bus'] || busKinds.some(kind => enabled[kind] && layerAvailable(kind));
+  const hasBusStopLayers = mapEnabled['mtr-bus'] || busKinds.some(kind => mapEnabled[kind] && layerAvailable(kind));
   const busRoute = activeBusSelection && busRouteState?.selection === activeBusSelection ? busRouteState.data : undefined;
   useEffect(() => {
     if (!activeBusSelection) return;
@@ -569,16 +584,16 @@ export default function TrafficMonitor() {
     ...kinds.filter(kind => kind !== 'flow' && layerAvailable(kind) && !viewportNote(kind, viewport)).flatMap(kind => (viewStates[kind].data?.cameras ?? []).map(camera => ({ camera }))),
   ], [segments, states, viewStates, viewport]);
   const total = kinds.reduce((count, kind) => count + (states[kind].data?.count ?? 0), 0);
-  const loading = kinds.some(kind => (originalKinds.includes(kind as OriginalLayerKind) || enabled[kind]) && states[kind].loading);
+  const loading = kinds.some(kind => (originalKinds.includes(kind as OriginalLayerKind) || mapEnabled[kind]) && states[kind].loading);
   const appBusy = pendingActivity > 0;
-  const errors = kinds.some(kind => enabled[kind] && states[kind].error);
+  const errors = kinds.some(kind => mapEnabled[kind] && states[kind].error);
   // Map content is genuinely expected only while an enabled layer can still
   // draw: flow's speed segments, or a camera layer outside its viewport gate.
   // Gated bus feeds and layers that never place cameras (weather warnings)
   // leave the map empty by design, so the centre notice must stay away.
-  const hasDrawableLayers = kinds.some(kind => enabled[kind] && layerAvailable(kind) && (kind === 'flow' || (kind !== 'weather-warning' && !viewportNote(kind, viewport))));
+  const hasDrawableLayers = kinds.some(kind => mapEnabled[kind] && layerAvailable(kind) && (kind === 'flow' || (kind !== 'weather-warning' && !viewportNote(kind, viewport))));
   const complete = kinds.filter(kind => enabled[kind]).every(kind => states[kind].data?.complete) && !errors;
-  const activeKinds = kinds.filter(kind => enabled[kind]);
+  const activeKinds = kinds.filter(kind => mapEnabled[kind]);
   const activeErrors = activeKinds.some(kind => states[kind].error);
   const activeLoading = activeKinds.some(kind => states[kind].loading);
   const activeFetched = activeKinds.flatMap(kind => states[kind].data ? [states[kind].data!.fetchedAt] : []).sort()[0];
@@ -666,7 +681,7 @@ export default function TrafficMonitor() {
     cameras, segments: enabled.flow ? segments : undefined, selected,
     selectedSegmentId: selected?.id.startsWith('flow-segment-') ? selected.id : null,
     onSelect: choose, onSelectSegment, focusTarget, loading,
-    allDisabled: kinds.every(kind => !enabled[kind]), hasErrors: errors, hasDrawableLayers, hasBusStopLayers,
+    allDisabled: kinds.every(kind => !mapEnabled[kind]), hasErrors: errors, hasDrawableLayers, hasBusStopLayers,
     language, basemap, now, busSelection: activeBusSelection, renderItemDetails,
     onCloseDetails: closeDetails, onDetailsOpen: focusDetails,
   };
@@ -695,13 +710,13 @@ export default function TrafficMonitor() {
         <TrafficMap3D {...mapProps} camera3D={camera3D} onCamera3D={updateCamera3D} onExit3D={switchMapMode}/>
       </Suspense> : <TrafficMap {...mapProps}/>}
       <IntelPanel input={intelInput} language={language} onSelect={selectSearchItem}/>
-      <TrafficStatus feeds={kinds.filter(kind => enabled[kind]).map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={refreshAllLayers}/>
+      <TrafficStatus feeds={activeKinds.map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={refreshAllLayers}/>
       <div className="map-toolbar" role="group" aria-label={copy.openControls}>
         <Popover open={openControl === 'nearby'} onOpenChange={open => setOpenControl(open ? 'nearby' : null)}>
           <PopoverTrigger asChild><button type="button" className="toolbar-button nearby-toggle" aria-label={language === 'en' ? 'Nearby transport' : '附近交通'} title={language === 'en' ? 'Nearby transport' : '附近交通'}><Radar size={20}/></button></PopoverTrigger>
           <PopoverContent className="map-control-popover nearby-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="nearby-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
             <div className="control-popover-head"><h2 id="nearby-popover-title">{language === 'en' ? 'Nearby transport' : '附近交通'}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
-            <div className="control-popover-body"><NearbyPanel states={viewStates} view={viewport} language={language} now={now} onSelect={camera => selectSearchItem({ camera })} onRefresh={() => nearbyKinds.forEach(kind => void fetchLayer(kind, true))}/></div>
+            <div className="control-popover-body"><NearbyPanel states={displayStates} view={viewport} language={language} now={now} onSelect={camera => selectSearchItem({ camera })} onRefresh={() => nearbyKinds.forEach(kind => void fetchLayer(kind, true))}/></div>
           </PopoverContent>
         </Popover>
         <Popover open={openControl === 'search'} onOpenChange={open => setOpenControl(open ? 'search' : null)}>

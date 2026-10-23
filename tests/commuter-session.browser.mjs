@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { commuterCatalogue } from '../lib/commuter-catalogue.ts';
+import { metresBetween } from '../lib/nearest.ts';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.argv[2] || 'http://localhost:5173';
 const evidence = process.argv[3] || '/tmp/hkrt-commuter-browser';
@@ -10,20 +11,20 @@ const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgQIAI7mY6QAAAABJRU5ErkJggg==', 'base64');
 const contexts = [];
 const selection = { operator: 'kmb', company: 'KMB', route: '1', bound: 'O', serviceType: '1', stopId: 'FIX', stopSeq: 1 };
-async function create(width, language, mode = '2d', route = false) {
+async function create(width, language, mode = '2d', route = false, nearbyOverlay = false) {
  const context = await browser.newContext({ viewport: { width, height: width > 700 ? 1000 : 844 }, hasTouch: width < 700, reducedMotion: 'reduce' }); contexts.push(context);
  const errors = [], calls = { route: 0, arrivals: 0, bus: 0 };
- await context.addInitScript(({language,mode,route,selection}) => {
+ await context.addInitScript(({language,mode,route,selection,nearbyOverlay}) => {
   if (!localStorage.getItem('fixture-setup')) {
    localStorage.setItem('fixture-setup', 'yes');
    localStorage.setItem('hk-traffic-language-v1', language);
    localStorage.setItem('hk-traffic-basemap-v1', 'osm');
-   localStorage.setItem('hk-traffic-layers-v1', JSON.stringify({ tram:true, access:true, taxi:true, 'mtr-bus':true, kmb:route }));
+   localStorage.setItem('hk-traffic-layers-v1', JSON.stringify({ tram:true, access:!nearbyOverlay, taxi:!nearbyOverlay, 'mtr-bus':!nearbyOverlay, kmb:route }));
    localStorage.setItem('hk-traffic-session-v1', JSON.stringify({version:1,view:{lng:114.16,lat:22.282,zoom:16},mapMode:mode,camera3D:{pitch:35,bearing:42},followLocation:false,openControl:route?null:'nearby',showBusStops:true,routeLabels:true,busSelection:route?selection:null}));
   }
   Object.defineProperty(navigator,'geolocation',{configurable:true,value:{watchPosition(){return 0},clearWatch(){}}});
   let leaflet; Object.defineProperty(window,'L',{configurable:true,get(){return leaflet},set(value){leaflet=value;value.Map.addInitHook(function(){window.__map=this})}});
- },{language,mode,route,selection});
+ },{language,mode,route,selection,nearbyOverlay});
  await context.route('**/app/traffic-map-3d.tsx*',async route=>{const response=await route.fetch();const source=await response.text();await route.fulfill({response,body:source.replace('map.current = m;','map.current = m; window.__nativeMap = m;')})});
  await context.route('https://tile.openstreetmap.org/**',route=>route.fulfill({contentType:'image/png',body:pixel}));
  await context.route(url=>url.hostname.endsWith('.gov.hk'),route=>route.fulfill({status:503,headers:{'access-control-allow-origin':'*'},body:'Unrelated fixture'}));
@@ -65,6 +66,44 @@ try {
   assert.match(await page.locator('.item-popup').innerText(),/K12/);
   assert.deepEqual(f.errors,[]);
   console.log(`PASS ${width}px ${language}: four layers, Nearby, current departures, radius and panel restoration`);
+ }
+ for(const mode of ['2d','3d']) for(const [width,language] of [[1440,'en'],[390,'zh']]) {
+  const f=await create(width,language,mode,false,true),{page}=f;
+  const toggle=page.getByRole('switch',{name:language==='en'?'Show nearby on map':'在地圖顯示附近交通'});
+  const centre={lng:114.16,lat:22.282};
+  const taxis=commuterCatalogue('taxi').map(camera=>({camera,distance:metresBetween(camera,centre)}));
+  const close=taxis.find(place=>place.distance<500).camera;
+  const middle=taxis.find(place=>place.distance>500&&place.distance<1000).camera;
+  const outer=taxis.find(place=>place.distance>1000&&place.distance<2000).camera;
+  const marker=camera=>page.locator(`.camera-marker[data-marker-id="${camera.id}"]`);
+  await page.locator('.nearby-taxi .nearby-place').first().waitFor();
+  await page.locator('.nearby-rail .nearby-place').first().waitFor();
+  const layers=await page.evaluate(()=>localStorage.getItem('hk-traffic-layers-v1'));
+  const list=await page.locator('.nearby-taxi').innerText();
+  assert.equal(await toggle.getAttribute('aria-checked'),'false');
+  assert.equal(await marker(close).count(),0);
+  await toggle.click();await marker(close).waitFor({state:'attached'});await marker(middle).waitFor({state:'attached'});
+  assert.equal(await marker(outer).count(),0,'Outside the current radius');
+  assert.equal(await page.locator('.nearby-taxi').innerText(),list,'Switch leaves the list intact');
+  const tramIds=await page.locator('.camera-marker[data-marker-id^="tram-"]').evaluateAll(nodes=>nodes.map(node=>node.dataset.markerId));
+  assert.ok(tramIds.length>0);assert.equal(new Set(tramIds).size,tramIds.length,'Normal layer and Nearby markers are deduplicated');
+  await page.locator('.nearby-radius select').selectOption('500');await marker(middle).waitFor({state:'detached'});assert.equal(await marker(close).count(),1);
+  await page.locator('.nearby-radius select').selectOption('2000');await marker(outer).waitFor({state:'attached'});
+  await toggle.click();await marker(close).waitFor({state:'detached'});
+  assert.ok(await page.locator('.camera-marker[data-marker-id^="tram-"]').count()>0,'The independently selected layer remains');
+  await toggle.click();await marker(close).waitFor({state:'attached'});
+  const box=await toggle.boundingBox();assert.ok(box.height>=44&&box.x>=0&&box.x+box.width<=width);
+  await page.screenshot({path:`${evidence}/nearby-map-toggle-${mode}-${width}.png`});
+  await page.locator('.nearby-popover .close-button').click();
+  const before=f.calls.bus;await step(page,65000);assert.ok(f.calls.bus>before,'Overlay feeds keep refreshing after closing the panel');
+  assert.equal(await marker(close).count(),1);
+  await page.reload({waitUntil:'domcontentloaded'});await marker(close).waitFor({state:'attached'});
+  assert.equal(await page.locator('.nearby-popover').count(),0,'Closed panel stays closed on reopening');
+  await page.locator('.nearby-toggle').click();
+  assert.equal(await toggle.getAttribute('aria-checked'),'true');assert.equal(await page.locator('.nearby-radius select').inputValue(),'2000');
+  assert.equal(await page.evaluate(()=>localStorage.getItem('hk-traffic-layers-v1')),layers,'Nearby never changes normal layer choices');
+  assert.deepEqual(f.errors,[]);
+  console.log(`PASS ${width}px ${language} ${mode}: nearby overlay, radius, independent layers, deduplication, closed-panel polling and persistence`);
  }
  for(const width of [1440,390]) {
  const f=await create(width,'en','3d',true),{page}=f;

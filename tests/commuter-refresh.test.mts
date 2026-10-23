@@ -62,11 +62,14 @@ test('pedestrian access and barrier flags are distinct; infrastructure does not 
 test('saved sessions validate old or corrupt values and strip all live data before restoration', () => {
   assert.equal(parseSession({ version: 99 }), defaultSession)
   const place: Camera = { id: 'kmb-1', sourceId: '1', kind: 'kmb', name: 'Stop', nameEn: 'Stop', lng: 114.1, lat: 22.3, arrivals: [], dataUpdated: new Date(now).toISOString() }
-  const session = parseSession({ version: 1, view: { lng: 114.12, lat: 22.3, zoom: 15.5 }, mapMode: '3d', camera3D: { pitch: 35, bearing: 42 }, nearbyRadius: 2000, showBusStops: false, selectedPlace: place, busSelection: { operator: 'kmb', route: '1', stopId: 'ABC', bound: 'O', serviceType: '1' } })
+  const session = parseSession({ version: 1, view: { lng: 114.12, lat: 22.3, zoom: 15.5 }, mapMode: '3d', camera3D: { pitch: 35, bearing: 42 }, nearbyRadius: 2000, showNearbyOnMap: true, showBusStops: false, selectedPlace: place, busSelection: { operator: 'kmb', route: '1', stopId: 'ABC', bound: 'O', serviceType: '1' } })
   assert.equal(session.mapMode, '3d')
   assert.equal(session.view?.zoom, 15.5)
   assert.equal(session.busSelection?.route, '1')
   assert.equal(session.nearbyRadius, 2000)
+  assert.equal(session.showNearbyOnMap, true)
+  assert.equal(parseSession({ version: 1 }).showNearbyOnMap, false)
+  assert.equal(parseSession({ version: 1, showNearbyOnMap: 'true' }).showNearbyOnMap, false)
   assert.equal(session.showBusStops, false)
   assert.deepEqual(session.selectedPlace, savedPlace(place))
   assert.equal(session.selectedPlace?.arrivals, undefined)

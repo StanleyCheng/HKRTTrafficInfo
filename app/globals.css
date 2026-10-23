@@ -298,6 +298,10 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .nearby-distance-note, .nearby-group-note, .nearby-empty, .nearby-status { font-size: 12px; line-height: 1.55; color: var(--muted); margin: 8px 0; }
 .nearby-radius { display: flex; align-items: center; justify-content: space-between; font-size: 13px; gap: 12px; padding-bottom: 12px; }
 .nearby-radius select { min-height: 44px; min-width: 95px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); padding: 7px 12px; font: inherit; }
+.nearby-map-toggle { display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding: 8px 0; background: transparent; border: 0; color: var(--foreground); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.nearby-map-toggle[aria-checked="true"] .switch { background: #137f87; }
+.nearby-map-toggle[aria-checked="true"] .switch:after { transform: translateX(12px); }
+.nearby-map-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
 .nearby-group { border-top: 1px solid var(--border); padding: 13px 0 6px; }
 .nearby-group h3 { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 750; margin: 0 0 8px; }
 .nearby-group h3 > span { font-size: 12px; font-weight: 500; color: var(--muted); }
