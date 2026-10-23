@@ -1,17 +1,18 @@
 'use client';
-import { useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useMemo, useRef, type CSSProperties } from 'react';
 import { ChevronUp, X } from 'lucide-react';
 import { integrationMessages } from '@/lib/i18n';
-import { INTEL_TABS, intelBoard, currentCrossingPoints, type IntelInput, type IntelItem, type IntelTab } from '@/lib/intel';
+import { INTEL_TABS, intelBoard, currentCrossingPoints, type IntelInput, type IntelItem } from '@/lib/intel';
 import type { Language } from '@/lib/traffic';
 import type { TrafficSearchItem } from '@/lib/traffic-view';
 import './intel-panel.css';
+import { useSessionField } from './use-session-field';
 
 export default function IntelPanel({ input, language, onSelect }: { input: IntelInput; language: Language; onSelect: (item: TrafficSearchItem) => void }) {
   const m = integrationMessages[language];
   const board = useMemo(() => intelBoard(input, language), [input, language]);
-  const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<IntelTab>('ranked');
+  const [open, setOpen] = useSessionField('intelOpen');
+  const [tab, setTab] = useSessionField('intelTab');
   const trigger = useRef<HTMLButtonElement>(null);
   const marquee = board.ranked.length ? board.ranked : [{ id: 'empty', title: m.empty, tone: 'none' }];
   function close() { setOpen(false); requestAnimationFrame(() => trigger.current?.focus()); }

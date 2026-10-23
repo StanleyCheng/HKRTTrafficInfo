@@ -85,12 +85,13 @@ test('upstream bypasses Vinext wrapper, coalesces fetches, respects shared expir
   } finally { Date.now = oldNow; globalThis.fetch = oldFetch; globalThis.caches = oldCaches; if (oldOriginal) globals[symbol] = oldOriginal; else delete globals[symbol] }
 })
 
-test('viewport cache returns stale without changing original timestamps and respects cacheable:false', async () => {
+test('viewport cache returns stale without changing original timestamps and respects cacheable:false', async (t) => {
+  t.mock.method(Date, 'now', () => Date.parse('2026-01-01T00:00:00Z'))
   let failure = false
   let calls = 0
   const get = viewCachedGet<{ ok: boolean; fetchedAt?: string; observedAt: string | null }>({
     freshMs: 0,
-    load: async () => { calls++; if (failure) throw Error('offline'); return { ok: true, fetchedAt: '2026-01-01', observedAt: '2025-12-31' } },
+    load: async () => { calls++; if (failure) throw Error('offline'); return { ok: true, fetchedAt: '2026-01-01', observedAt: '2025-12-31T23:59:00Z' } },
     missing: () => ({ ok: false, observedAt: null }), failed: () => ({ ok: false, observedAt: null }),
   })
   const request = new Request('https://local/api/kmb?lng=114.1&lat=22.3&zoom=13')
@@ -99,7 +100,7 @@ test('viewport cache returns stale without changing original timestamps and resp
   const stale = await (await get(request)).json() as { stale: boolean; fetchedAt: string; observedAt: string }
   assert.equal(stale.stale, true)
   assert.equal(stale.fetchedAt, '2026-01-01')
-  assert.equal(stale.observedAt, '2025-12-31')
+  assert.equal(stale.observedAt, '2025-12-31T23:59:00Z')
   assert.equal(calls, 2)
   let partialCalls = 0
   const partial = viewCachedGet<{ ok: boolean; cacheable?: boolean }>({ freshMs: 60000, load: async () => { partialCalls++; return { ok: true, cacheable: false } }, missing: () => ({ ok: false }), failed: () => ({ ok: false }) })

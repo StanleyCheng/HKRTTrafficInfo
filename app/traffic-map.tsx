@@ -1,4 +1,6 @@
 'use client';
+import { useSessionField } from './use-session-field';
+import { sessionStore } from '@/lib/session-state';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed, Tags, BusFront } from 'lucide-react';
@@ -90,8 +92,8 @@ function FerryPierPopup({ camera, language, now }: { camera: Camera; language: L
 
 export type Basemap = 'osm' | 'positron';
 type DetailOptions = { status: 'loading' | 'error' | 'ready'; onRetry?: () => void; onClose?: () => void };
-export type TrafficMapProps = { initialView?: MapViewport; autoLocate?: boolean; busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; hasDrawableLayers: boolean; hasBusStopLayers: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; renderItemDetails: (camera: Camera, options?: DetailOptions) => ReactNode; onCloseDetails: () => void; onDetailsOpen?: (content: HTMLElement) => void };
-export default function TrafficMap({ initialView, autoLocate = true, busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, hasDrawableLayers, hasBusStopLayers, language, basemap, inactive = false, now, busSelection, renderItemDetails, onCloseDetails, onDetailsOpen }: TrafficMapProps) {
+export type TrafficMapProps = { initialView?: MapViewport; autoLocate?: boolean; fitBusRoute?: boolean; busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; hasDrawableLayers: boolean; hasBusStopLayers: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; renderItemDetails: (camera: Camera, options?: DetailOptions) => ReactNode; onCloseDetails: () => void; onDetailsOpen?: (content: HTMLElement) => void };
+export default function TrafficMap({ initialView, autoLocate = true, fitBusRoute = true, busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, hasDrawableLayers, hasBusStopLayers, language, basemap, inactive = false, now, busSelection, renderItemDetails, onCloseDetails, onDetailsOpen }: TrafficMapProps) {
   const copy = messages[language];
   const startingView = useRef(initialView);
   const locateOnMount = useRef(autoLocate);
@@ -102,7 +104,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
   const markerGroup = useRef<Leaflet.LayerGroup | null>(null);
   const markers = useRef(new Map<string, Leaflet.Marker>());
   const markerData = useRef(new Map<string, { camera: Camera; style: string; labelLines?: number }>());
-  const [routePopupStop, setRoutePopupStop] = useState<{ key: string; stop: BusRouteStop } | null>(null);
+  const [routePopupStop, setRoutePopupStop] = useSessionField('routeStop');
   const [routePopupData, setRoutePopupData] = useState<{ stop: BusRouteStop; language: Language; camera?: Camera; status: 'loading' | 'error' | 'ready' } | null>(null);
   const [popupElement, setPopupElement] = useState<HTMLDivElement | null>(null);
   const [snapshotHover, setSnapshotHover] = useState<{ camera: Camera; element: HTMLDivElement } | null>(null);
@@ -124,12 +126,12 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
   const closeDetailsRef = useRef(onCloseDetails);
   const detailsOpenRef = useRef(onDetailsOpen);
   const popupLanguage = useRef(language);
-  const [revealedRouteKey, setRevealedRouteKey] = useState<string | null>(null);
-  const [routeStopLabels, setRouteStopLabels] = useState(true);
+  const [revealedRouteKey, setRevealedRouteKey] = useSessionField('revealedRoute');
+  const [routeStopLabels, setRouteStopLabels] = useSessionField('routeLabels');
   // Every enabled bus layer's stop markers follow this one switch. It is a map
   // display preference, not a layer: popups, search and feeds stay untouched,
   // and the stops a displayed route draws are a separate surface.
-  const [showBusStops, setShowBusStops] = useState(true);
+  const [showBusStops, setShowBusStops] = useSessionField('showBusStops');
   const routeFocusRef = useRef(false);
   const previousSelection = useRef<string | null>(null);
   const selectRef = useRef(onSelect);
@@ -411,7 +413,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
       markerData.current.set(camera.id, { camera, style, labelLines: plate?.lines.length });
     });
     layoutMarkers.current();
-  }, [cameras, ready, language, copy, mapZoom, showBusStops, hoverCapable]);
+  }, [cameras, ready, language, copy, mapZoom, showBusStops, hoverCapable, setRoutePopupStop]);
   const snapshotMarkerKey = JSON.stringify(cameras.filter(hasDelayedHover));
   const fullPopupOpen = Boolean(selected || routePopupStop);
   useEffect(() => {
@@ -603,7 +605,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
   const popupCameraRef = useRef(popupCamera);
   useEffect(() => { popupCameraRef.current = popupCamera; }, [popupCamera]);
   useEffect(() => {
-    if (!routePopupStop) return;
+    if (!routePopupStop || busSelection && !busRoute) return;
     const controller = new AbortController();
     queueMicrotask(() => {
       if (controller.signal.aborted) return;
@@ -619,7 +621,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
       }).catch(() => { if (!controller.signal.aborted) setRoutePopupData({ stop, language, status: 'error' }); });
     });
     return () => { controller.abort(); };
-  }, [routePopupStop, busRouteKey, busSelection, busRoute, language]);
+  }, [routePopupStop, busRouteKey, busSelection, busRoute, language, setRoutePopupStop]);
   useEffect(() => {
     const m = map.current;
     if (!ready || !m || !focusTarget) return;
@@ -775,7 +777,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
       popup.off('remove', onRemove); if (popupRef.current?.popup === popup) popupRef.current = null; popup.remove();
       source?.removeAttribute('aria-controls'); source?.removeAttribute('aria-expanded');
     };
-  }, [ready, popupId, popupElement, focusTarget]);
+  }, [ready, popupId, popupElement, focusTarget, setRoutePopupStop]);
   useEffect(() => {
     const entry = popupRef.current;
     if (!entry || !popupCamera) return;
@@ -847,13 +849,13 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
       });
     };
     positionLabels(); m.on('moveend resize', positionLabels);
-    if (!inactive && fittedBusRoute.current !== route.key && points.length > 1) {
+    if (!inactive && fitBusRoute && fittedBusRoute.current !== route.key && points.length > 1) {
       fittedBusRoute.current = route.key;
       const labelHalfHeight = Math.max(0, ...labels.map(({ button }) => button.offsetHeight / 2));
       m.fitBounds(points.concat(...reversePoints), { paddingTopLeft: [compact ? 60 : 90, 80 + labelHalfHeight], paddingBottomRight: [compact ? 70 : 85, (compact ? 170 : 125) + labelHalfHeight], maxZoom: 16, animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
     }
     return () => { m.off('moveend resize', positionLabels); group.remove(); };
-  }, [busRoute, ready, inactive, language, routeStopLabels]);
+  }, [busRoute, ready, inactive, language, routeStopLabels, fitBusRoute, setRoutePopupStop]);
   // Route-focus hides every bus stop (CSS on the container — markers stay
   // mounted) until the rider clicks blank map space; the route, stop circles
   // and vehicle are unaffected. Clearing the route re-shows stops for free.
@@ -869,7 +871,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
     };
     m.on('click', reveal);
     return () => { m.off('click', reveal); container.classList.remove('route-focus'); };
-  }, [ready, routeFocus, busRouteKey]);
+  }, [ready, routeFocus, busRouteKey, setRevealedRouteKey]);
   useEffect(() => {
     const L = library.current, m = map.current;
     if (!ready || !L || !m) return;
@@ -1061,7 +1063,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
     const endZoom = () => { zooming = false; visible(); };
     visible(); document.addEventListener('visibilitychange', visible); reducedMotion.addEventListener('change', visible); m.on('zoomstart', startZoom); m.on('zoomend', endZoom);
     return () => { if (frame !== undefined) cancelAnimationFrame(frame); if (timer) clearInterval(timer); document.removeEventListener('visibilitychange', visible); reducedMotion.removeEventListener('change', visible); m.off('zoomstart', startZoom); m.off('zoomend', endZoom); };
-  }, [ready, transitFeeds, language, inactive]);
+  }, [ready, transitFeeds, language, inactive, setRoutePopupStop]);
   useEffect(() => {
     const L = library.current, group = segmentGroup.current;
     if (!ready || !L || !group) return;
@@ -1083,7 +1085,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
       segmentPolylines.current.set(segment.id, polyline);
       group.addLayer(polyline);
     });
-  }, [segments, ready, language]);
+  }, [segments, ready, language, setRoutePopupStop]);
   useEffect(() => {
     const L = library.current, m = map.current;
     if (!ready || !L || !m) return;
@@ -1136,7 +1138,7 @@ export default function TrafficMap({ initialView, autoLocate = true, busRoute, o
   const locationErrorMessage = locationError === 'denied' ? copy.locationDenied : locationError === 'timeout' ? copy.locationTimeout : locationError === 'unsupported' ? copy.locationUnsupported : copy.locationUnavailable;
   return <section className="map-area" aria-label={copy.mapLabel} aria-hidden={inactive || undefined} inert={inactive || undefined}>
     <div ref={element} className="map-canvas" data-basemap={basemap} role="group" aria-label={copy.mapKeyboardHelp} />
-    <div className="map-tools"><div className="zoom-buttons"><button aria-label={copy.zoomIn} title={copy.zoomIn} onClick={() => map.current?.zoomIn()}><Plus size={19}/></button><button aria-label={copy.zoomOut} title={copy.zoomOut} onClick={() => map.current?.zoomOut()}><Minus size={19}/></button></div><button aria-label={copy.showAll} title={copy.returnToHongKong} onClick={fit}><Maximize size={20}/></button><button type="button" className="gps-button" aria-label={followingLocation ? copy.stopFollowing : copy.locateMe} title={followingLocation ? copy.stopFollowing : copy.locateMe} aria-pressed={followingLocation} aria-busy={locating} disabled={!ready} onClick={followingLocation ? stopLocating : locate}>{locating ? <LoaderCircle className="spin" size={20}/> : <LocateFixed size={20}/>}</button>{hasBusStopLayers && <button type="button" className="bus-stops-button" aria-label={showBusStops ? copy.hideBusStops : copy.showBusStops} title={showBusStops ? copy.hideBusStops : copy.showBusStops} aria-pressed={showBusStops} onClick={() => setShowBusStops(value => !value)}><BusFront size={20}/></button>}{busRoute?.route && <button type="button" className="route-labels-button" aria-label={routeStopLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} title={routeStopLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} aria-pressed={routeStopLabels} onClick={() => setRouteStopLabels(value => !value)}><Tags size={20}/></button>}</div>
+    <div className="map-tools"><div className="zoom-buttons"><button aria-label={copy.zoomIn} title={copy.zoomIn} onClick={() => map.current?.zoomIn()}><Plus size={19}/></button><button aria-label={copy.zoomOut} title={copy.zoomOut} onClick={() => map.current?.zoomOut()}><Minus size={19}/></button></div><button aria-label={copy.showAll} title={copy.returnToHongKong} onClick={fit}><Maximize size={20}/></button><button type="button" className="gps-button" aria-label={followingLocation ? copy.stopFollowing : copy.locateMe} title={followingLocation ? copy.stopFollowing : copy.locateMe} aria-pressed={followingLocation} aria-busy={locating} disabled={!ready} onClick={() => { sessionStore.update({ followLocation: !followingLocation }); if (followingLocation) stopLocating(); else locate(); }}>{locating ? <LoaderCircle className="spin" size={20}/> : <LocateFixed size={20}/>}</button>{hasBusStopLayers && <button type="button" className="bus-stops-button" aria-label={showBusStops ? copy.hideBusStops : copy.showBusStops} title={showBusStops ? copy.hideBusStops : copy.showBusStops} aria-pressed={showBusStops} onClick={() => setShowBusStops(value => !value)}><BusFront size={20}/></button>}{busRoute?.route && <button type="button" className="route-labels-button" aria-label={routeStopLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} title={routeStopLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} aria-pressed={routeStopLabels} onClick={() => setRouteStopLabels(value => !value)}><Tags size={20}/></button>}</div>
     <span className="sr-only" role="status">{locating ? copy.locating : locationFound ? copy.locationFound : ''}</span>
     {locationError && <div className={`map-error location-error${mapError ? ' with-map-error' : ''}`} role="alert">{locationErrorMessage}<button type="button" className="map-retry" onClick={() => setLocationError(null)}>{copy.dismissLocationError}</button></div>}
     {mapError && <div className="map-error" role="alert">{copy.mapLoadFailed}<button type="button" className="map-retry" onClick={() => ready ? setBasemapRetry(value => value + 1) : window.location.reload()}><RefreshCw size={14}/>{copy.retry}</button></div>}

@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { useSessionField } from './use-session-field';
 import { ArrowRight, Search, X } from 'lucide-react';
 import { messages } from '@/lib/i18n';
 import { hkTime, layerText } from '@/lib/traffic';
@@ -18,9 +19,9 @@ export default function TrafficSearch({ items, language, selected, loading, onSe
   onSelect: (item: TrafficSearchItem) => void;
 }) {
   const copy = messages[language];
-  const [query, setQuery] = useState('');
-  const [scope, setScope] = useState<'roads' | 'locations'>('roads');
-  const [page, setPage] = useState(0);
+  const [query, setQuery] = useSessionField('searchQuery');
+  const [scope, setScope] = useSessionField('searchScope');
+  const [page, setPage] = useSessionField('searchPage');
   const results = useMemo(() => searchTrafficItems(items.filter(item => scope === 'roads' ? Boolean(item.segment) : !item.segment), query, language), [items, query, language, scope]);
   const lastPage = Math.max(0, Math.ceil(results.length / pageSize) - 1);
   const currentPage = Math.min(page, lastPage);

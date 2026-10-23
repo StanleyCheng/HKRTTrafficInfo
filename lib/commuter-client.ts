@@ -1,4 +1,4 @@
-import { commuterCatalogue, metresBetween, tramPaths } from './commuter-catalogue.ts'
+import { commuterCatalogue, commuterRetrievedAt, tramPaths } from './commuter-catalogue.ts'
 import { parsePedestrian, pedestrianUrl } from './pedestrian.ts'
 import { layers, staticExport, type Camera, type CameraData, type CommuterKind, type MapPath } from './traffic.ts'
 import type { MapViewport } from './integration-client.ts'
@@ -41,6 +41,6 @@ export async function getCommuterData(kind: CommuterKind, view: MapViewport, sig
       feedError = 'Pedestrian connections unavailable'; complete = false
     }
   }
-  if (kind === 'taxi' || kind === 'access') cameras = cameras.filter(camera => metresBetween(camera, view) <= 6000)
+  if (kind !== 'mtr-bus') cameras = cameras.map(camera => ({ ...camera, sourceUpdated: commuterRetrievedAt }))
   return { cameras, paths, count: cameras.length, expectedCount: cameras.length, fetchedAt: new Date().toISOString(), observedAt, sourceLastModified: null, source: layers[kind].source, complete, stale, feedError }
 }

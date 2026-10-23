@@ -48,7 +48,7 @@ The live verifier imports the actual browser adapter for the original seven laye
 - [Cloudflare Worker](https://hk-rt-traffic-info.stanley-it.workers.dev/): the full dynamic app with Workers-compatible server routes.
 - [GitHub Pages](https://stanleycheng.github.io/HKRTTrafficInfo/): the reduced static export, which cannot serve same-origin routes.
 
-GitHub Pages runs the static export from `scripts/build-static.mjs`. The full app needs the 18 dynamic `app/api` routes, which `output: "export"` cannot emit, so the static build moves `app/api` aside and restores it afterwards. Layers that require a same-origin route show their static-mode notice and link to the hosted version.
+GitHub Pages runs the static export from `scripts/build-static.mjs`. The full app needs the 20 dynamic `app/api` routes, which `output: "export"` cannot emit, so the static build moves `app/api` aside and restores it afterwards. Layers that require a same-origin route show their static-mode notice and link to the hosted version.
 
 The original seven layers fetch official data directly in both modes. New integrations use same-origin routes when hosted and direct adapters when static and CORS permits. `NEXT_PUBLIC_STATIC_EXPORT` is derived from `STATIC_EXPORT=1`. Server-only toggles explain their limitation in both languages and link to the hosted version; override that link with `NEXT_PUBLIC_HOSTED_URL`.
 
@@ -76,7 +76,7 @@ The original seven layers fetch official data directly in both modes. New integr
 | MTR buses | MTR bus schedules, stop and fare catalogue | `/api/mtr-bus` | Hosted only |
 | Trams | TD tram stop, route and fare catalogue | Bundled catalogue | Yes |
 | Taxi stands | TD taxi-stand catalogue | Bundled catalogue | Yes |
-| Accessible access | MTR barrier-free facilities, TD accessible stations, Lands Department pedestrian network | `/api/pedestrian` | Yes, walking network zoom ≥ 15 |
+| Accessible access | MTR barrier-free facilities and station catalogue, Lands Department pedestrian network | `/api/pedestrian` | Yes, walking network zoom ≥ 15 |
 
 Bus routes require `lng`, `lat`, and `zoom`. Server routes and direct adapters enforce gates, with NLB restricted to longitude 113.8–114.05 and latitude 22.18–22.34. Trains, buses and ferries load on their first eligible activation and then keep polling while the page is visible: rail every 30 seconds (each poll advances the next 16 MTR / 12 Light Rail station boards, so coverage becomes complete within about four minutes without tripping the upstream rate limit), buses every 30 seconds and ferries every 60 seconds. Language toggles reuse in-flight requests; panning refetches the bus feeds for the new viewport; switching a loaded layer off cancels its requests and re-enabling refetches. An already-started load finishes into retained data, and failed feeds recover on the next cadence poll. Transit snapshot and arrival caches expire after five seconds; each bus operator and ferry can refresh independently through the shared six-request ETA queue. MTR backs off for 45 seconds after HTTP 429, shares observations across clients and refreshes a limited station slice. Vehicle positions interpolated from arrival boards are estimates; Sun Ferry GPS fixes are distinguished.
 
@@ -112,6 +112,16 @@ npx wrangler deploy --config dist/server/wrangler.json --outdir dist/deploy
 # Vercel (uses the same token via VERCEL_TOKEN env var)
 npx vercel deploy --prod --yes --token "$VERCEL_TOKEN"
 ```
+
+## Nearby transport and saved sessions
+
+The target button in the right-hand toolbar opens **Nearby transport**, grouped into rail, buses, trams, ferries, accessible access and taxi stands. Choose a 500 m, 1 km or 2 km straight-line radius around the map centre. Opening Nearby loads eligible sources independently of map-layer switches. Live and scheduled departures are labelled separately; expired arrivals disappear while locations remain available.
+
+The four commuter layers use official catalogues: 675 unique MTR bus stop IDs from 855 route-stop rows, 117 tram stops and six routes in both directions, 97 MTR stations with published facilities, and 518 taxi stands. MTR bus arrivals use the operator POST endpoint, shared request queue and published refresh hint. Operator alerts stay visible. Tram lines connect ordered stops and are approximate; published fares are supplied without live departures. Access markers locate stations with published exit descriptions rather than surveyed entrance positions. At zoom 15+, bounded CSDI queries add nearby paths, lifts, ramps and steps. Teal means published wheelchair access without a recorded barrier, amber means a barrier or no wheelchair access, and grey means unclassified. Capped samples are labelled incomplete. This is infrastructure information without current lift status or a complete accessible route. Taxi locations do not imply vehicle availability or queue lengths.
+
+Sessions are saved in local storage on the current browser or installed mobile app. Reopening restores map centre/zoom, 2D/3D mode, tilt/bearing, GPS preference, basemap, language, layers, rail filters, selected bus route, stop/route-label controls, dock group, selected place and route-stop details, panels, intelligence tab, search and Nearby radius. Arrivals, vehicle estimates and snapshot images are reloaded. Saved state is versioned and validated; blocked storage falls back to in-memory state. Sessions are per browser/device and do not sync between devices.
+
+Bundled catalogue provenance and retrieval dates are in `data/commuter-sources.json`. Refresh with `python3 scripts/update-commuter-data.py` after installing generator-only `access-parser` and `pyproj` packages. The app has no Python runtime dependency. MTR bus arrivals require hosting; the three published-information layers work in static mode, with pedestrian queries subject to source CORS and availability.
 
 ## Caching and freshness
 

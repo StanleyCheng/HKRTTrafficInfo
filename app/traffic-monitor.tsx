@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, lazy, Suspense, type CSSProperties } from 'react';
 import Image from 'next/image';
-import { Box, Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, Search, ShieldCheck, SlidersHorizontal, SquareParking, TrafficCone, TrainFront, TriangleAlert, Video, X, BusFront, TramFront, Accessibility, CarTaxiFront } from 'lucide-react';
+import { Box, Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, Search, ShieldCheck, SlidersHorizontal, SquareParking, TrafficCone, TrainFront, TriangleAlert, Video, X, BusFront, TramFront, Accessibility, CarTaxiFront, Radar } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { messages, integrationMessages } from '@/lib/i18n';
 import { getCameraData } from '@/lib/traffic-client';
@@ -10,6 +10,10 @@ import { Camera, CameraData, FlowSegment, Language, LayerKind, IntegrationKind, 
 import { cameraFromFlowSegment, displayFlowSegments, type TrafficSearchItem } from '@/lib/traffic-view';
 import TrafficMap, { type Basemap, type TrafficMapProps } from './traffic-map';
 import ItemDetails from './item-details';
+import NearbyPanel from './nearby-panel';
+import { useSessionField } from './use-session-field';
+import { savedPlace, sessionStore } from '@/lib/session-state';
+import { nearbyKinds } from '@/lib/nearby';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import TrafficSearch from './traffic-search';
 import TrafficStatus from './traffic-status';
@@ -266,10 +270,11 @@ const topbarFlag = createStoredFlag('hk-traffic-topbar-v1');
 
 export default function TrafficMonitor() {
   const language = useSyncExternalStore(subscribeLanguage, getLanguageSnapshot, getServerLanguageSnapshot);
-  const [mapMode, setMapMode] = useState<'2d' | '3d'>('2d');
-  const [switchedMapMode, setSwitchedMapMode] = useState(false);
-  const [camera3D, setCamera3D] = useState({ pitch: 55, bearing: -20 });
-  const updateCamera3D = useCallback((camera: { pitch: number; bearing: number }) => setCamera3D(previous => previous.pitch === camera.pitch && previous.bearing === camera.bearing ? previous : camera), []);
+  const hydrated = useSyncExternalStore(() => () => {}, () => true, () => false);
+  const [mapMode, setMapMode] = useSessionField('mapMode');
+  const [followLocation] = useSessionField('followLocation');
+  const [camera3D] = useSessionField('camera3D');
+  const updateCamera3D = useCallback((camera: { pitch: number; bearing: number }) => { const previous = sessionStore.getSnapshot().camera3D; if (previous.pitch !== camera.pitch || previous.bearing !== camera.bearing) sessionStore.update({ camera3D: camera }); }, []);
   const basemap = useSyncExternalStore(subscribeBasemap, getBasemapSnapshot, getServerBasemapSnapshot);
   const copy = messages[language];
   const extra = integrationMessages[language];
@@ -296,18 +301,22 @@ export default function TrafficMonitor() {
       if (mounted.current) setPendingActivity(count => count - 1);
     };
   }, []);
-  const [viewport, setViewport] = useState<MapViewport>(initialViewport);
-  const updateViewport = useCallback((view: MapViewport) => setViewport(previous => previous.lat === view.lat && previous.lng === view.lng && previous.zoom === view.zoom ? previous : view), []);
-  const [dockGroup, setDockGroup] = useState<(typeof layerGroups)[number]['id']>('roads');
+  const [storedViewport] = useSessionField('view');
+  const viewport = storedViewport ?? initialViewport;
+  const updateViewport = useCallback((view: MapViewport) => { const previous = sessionStore.getSnapshot().view; if (!previous || previous.lat !== view.lat || previous.lng !== view.lng || previous.zoom !== view.zoom) sessionStore.update({ view }); }, []);
+  const [dockGroup, setDockGroup] = useSessionField('dockGroup');
   const dockKinds = layerGroups.find(group => group.id === dockGroup)!.kinds;
-  const [selectedSnapshot, setSelectedSnapshot] = useState<Camera | null>(null);
+  const [selectedSnapshot] = useSessionField('selectedPlace');
+  const setSelectedSnapshot = useCallback((camera: Camera | null) => sessionStore.update({ selectedPlace: savedPlace(camera) }), []);
   const pendingDetailsFocus = useRef(false);
-  const [busSelection, setBusSelection] = useState<BusRouteSelection | null>(null);
+  const [busSelection, setBusSelection] = useSessionField('busSelection');
   const [busRouteState, setBusRouteState] = useState<BusRouteState | null>(null);
+  const [routeToFit, setRouteToFit] = useState<BusRouteSelection | null>(null);
   const [busRouteRetry, setBusRouteRetry] = useState(0);
   const busRouteCache = useRef(new Map<string, { promise: Promise<BusRouteState>; pending: boolean }>());
-  const [showDetectors, setShowDetectors] = useState(false);
-  const [openControl, setOpenControl] = useState<'search' | 'layers' | 'rail' | null>(null);
+  const [showDetectors, setShowDetectors] = useSessionField('showDetectors');
+  const [openControl, setOpenControl] = useSessionField('openControl');
+  const requested = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, enabled[kind] || openControl === 'nearby' && nearbyKinds.includes(kind as IntegrationKind)])) as Record<LayerKind, boolean>, [enabled, openControl]);
   const [now, setNow] = useState(() => Date.now());
   const [focusTarget, setFocusTarget] = useState<TrafficSearchItem | null>(null);
   const topbarCollapsed = useSyncExternalStore(topbarFlag.subscribe, topbarFlag.getSnapshot, topbarFlag.getServerSnapshot);
@@ -409,16 +418,16 @@ export default function TrafficMonitor() {
   }, [fetchLayer]);
 
   useEffect(() => {
-    integrationContext.current = { enabled, viewport, language };
+    integrationContext.current = { enabled: requested, viewport, language };
     integrationKinds.forEach(kind => {
-      if (pollingMs[kind] > 0 && (!enabled[kind] || !layerAvailable(kind))) {
+      if (pollingMs[kind] > 0 && (!requested[kind] || !layerAvailable(kind))) {
         integrationPending.current.get(kind)?.controller.abort();
         integrationPending.current.delete(kind);
         integrationLastFetch.current.delete(kind);
       }
     });
     const refresh = async (kind: IntegrationKind, force = false) => {
-      if (!enabled[kind] || !layerAvailable(kind) || document.visibilityState !== 'visible') return;
+      if (!requested[kind] || !layerAvailable(kind) || document.visibilityState !== 'visible') return;
       const last = integrationLastFetch.current.get(kind);
       const key = integrationRequestKey(kind, viewport, language);
       const pending = integrationPending.current.get(kind);
@@ -466,7 +475,7 @@ export default function TrafficMonitor() {
     const onOnline = () => integrationKinds.forEach(kind => void refresh(kind, true));
     window.addEventListener('online', onOnline);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refreshAll); window.removeEventListener('online', onOnline); };
-  }, [enabled, language, viewport, beginActivity]);
+  }, [requested, language, viewport, beginActivity]);
 
   const segments = useMemo(() => displayFlowSegments(states.flow.data?.segments, states.flow.data?.segmentsUpdated, now), [states.flow.data, now]);
   const boundaryData = useMemo(() => withBoundarySpeeds(states.boundary.data, segments), [states.boundary.data, segments]);
@@ -489,7 +498,7 @@ export default function TrafficMonitor() {
   const lrtData = enabled.lrt && railLineOn('lrt') ? states.lrt.data : undefined;
   const ferryData = enabled.ferry ? states.ferry.data : undefined;
   const transitFeeds = useMemo(() => ({ mtr: railMtrData, lrt: lrtData, ferry: ferryData }), [railMtrData, lrtData, ferryData]);
-  const paths = useMemo(() => [railMtrData, lrtData, ferryData].flatMap(data => data?.paths ?? []), [railMtrData, lrtData, ferryData]);
+  const paths = useMemo(() => [railMtrData, lrtData, ferryData, ...(['tram', 'access'] as const).map(kind => enabled[kind] ? states[kind].data : undefined)].flatMap(data => data?.paths ?? []), [railMtrData, lrtData, ferryData, enabled, states]);
   const viewStates = useMemo(() => ({ ...displayStates, mtr: { ...displayStates.mtr, data: railMtrData }, lrt: { ...displayStates.lrt, data: lrtData } }), [displayStates, railMtrData, lrtData]);
   const flowFresh = isLiveTrafficDataFresh(states.flow.data?.segmentsUpdated, now);
   const cameras = useMemo(() => kinds.flatMap(kind => {
@@ -517,7 +526,7 @@ export default function TrafficMonitor() {
   const activeBusSelection = busSelection && enabled[busSelection.operator] ? busSelection : null;
   // The map's stop switch is offered while any enabled bus layer can draw stops;
   // the switch state itself belongs to the map, next to the other map buttons.
-  const hasBusStopLayers = busKinds.some(kind => enabled[kind] && layerAvailable(kind));
+  const hasBusStopLayers = enabled['mtr-bus'] || busKinds.some(kind => enabled[kind] && layerAvailable(kind));
   const busRoute = activeBusSelection && busRouteState?.selection === activeBusSelection ? busRouteState.data : undefined;
   useEffect(() => {
     if (!activeBusSelection) return;
@@ -590,7 +599,7 @@ export default function TrafficMonitor() {
   const closeDetails = useCallback(() => {
     pendingDetailsFocus.current = false;
     setSelectedSnapshot(null);
-  }, []);
+  }, [setSelectedSnapshot]);
 
   const focusDetails = useCallback((content: HTMLElement) => {
     if (pendingDetailsFocus.current) content.focus({ preventScroll: true });
@@ -600,8 +609,9 @@ export default function TrafficMonitor() {
   const choose = useCallback((camera: Camera) => {
     pendingDetailsFocus.current = Boolean(document.activeElement?.matches(':focus-visible'));
     setSelectedSnapshot(camera);
+    sessionStore.update({ routeStop: null });
     setOpenControl(null);
-  }, []);
+  }, [setSelectedSnapshot, setOpenControl]);
 
   const onSelectSegment = useCallback((segment: FlowSegment) => {
     choose(cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated));
@@ -611,9 +621,11 @@ export default function TrafficMonitor() {
     pendingDetailsFocus.current = false;
     layerSelectionStore.write({ ...enabled, [camera.kind]: true });
     setBusSelection(tracking);
+    setRouteToFit(tracking);
+    sessionStore.update({ routeStop: null });
     setSelectedSnapshot(null);
     setOpenControl(null);
-  }, [enabled]);
+  }, [enabled, setBusSelection, setSelectedSnapshot, setOpenControl]);
 
   function selectSearchItem(item: TrafficSearchItem) {
     layerSelectionStore.write({ ...enabled, [item.camera.kind]: true });
@@ -623,7 +635,6 @@ export default function TrafficMonitor() {
 
   const selectedName = selected && (language === 'en' ? selected.nameEn || selected.name : selected.name);
   function switchMapMode() {
-    setSwitchedMapMode(true);
     closeDetails();
     setFocusTarget(null);
     setMapMode(mode => mode === '2d' ? '3d' : '2d');
@@ -651,7 +662,7 @@ export default function TrafficMonitor() {
   }
 
   const mapProps: TrafficMapProps = {
-    onActivity: beginActivity, busRoute, paths, transitFeeds, onViewport: updateViewport, initialView: viewport,
+    onActivity: beginActivity, busRoute, fitBusRoute: activeBusSelection === routeToFit, paths, transitFeeds, onViewport: updateViewport, initialView: viewport, autoLocate: followLocation,
     cameras, segments: enabled.flow ? segments : undefined, selected,
     selectedSegmentId: selected?.id.startsWith('flow-segment-') ? selected.id : null,
     onSelect: choose, onSelectSegment, focusTarget, loading,
@@ -680,12 +691,19 @@ export default function TrafficMonitor() {
     </header>
     <div className="workspace">
       <div className="map-workspace">
-      {mapMode === '3d' ? <Suspense fallback={<div className="map-loading" role="status"><LoaderCircle className="spin" size={20}/>{copy.map3DLoading}</div>}>
+      {!hydrated ? <div className="map-loading" role="status"><LoaderCircle className="spin" size={20}/>{copy.loadingOfficialData}</div> : mapMode === '3d' ? <Suspense fallback={<div className="map-loading" role="status"><LoaderCircle className="spin" size={20}/>{copy.map3DLoading}</div>}>
         <TrafficMap3D {...mapProps} camera3D={camera3D} onCamera3D={updateCamera3D} onExit3D={switchMapMode}/>
-      </Suspense> : <TrafficMap {...mapProps} autoLocate={!switchedMapMode}/>}
+      </Suspense> : <TrafficMap {...mapProps}/>}
       <IntelPanel input={intelInput} language={language} onSelect={selectSearchItem}/>
       <TrafficStatus feeds={kinds.filter(kind => enabled[kind]).map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={refreshAllLayers}/>
       <div className="map-toolbar" role="group" aria-label={copy.openControls}>
+        <Popover open={openControl === 'nearby'} onOpenChange={open => setOpenControl(open ? 'nearby' : null)}>
+          <PopoverTrigger asChild><button type="button" className="toolbar-button nearby-toggle" aria-label={language === 'en' ? 'Nearby transport' : '附近交通'} title={language === 'en' ? 'Nearby transport' : '附近交通'}><Radar size={20}/></button></PopoverTrigger>
+          <PopoverContent className="map-control-popover nearby-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="nearby-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
+            <div className="control-popover-head"><h2 id="nearby-popover-title">{language === 'en' ? 'Nearby transport' : '附近交通'}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
+            <div className="control-popover-body"><NearbyPanel states={viewStates} view={viewport} language={language} now={now} onSelect={camera => selectSearchItem({ camera })} onRefresh={() => nearbyKinds.forEach(kind => void fetchLayer(kind, true))}/></div>
+          </PopoverContent>
+        </Popover>
         <Popover open={openControl === 'search'} onOpenChange={open => setOpenControl(open ? 'search' : null)}>
           <PopoverTrigger asChild><button type="button" className="toolbar-button" aria-label={copy.searchTab} title={copy.searchTab}><Search size={20}/></button></PopoverTrigger>
           <PopoverContent className="map-control-popover search-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="search-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
@@ -712,6 +730,7 @@ export default function TrafficMonitor() {
               </button>
               {!layerAvailable(kind) && <p className="layer-capability">{extra.hostedOnly} <a href={hostedUrl} target="_blank" rel="noreferrer">{extra.hostedLink} ↗</a></p>}
               {enabled[kind] && viewportNote(kind, viewport) && <p className="layer-capability">{extra[viewportNote(kind, viewport)!]}</p>}
+              {enabled[kind] && kind === 'access' && <p className="layer-capability">{language === 'en' ? 'Published paths at zoom 15+. Teal: wheelchair access without a recorded barrier. Amber: barrier or no wheelchair access. Grey: unclassified. The local sample may be incomplete; operating status is unknown.' : '第 15 級或以上顯示已公布路段。青色：輪椅可通行且無記錄障礙；琥珀色：有障礙或輪椅未能通行；灰色：未分類。附近資料可能不完整，運作狀態不明。'}</p>}
               {enabled[kind] && kind === 'weather-warning' && state.data && <p className="layer-capability">{state.data.count ? `${state.data.count} · ${text.name}` : extra.noWarnings}</p>}
               {kind === 'flow' && enabled.flow && state.data && state.data.count > 0 && (
                 <button className={`detector-toggle ${showDetectors ? 'active' : ''}`} role="switch" aria-checked={showDetectors} aria-label={copy.showDetectors} onClick={() => setShowDetectors(v => !v)}>

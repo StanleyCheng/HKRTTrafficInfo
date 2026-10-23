@@ -4,7 +4,7 @@ Engineering handover document. All claims cite repository files; uncertain items
 
 ## 1. Overview
 
-HKRTTrafficInfo (`package.json` name `hk-rt-traffic-info`, version 0.1.0) is a responsive bilingual (zh-HK / en-HK) single-page map application showing seven Hong Kong government open-data layers: red-light camera junctions, speed-enforcement camera housings, traffic snapshot stills, live road-segment speeds, traffic incidents, car-park vacancy, and district hourly rainfall (`README.md`, `lib/traffic.ts` `LayerKind`). No application authentication, no API keys, no mock/fallback datasets (`README.md`).
+HKRTTrafficInfo (`package.json` name `hk-rt-traffic-info`, version 0.1.0) is a responsive bilingual (zh-HK / en-HK) map application with 23 traffic, transport, weather and access layers. The seven original layers cover camera inventories, snapshots, road speeds, incidents, parking and rainfall. Additional layers cover journey times, works, tolls, boundary queues, warnings, rail and bus arrivals, ferries, MTR buses, trams, accessible facilities/connections and taxi stands (`README.md`, `lib/traffic.ts`). No application authentication or API keys are required. Production layers use published official records and do not fabricate source observations.
 
 Live/deployed URLs (`README.md` "Live site"):
 - GitHub Pages static export: `https://stanleycheng.github.io/HKRTTrafficInfo/` (served under the `/HKRTTrafficInfo` sub-path; see `next.config.ts` `basePath`).
@@ -268,3 +268,12 @@ Current tree: none needed — the browser calls upstream hosts directly and the 
 8. **Road segments lack district metadata**, so district search applies only to layers that publish it (README "Interface"; `searchTrafficItems` in `lib/traffic-view.ts`).
 9. **Dev-server divergence on Windows**: `npm run dev` uses Next.js directly (Vinext worker read failures on OneDrive-backed workspaces, README), while production builds use Vinext — behaviour differences between dev and prod are possible.
 10. **Snapshot image trust**: since the proxy deletion, image URLs from the XML inventory are fetched unvalidated by the browser (the deleted route enforced a host allowlist and 10 MB cap).
+
+
+## Commuter layers and session restoration, 23 October 2026
+
+Four additions are implemented: MTR buses/feeder buses, tram stops/routes/fares, accessible station facilities and local pedestrian connections, and taxi stands. The Nearby panel groups transport options within a selectable straight-line radius of the map centre. It loads eligible feeds independently of map switches and distinguishes current departures from published information. Both renderers share the layers, bilingual details and selection behavior. There are 20 hosted API routes, including `/api/mtr-bus` and `/api/pedestrian`.
+
+Local session state restores view, mode, camera, GPS preference, layers, selected route/place/route-stop detail, label/stop controls, dock group, panels, intelligence tab, search and Nearby radius. Basemap, language, topbar and rail filters retain their persistent stores. No arrival payloads, vehicle trajectories or images are saved. Restoring a route fetches current data while preserving the saved map position. Storage is local to a browser or installed app, without cross-device synchronization.
+
+Refresh fixes reject malformed weather and operator rows, bound bus fallback ages, filter expired displayed arrivals, poll open 3D route-stop details, retry bad ferry bytes before the daily parsed-cache lifetime, and fetch journey-board locations/translations/details concurrently within a producer deadline. Valid empty boards remain valid. Brief failures retain trajectories only until their original expiry. See `docs/commuter-refresh-and-session-2026-10-23.md` for validation and limitations.

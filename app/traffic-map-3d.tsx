@@ -1,4 +1,6 @@
 'use client';
+import { useSessionField } from './use-session-field';
+import { sessionStore } from '@/lib/session-state';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -17,7 +19,6 @@ import { busVehicleDistanceAtTime, routeDistances, routeHeadingAtDistance, route
 import { getBusStopArrivals } from '@/lib/bus-route-client';
 import { createLocationMotion, locationTransitionDuration, validLocationFix, type LocationPoint } from '@/lib/location-motion';
 import { vehicleCorrection, vehicleFrame, type VehicleCorrection } from '@/lib/vehicle-motion';
-import type { BusRouteStop } from '@/lib/bus-route';
 import type { TrafficMapProps } from './traffic-map';
 
 type Camera3D = { pitch: number; bearing: number };
@@ -48,10 +49,10 @@ export default function TrafficMap3D(props: Props) {
   const [zoom, setZoom] = useState(nativeZoom(props.initialView?.zoom ?? 11));
   const popupContent = useRef<HTMLDivElement | null>(null);
   const [popupElement, setPopupElement] = useState<HTMLDivElement | null>(null);
-  const [showBusStops, setShowBusStops] = useState(true);
-  const [routeLabels, setRouteLabels] = useState(true);
-  const [revealedRoute, setRevealedRoute] = useState<string | null>(null);
-  const [routeStop, setRouteStop] = useState<{ key: string; stop: BusRouteStop } | null>(null);
+  const [showBusStops, setShowBusStops] = useSessionField('showBusStops');
+  const [routeLabels, setRouteLabels] = useSessionField('routeLabels');
+  const [revealedRoute, setRevealedRoute] = useSessionField('revealedRoute');
+  const [routeStop, setRouteStop] = useSessionField('routeStop');
   const [routeDetails, setRouteDetails] = useState<{ camera: Camera; language: string; status: 'loading' | 'error' | 'ready' } | null>(null);
   const [locating, setLocating] = useState(false);
   const [following, setFollowing] = useState(false);
@@ -173,7 +174,7 @@ export default function TrafficMap3D(props: Props) {
         m.on('mouseenter', 'hk-traffic-lines', () => { if (m) m.getCanvas().style.cursor = 'pointer'; });
         m.on('mouseleave', 'hk-traffic-lines', () => { if (m) m.getCanvas().style.cursor = ''; });
         popupContent.current = document.createElement('div');
-        setPopupElement(popupContent.current); setReady(true); finish(); report();
+        setPopupElement(popupContent.current); setReady(true); finish(); report(); if (callbacks.current.autoLocate) locate();
       });
       loadTimeout = setTimeout(() => { if (!disposed) { setError('load'); finish(); } }, 20000);
     })().catch(() => { if (!disposed) setError('load'); }).finally(() => { if (!m || disposed) finish(); });
@@ -184,7 +185,7 @@ export default function TrafficMap3D(props: Props) {
       popup.current?.remove(); popup.current = null;
       m?.remove(); if (map.current === m) map.current = null;
     };
-  }, [onActivity, retry, stopLocating]);
+  }, [onActivity, retry, stopLocating, locate, setRevealedRoute, setRouteStop]);
 
   useEffect(() => {
     if (!ready || !map.current) return;
@@ -275,7 +276,7 @@ export default function TrafficMap3D(props: Props) {
     layout.current = runLayout; runLayout();
     m.on('moveend', runLayout); m.on('resize', runLayout);
     return () => { layout.current = () => {}; m.off('moveend', runLayout); m.off('resize', runLayout); };
-  }, [ready, cameras, language, selected?.id, showBusStops, routeFocus, busRoute, routeLabels]);
+  }, [ready, cameras, language, selected?.id, showBusStops, routeFocus, busRoute, routeLabels, setRouteStop]);
 
   useEffect(() => {
     const m = map.current, gl = library.current;
@@ -348,15 +349,15 @@ export default function TrafficMap3D(props: Props) {
     };
     resume(); document.addEventListener('visibilitychange', resume); reduced.addEventListener('change', resume);
     return () => { if (frame !== undefined) cancelAnimationFrame(frame); clearInterval(timer); document.removeEventListener('visibilitychange', resume); reduced.removeEventListener('change', resume); };
-  }, [ready, busRoute, transitFeeds, language, inactive]);
+  }, [ready, busRoute, transitFeeds, language, inactive, setRouteStop]);
 
   useEffect(() => {
     const m = map.current, gl = library.current, route = busRoute?.route;
-    if (!ready || !m || !gl || !route || fittedRoute.current === route.key) return;
+    if (!ready || !m || !gl || !route || props.fitBusRoute === false || fittedRoute.current === route.key) return;
     fittedRoute.current = route.key;
     const bounds = new gl.LngLatBounds(); route.coordinates.forEach(point => bounds.extend(point));
     if (!bounds.isEmpty()) m.fitBounds(bounds, { padding: { top: 100, bottom: 170, left: 60, right: 80 }, maxZoom: nativeZoom(16), duration: motionDuration() });
-  }, [ready, busRoute]);
+  }, [ready, busRoute, props.fitBusRoute]);
 
   useEffect(() => {
     if (!routeStop || !busSelection || routeStop.key !== routeKey || !stopCamera) return;
@@ -474,7 +475,7 @@ export default function TrafficMap3D(props: Props) {
     <div className="map-tools">
       <div className="zoom-buttons"><button type="button" aria-label={copy.zoomIn} title={copy.zoomIn} disabled={!ready} onClick={() => map.current?.zoomIn({ duration: motionDuration() })}><Plus size={19}/></button><button type="button" aria-label={copy.zoomOut} title={copy.zoomOut} disabled={!ready} onClick={() => map.current?.zoomOut({ duration: motionDuration() })}><Minus size={19}/></button></div>
       <button type="button" aria-label={copy.showAll} title={copy.returnToHongKong} disabled={!ready} onClick={viewAll}><Maximize size={20}/></button>
-      <button type="button" className="gps-button" aria-label={following ? copy.stopFollowing : copy.locateMe} title={following ? copy.stopFollowing : copy.locateMe} aria-pressed={following} aria-busy={locating} disabled={!ready} onClick={following ? stopLocating : locate}>{locating ? <LoaderCircle size={20} className="spin"/> : <LocateFixed size={20}/>}</button>
+      <button type="button" className="gps-button" aria-label={following ? copy.stopFollowing : copy.locateMe} title={following ? copy.stopFollowing : copy.locateMe} aria-pressed={following} aria-busy={locating} disabled={!ready} onClick={() => { sessionStore.update({ followLocation: !following }); if (following) stopLocating(); else locate(); }}>{locating ? <LoaderCircle size={20} className="spin"/> : <LocateFixed size={20}/>}</button>
       {hasBusStopLayers && <button type="button" className="bus-stops-button" aria-label={showBusStops ? copy.hideBusStops : copy.showBusStops} title={showBusStops ? copy.hideBusStops : copy.showBusStops} aria-pressed={showBusStops} onClick={() => setShowBusStops(value => !value)}><BusFront size={20}/></button>}
       {busRoute?.route && <button type="button" className="route-labels-button" aria-label={routeLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} title={routeLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} aria-pressed={routeLabels} onClick={() => setRouteLabels(value => !value)}><Tags size={20}/></button>}
     </div>

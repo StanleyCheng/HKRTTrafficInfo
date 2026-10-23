@@ -5,7 +5,7 @@ import { keepWorkerRequestAlive } from './feed-cache.ts'
 import type { Arrival, Camera } from './traffic.ts'
 
 type Board = { id: string; arrivals: Arrival[] }
-type RouteSnapshot = { at: number; boards: Board[]; alert: boolean }
+type RouteSnapshot = { at: number; fetchedAt: number; refreshMs: number; boards: Board[]; alert: boolean }
 const snapshots = new Map<string, RouteSnapshot>()
 const pending = new Map<string, Promise<RouteSnapshot>>()
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
@@ -31,12 +31,14 @@ export function parseMtrBusSchedule(payload: unknown, route: string, now: number
     }
     return { id: stop.busStopId, arrivals: arrivals.sort((a, b) => Date.parse(a.eta!) - Date.parse(b.eta!)) }
   })
-  return { at, boards, alert: String(payload.status) !== '1' }
+  const alert = String(payload.status) !== '1'
+  const hint = Number(payload.appRefreshTimeInSecond)
+  return { at, fetchedAt: now, refreshMs: alert ? 5_000 : Number.isFinite(hint) && hint >= 30 ? Math.min(hint * 1000, 120_000) : 30_000, boards, alert }
 }
 
 async function loadRoute(route: string, signal: AbortSignal, now: number): Promise<RouteSnapshot> {
   const held = snapshots.get(route)
-  if (held && now - held.at < 30_000) return held
+  if (held && now - held.fetchedAt < held.refreshMs && now - held.at <= ETA_KEEP_MS) return held
   const existing = pending.get(route)
   if (existing) return existing
   const task = keepWorkerRequestAlive(etaQueue(async () => {
@@ -47,7 +49,7 @@ async function loadRoute(route: string, signal: AbortSignal, now: number): Promi
     if (!response.ok) throw new Error(`MTR bus HTTP ${response.status}`)
     const payload: unknown = await response.json()
     const snapshot = parseMtrBusSchedule(payload, route, now)
-    if (!snapshot.alert) snapshots.set(route, snapshot)
+    snapshots.set(route, snapshot)
     return snapshot
   }, signal).finally(() => pending.delete(route)))
   pending.set(route, task)

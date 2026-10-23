@@ -15,3 +15,9 @@ export function nearestPoints<T extends { lng: number; lat: number }>(
     .slice(0, limit)
     .map((item) => item.point)
 }
+
+export const metresBetween = (a: { lng: number; lat: number }, b: { lng: number; lat: number }): number => {
+  const radians = Math.PI / 180
+  const x = (a.lng - b.lng) * Math.cos((a.lat + b.lat) / 2 * radians)
+  return Math.hypot(x, a.lat - b.lat) * 111_195
+}

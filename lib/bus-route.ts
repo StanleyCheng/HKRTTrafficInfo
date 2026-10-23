@@ -1,3 +1,4 @@
+import { validBusSelection } from './bus-selection.ts'
 import { kmbStop } from './kmb-network.ts'
 import { citybusStop } from './citybus-network.ts'
 import { gmbStop } from './gmb-reach.ts'
@@ -5,7 +6,7 @@ import { nlbRouteIds, nlbStop } from './nlb-network.ts'
  import { nlbArrivalMs } from './nlb-clock.ts'
  import { fetchUpstream } from './upstream.ts'
  import { etaQueue, ETA_REFRESH_TIMEOUT_MS } from './polite-fetch.ts'
- import { arrivalRows, arrivalSnapshot, ETA_FRESH_MS } from './place-arrivals.ts'
+ import { arrivalRows, arrivalSnapshot, ETA_FRESH_MS, type ArrivalRowKind } from './place-arrivals.ts'
  import { pool } from './pool.ts'
 import { waitForRequest } from './request-wait.ts'
 import { routeDistances } from './bus-route-motion.ts'
@@ -55,8 +56,8 @@ const scheduled = (row: Row) => /scheduled|未開出|原定班次/i.test(`${row.
 // "(落客站)" or "(西翼)" never match the code shape and are kept.
 const kmbStopName = (name: string) => name.replace(/\s*\([A-Z]{2}\d{3,4}[A-Za-z]?\)$/, '').trim() || name
 
-function routeArrivalRows(value: unknown): Row[] {
-  const rows = arrivalRows<Row>(value)
+function routeArrivalRows(value: unknown, kind: ArrivalRowKind): Row[] {
+  const rows = arrivalRows<Row>(value, kind)
   if (!rows) throw new Error('Bus route arrival data unavailable')
   return rows
 }
@@ -67,14 +68,7 @@ function routeObservedAt(fetched: number, published: unknown[]): number {
   return clock.at
 }
 
-export function validBusSelection(value: BusRouteSelection, requireStopSeq = false): boolean {
-  if (!value || !['kmb', 'citybus', 'gmb', 'nlb'].includes(value.operator) || !/^[A-Za-z0-9-]{1,12}$/.test(value.route) || !/^[A-Za-z0-9]{1,20}$/.test(value.stopId)) return false
-  if (requireStopSeq && value.stopSeq == null) return false
-  if (value.stopSeq != null && (!Number.isInteger(value.stopSeq) || value.stopSeq < 1 || value.stopSeq > 200)) return false
-  if (value.operator === 'kmb') return (value.bound === 'I' || value.bound === 'O') && /^\d{1,3}$/.test(value.serviceType ?? '') && (!value.company || ['KMB', 'LWB'].includes(value.company))
-  if (value.operator === 'citybus') return value.bound === 'I' || value.bound === 'O'
-  return /^\d{1,10}$/.test(value.routeId ?? '') && (value.operator !== 'gmb' || value.routeSeq === 1 || value.routeSeq === 2)
-}
+export { validBusSelection } from './bus-selection.ts'
 
 async function json(url: string, ttl = DAY, signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)): Promise<{ body: Row; fetched: number }> {
   const response = await etaQueue(() => fetchUpstream(url, ttl, { timeoutMs: 8_000, signal, headers: { Accept: 'application/json' } }), signal)
@@ -175,7 +169,7 @@ async function routeEtas(selection: BusRouteSelection, stops: BusRouteStop[], si
   if (selection.operator === 'kmb') {
     const { body, fetched } = await json(`${KMB}/route-eta/${selection.route}/${selection.serviceType}`, ETA_FRESH_MS, signal)
     routeObservedAt(fetched, [body.generated_timestamp])
-    routeArrivalRows(body.data).filter((row) => row.dir === selection.bound && String(row.service_type) === selection.serviceType && Number(row.eta_seq) >= 1 && Number(row.eta_seq) <= 3).forEach((row) => add(() => ({ seq: Number(row.seq), rank: Number(row.eta_seq), at: Date.parse(text(row.eta)), observed: routeObservedAt(fetched, [body.generated_timestamp, row.data_timestamp]), scheduled: scheduled(row) })))
+    routeArrivalRows(body.data, 'bus').filter((row) => row.dir === selection.bound && String(row.service_type) === selection.serviceType && Number(row.eta_seq) >= 1 && Number(row.eta_seq) <= 3).forEach((row) => add(() => ({ seq: Number(row.seq), rank: Number(row.eta_seq), at: Date.parse(text(row.eta)), observed: routeObservedAt(fetched, [body.generated_timestamp, row.data_timestamp]), scheduled: scheduled(row) })))
     return result
   }
   // The whole-route fleet view back-projects every published bus, so every
@@ -190,18 +184,18 @@ async function routeEtas(selection: BusRouteSelection, stops: BusRouteStop[], si
       const { body, fetched } = await json(url, ETA_FRESH_MS, signal)
       if (selection.operator === 'nlb') {
         routeObservedAt(fetched, [body.generateTime])
-        routeArrivalRows(body.estimatedArrivals).forEach((row, index) => add(() => ({ seq: stop.seq, rank: index + 1, at: nlbArrivalMs(text(row.estimatedArrivalTime)), observed: routeObservedAt(fetched, [body.generateTime, row.generateTime]), scheduled: String(row.departed) !== '1' || String(row.noGPS) !== '0' })))
+        routeArrivalRows(body.estimatedArrivals, 'nlb').forEach((row, index) => add(() => ({ seq: stop.seq, rank: index + 1, at: nlbArrivalMs(text(row.estimatedArrivalTime)), observed: routeObservedAt(fetched, [body.generateTime, row.generateTime]), scheduled: String(row.departed) !== '1' || String(row.noGPS) !== '0' })))
       } else if (selection.operator === 'gmb') {
         const data = record(body.data)
         if (data.enabled === false) return
         const observed = routeObservedAt(fetched, [body.generated_timestamp])
-        routeArrivalRows(data.eta).forEach((row, index) => {
+        routeArrivalRows(data.eta, 'gmb-eta').forEach((row, index) => {
           const at = Date.parse(text(row.timestamp))
           if (Number.isFinite(at)) add(() => ({ seq: stop.seq, rank: Number(row.eta_seq) || index + 1, at, observed, scheduled: scheduled(row) }))
         })
       } else {
         routeObservedAt(fetched, [body.generated_timestamp])
-        routeArrivalRows(body.data).filter((item) => item.dir === selection.bound && Number(item.seq) === stop.seq && Number(item.eta_seq) >= 1 && Number(item.eta_seq) <= 3).forEach((row) => {
+        routeArrivalRows(body.data, 'bus').filter((item) => item.dir === selection.bound && Number(item.seq) === stop.seq && Number(item.eta_seq) >= 1 && Number(item.eta_seq) <= 3).forEach((row) => {
           const at = Date.parse(text(row.eta))
           if (Number.isFinite(at)) add(() => ({ seq: stop.seq, rank: Number(row.eta_seq), at, observed: routeObservedAt(fetched, [body.generated_timestamp, row.data_timestamp]), scheduled: scheduled(row) }))
         })

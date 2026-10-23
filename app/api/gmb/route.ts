@@ -2,7 +2,7 @@ import { loadGmbNear } from "@/lib/gmb-feed"
 import { kmbCacheKey } from "@/lib/kmb-reach"
 import type { GmbResponse } from "@/lib/types"
 import { viewCachedGet } from "@/lib/view-cache"
-import { ETA_FRESH_MS } from "@/lib/place-arrivals"
+import { ETA_FRESH_MS, ETA_KEEP_MS } from "@/lib/place-arrivals"
 
 export const dynamic = "force-dynamic"
 
@@ -10,6 +10,7 @@ const empty = (error: string): GmbResponse => ({ ok: false, error, observedAt: n
 
 export const GET = viewCachedGet({
   freshMs: ETA_FRESH_MS,
+  keepMs: ETA_KEEP_MS,
   load: loadGmbNear,
   cacheKey: kmbCacheKey,
   missing: () => empty("Green minibus centre missing"),

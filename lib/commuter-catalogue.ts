@@ -6,11 +6,8 @@ import source from '../data/commuter-sources.json' with { type: 'json' }
 import type { Camera, CommuterKind, MapPath } from './traffic.ts'
 
 export const commuterRetrievedAt = source.retrievedAt
-export const metresBetween = (a: { lng: number; lat: number }, b: { lng: number; lat: number }): number => {
-  const radians = Math.PI / 180
-  const x = (a.lng - b.lng) * Math.cos((a.lat + b.lat) / 2 * radians)
-  return Math.hypot(x, a.lat - b.lat) * 111_195
-}
+export { metresBetween } from './nearest.ts'
+
 export const mtrBusStops = buses.stops.map(stop => ({
   id: stop.STATION_ID, route: stop.ROUTE_ID, direction: stop.DIRECTION,
   reference: stop.REFERENCE_ID, seq: Number(stop.STATION_SEQNO),
@@ -28,9 +25,10 @@ export function mtrBusDestination(lineRef: string): { tc: string; en: string } |
 }
 
 export function commuterCatalogue(kind: CommuterKind): Camera[] {
-  if (kind === 'mtr-bus') return mtrBusStops.map(stop => {
+  if (kind === 'mtr-bus') return [...new Map(mtrBusStops.map(stop => [stop.id, stop])).values()].map(stop => {
     const fare = buses.fares.find(fare => fare.REFERENCE_ID === stop.reference)
-    return { id: `mtr-bus-${stop.id}`, sourceId: stop.id, kind, name: stop.tc, nameEn: stop.en, lng: stop.lng, lat: stop.lat, routes: [stop.route], arrivals: [],
+    const routes = [...new Set(mtrBusStops.filter(row => row.id === stop.id).map(row => row.route))]
+    return { id: `mtr-bus-${stop.id}`, sourceId: stop.id, kind, name: stop.tc, nameEn: stop.en, lng: stop.lng, lat: stop.lat, routes, arrivals: [],
       rows: fare ? [{ label: '成人八達通全程車費', labelEn: 'Adult Octopus full fare', value: `HK$${fare.FARE_OCTO_ADULT}` }] : [],
     }
   })

@@ -6,6 +6,7 @@ import { getCameraData } from '../lib/traffic-client.ts';
 import { isLiveTrafficDataFresh, speedLevel } from '../lib/traffic.ts';
 import { loadSlpDetectors, parseSlpDetectors, SLP_LOCATIONS_URL, SLP_READINGS_URL } from '../lib/slp.ts';
 import { parseCsv } from '../lib/traffic-parsing.ts';
+import { commuterCatalogue, tramPaths } from '../lib/commuter-catalogue.ts';
 
 const origin = (process.argv.find((arg) => /^https?:/.test(arg)) || 'http://localhost:5173').replace(/\/$/, '');
 const only = process.argv.find((arg) => arg.startsWith('--only='))?.slice(7).split(',');
@@ -213,6 +214,27 @@ await check('ferry', async () => {
   assert.ok(data.piers.length > 0 && Array.isArray(data.vessels));
   assert.ok(data.piers.every((pier) => Array.isArray(pier.calls)));
   return { piers: data.piers.length, vessels: data.vessels.length };
+});
+for (const kind of ['tram', 'access', 'taxi']) await check(kind, async () => {
+  const places = commuterCatalogue(kind);
+  assert.ok(places.length > 0);
+  assert.equal(new Set(places.map(place => place.id)).size, places.length);
+  assert.ok(places.every(place => place.name && place.nameEn && place.lng > 113.8 && place.lng < 114.5 && place.lat > 22.1 && place.lat < 22.6));
+  if (kind === 'tram') assert.ok(tramPaths().length >= 6);
+  return { sourceType: 'bundled published catalogue', locations: places.length };
+});
+await check('mtr-bus', async () => {
+  const data = await api('mtr-bus?lng=114.1695&lat=22.4444&zoom=16');
+  assert.ok(data.cameras.length > 0 && data.cameras.every(camera => Array.isArray(camera.arrivals)));
+  assert.equal(new Set(data.cameras.map(camera => camera.id)).size, data.cameras.length);
+  return { stops: data.cameras.length, arrivals: data.cameras.reduce((count, camera) => count + camera.arrivals.length, 0) };
+});
+await check('pedestrian', async () => {
+  const data = await api('pedestrian?lng=114.16&lat=22.282&zoom=16');
+  assert.ok(data.paths.length > 0 && data.paths.length <= 1000);
+  assert.ok(data.paths.every(path => path.points.length > 1));
+  if (data.paths.length === 1000) assert.equal(data.complete, false);
+  return { paths: data.paths.length, facilities: data.cameras.length, complete: data.complete };
 });
 console.log(JSON.stringify({ checkedAt: new Date().toISOString(), report }, null, 2));
 if (report.some((item) => !item.ok)) process.exitCode = 1;

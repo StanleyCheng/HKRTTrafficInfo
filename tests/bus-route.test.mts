@@ -201,8 +201,8 @@ test('one stale KMB row cannot remove fresh buses or the opposite direction', as
     if (url.includes('/route-stop/')) return Response.json({ data: [{ stop: 'EE3EA981F3D6485D', seq: 1 }, { stop: '6C15579CA43DF72E', seq: 2 }] })
     if (url.includes('FeatureServer')) return Response.json({ features: [] })
     return Response.json({ generated_timestamp: new Date(now).toISOString(), data: [
-      { dir: 'O', service_type: '1', seq: 1, eta_seq: 1, eta: new Date(now + 60_000).toISOString(), data_timestamp: new Date(now - 240_000).toISOString() },
-      ...['O', 'I'].map(dir => ({ dir, service_type: '1', seq: 2, eta_seq: 1, eta: new Date(now + 20_000).toISOString(), data_timestamp: new Date(now).toISOString() })),
+      { route: '115', dir: 'O', service_type: '1', seq: 1, eta_seq: 1, eta: new Date(now + 60_000).toISOString(), data_timestamp: new Date(now - 240_000).toISOString() },
+      ...['O', 'I'].map(dir => ({ route: '115', dir, service_type: '1', seq: 2, eta_seq: 1, eta: new Date(now + 20_000).toISOString(), data_timestamp: new Date(now).toISOString() })),
     ] })
   })
   const result = await loadBusRoute({ operator: 'kmb', route: '115', stopId: 'EE3EA981F3D6485D', bound: 'O', serviceType: '1' }, now)

@@ -1,3 +1,4 @@
+import { ETA_KEEP_MS } from '../../../lib/place-arrivals.ts'
 import { loadBusRoute, loadBusStopArrivals, validBusSelection, type BusRouteSelection, type BusRouteResponse, type BusStopArrivalsResponse } from '../../../lib/bus-route.ts'
 import { selectionCachedGet } from '../../../lib/view-cache.ts'
 
@@ -31,6 +32,7 @@ function selectionKey(stopArrivals: boolean, s: BusRouteSelection): string {
 
 export const GET = selectionCachedGet<BusRouteResponse | BusStopArrivalsResponse>({
   freshMs: 10_000,
+  keepMs: ETA_KEEP_MS,
   cacheKey: (request) => {
     const parsed = parseSelection(request)
     return parsed ? selectionKey(parsed.stopArrivals, parsed.selection) : null

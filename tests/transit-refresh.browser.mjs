@@ -145,7 +145,7 @@ try {
       assert.ok(pills.every(pill => pill.text.length > 0 && pill.radius === '999px'), 'Station pills carry rounded station names');
     }
     await state.page.locator('.source-button').evaluate(element => element.click());
-    assert.equal(await state.page.locator('.sources-dialog').getByText('Refresh interval: 30 seconds while visible.', { exact: true }).count(), 6, 'Rail and bus feeds advertise their 30-second cadence');
+    assert.equal(await state.page.locator('.sources-dialog').getByText('Refresh interval: 30 seconds while visible.', { exact: true }).count(), 7, 'Rail and bus feeds advertise their 30-second cadence');
     assert.equal(await state.page.locator('.sources-dialog').getByText('Refresh interval: 60 seconds while visible.', { exact: true }).count(), 3, 'Ferries, boundary queues and weather warnings advertise their 60-second cadence');
     await state.page.locator('.sources-dialog .close-button').evaluate(element => element.click());
     await tick(state, 300000);
@@ -253,7 +253,7 @@ try {
     await openLayers(state.page);
     await until(async () => (await state.page.locator('.bus-route-status .warning-text').count()) > 0);
     assert.equal(await state.page.locator('.bus-route-polyline').count(), 1, 'An HTTP-200 API failure retains the last route geometry');
-    assert.equal(await state.page.locator('.bus-route-marker').count(), 0, 'Failed route data must not show an estimated vehicle');
+    assert.equal(await state.page.locator('.bus-route-marker').count(), 1, 'A failed refresh retains an estimate within its original expiry');
     assert.match(await state.page.locator('.bus-route-status').innerText(), /Retained data/);
     const failed = state.calls['bus-route'].length;
     await tick(state, 35000);

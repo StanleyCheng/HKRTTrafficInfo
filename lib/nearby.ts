@@ -1,5 +1,5 @@
 import { currentArrivals } from './arrival-display.ts'
-import { metresBetween } from './commuter-catalogue.ts'
+import { metresBetween } from './nearest.ts'
 import type { Camera, CameraData, IntegrationKind } from './traffic.ts'
 
 export const nearbyGroups: { id: 'rail' | 'bus' | 'tram' | 'ferry' | 'access' | 'taxi'; kinds: IntegrationKind[] }[] = [

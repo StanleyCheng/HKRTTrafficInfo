@@ -37,6 +37,7 @@ function cacheHit<T extends OkBody>(candidate: Cached<T> | undefined, now: numbe
 export function viewCachedGet<T extends OkBody>(options: {
   freshMs: number
   keepMs?: number
+  maxEntries?: number
   load: (lng: number, lat: number, now: number, zoom: number) => Promise<T>
   missing: () => T
   failed: (error: unknown) => T
@@ -62,7 +63,7 @@ export function viewCachedGet<T extends OkBody>(options: {
       task = keepWorkerRequestAlive(options.load(lng, lat, now, zoom).then((body) => {
         const result = { ...body, fetchedAt: body.fetchedAt ?? new Date().toISOString() }
         if (body.ok && body.cacheable !== false && !body.stale) {
-          if (cached.size >= 300) cached.delete(cached.keys().next().value!)
+          if (cached.size >= (options.maxEntries ?? 300)) cached.delete(cached.keys().next().value!)
           cached.set(key, { at: now, body: result })
         }
         return result
@@ -71,11 +72,11 @@ export function viewCachedGet<T extends OkBody>(options: {
     }
     try {
       const body = await task
-      if (!body.ok && hit) return Response.json({ ...hit.body, stale: true, error: body.error })
+      if (!body.ok && cacheHit(hit, Date.now(), options.keepMs)) return Response.json({ ...hit!.body, stale: true, error: body.error })
       return Response.json(body, { status: body.ok ? 200 : 502 })
     } catch (error) {
       const failure = options.failed(error)
-      if (hit) return Response.json({ ...hit.body, stale: true, error: failure.error })
+      if (cacheHit(hit, Date.now(), options.keepMs)) return Response.json({ ...hit!.body, stale: true, error: failure.error })
       return Response.json(failure, { status: 502 })
     }
   }
@@ -118,11 +119,11 @@ export function selectionCachedGet<T extends OkBody>(options: {
     }
     try {
       const body = await task
-      if (!body.ok && hit) return Response.json({ ...hit.body, stale: true, error: body.error })
+      if (!body.ok && cacheHit(hit, Date.now(), options.keepMs)) return Response.json({ ...hit!.body, stale: true, error: body.error })
       return Response.json(body, { status: body.ok ? 200 : 502 })
     } catch (error) {
       const failure = options.failed(error)
-      if (hit) return Response.json({ ...hit.body, stale: true, error: failure.error })
+      if (cacheHit(hit, Date.now(), options.keepMs)) return Response.json({ ...hit!.body, stale: true, error: failure.error })
       return Response.json(failure, { status: 502 })
     }
   }
