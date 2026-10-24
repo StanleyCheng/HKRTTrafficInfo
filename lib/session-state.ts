@@ -2,6 +2,7 @@ import { validBusSelection } from './bus-selection.ts'
 import type { BusRouteSelection, BusRouteStop } from './bus-route.ts'
 import type { IntelTab } from './intel.ts'
 import { kinds, type Camera } from './traffic.ts'
+import type { TransportMode, RouteVisibility, SavedBusRoute } from './transport-routes.ts'
 
 export type MapSession = {
   version: 1
@@ -15,6 +16,10 @@ export type MapSession = {
   showDetectors: boolean
   showBusStops: boolean
   routeLabels: boolean
+  transportMode: TransportMode
+  routeVisibility: RouteVisibility
+  routeQuery: string
+  chosenBusRoutes: SavedBusRoute[]
   revealedRoute: string | null
   nearbyRadius: number
   showNearbyOnMap: boolean
@@ -28,7 +33,7 @@ export type MapSession = {
   searchPage: number
 }
 export const sessionStorageKey = 'hk-traffic-session-v1'
-export const defaultSession: MapSession = { version: 1, view: null, mapMode: '2d', camera3D: { pitch: 55, bearing: -20 }, busSelection: null, selectedPlace: null, openControl: null, dockGroup: 'roads', showDetectors: false, showBusStops: true, routeLabels: true, revealedRoute: null, nearbyRadius: 1000, showNearbyOnMap: false, followLocation: true, routeStop: null, intelOpen: false, intelTab: 'ranked', statusExpanded: false, searchQuery: '', searchScope: 'roads', searchPage: 0 }
+export const defaultSession: MapSession = { version: 1, view: null, mapMode: '2d', camera3D: { pitch: 55, bearing: -20 }, busSelection: null, selectedPlace: null, openControl: null, dockGroup: 'roads', showDetectors: false, showBusStops: true, routeLabels: true, transportMode: 'bus', routeVisibility: {}, routeQuery: '', chosenBusRoutes: [], revealedRoute: null, nearbyRadius: 1000, showNearbyOnMap: false, followLocation: true, routeStop: null, intelOpen: false, intelTab: 'ranked', statusExpanded: false, searchQuery: '', searchScope: 'roads', searchPage: 0 }
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const numberBetween = (value: unknown, min: number, max: number): value is number => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 const string = (value: unknown, limit = 200): value is string => typeof value === 'string' && value.length <= limit
@@ -53,7 +58,15 @@ export function parseSession(value: unknown): MapSession {
   }
   const place = value.selectedPlace
   if (record(place) && kinds.some(kind => kind === place.kind) && string(place.id) && string(place.sourceId) && string(place.name) && (place.nameEn === undefined || string(place.nameEn)) && numberBetween(place.lat, 22, 22.7) && numberBetween(place.lng, 113.7, 114.6)) session.selectedPlace = savedPlace(place as Camera)
-  if (value.openControl === 'search' || value.openControl === 'layers' || value.openControl === 'rail' || value.openControl === 'nearby') session.openControl = value.openControl
+  if (value.openControl === 'search' || value.openControl === 'layers' || value.openControl === 'nearby') session.openControl = value.openControl
+  if (value.openControl === 'rail') session.openControl = 'layers'
+  if (value.transportMode === 'bus' || value.transportMode === 'rail' || value.transportMode === 'ferry' || value.transportMode === 'tram') session.transportMode = value.transportMode
+  if (string(value.routeQuery, 200)) session.routeQuery = value.routeQuery
+  if (Array.isArray(value.chosenBusRoutes)) session.chosenBusRoutes = value.chosenBusRoutes.slice(0, 200).flatMap((route: unknown): SavedBusRoute[] => {
+    if (!record(route) || route.operator !== 'kmb' && route.operator !== 'citybus' && route.operator !== 'gmb' && route.operator !== 'nlb' || !string(route.route, 12) || !/^[A-Za-z0-9-]+$/.test(route.route) || !string(route.stopId, 20) || !/^[A-Za-z0-9]+$/.test(route.stopId) || !string(route.name) || !string(route.nameEn)) return []
+    return [{ operator: route.operator, route: route.route, stopId: route.stopId, name: route.name, nameEn: route.nameEn }]
+  })
+  if (record(value.routeVisibility)) session.routeVisibility = Object.fromEntries(Object.entries(value.routeVisibility).flatMap(([key, on]) => /^(all:)?(bus|rail|ferry|tram)(:|$)/.test(key) && key.length <= 200 && typeof on === 'boolean' ? [[key, on] as const] : []).slice(0, 5000))
   if (value.dockGroup === 'roads' || value.dockGroup === 'conditions' || value.dockGroup === 'rail' || value.dockGroup === 'bus' || value.dockGroup === 'ferry') session.dockGroup = value.dockGroup
   for (const key of ['showDetectors', 'showBusStops', 'routeLabels', 'showNearbyOnMap', 'followLocation', 'intelOpen', 'statusExpanded'] as const) if (typeof value[key] === 'boolean') session[key] = value[key]
   if (value.intelTab === 'ranked' || value.intelTab === 'roads' || value.intelTab === 'boundary' || value.intelTab === 'weather' || value.intelTab === 'systems' || value.intelTab === 'notes') session.intelTab = value.intelTab

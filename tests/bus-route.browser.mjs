@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { openLayers, closeControls, reloadAll } from './browser-controls.mjs';
+import { openLayers, closeControls, reloadAll, toggleMapDisplay } from './browser-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = (process.argv[2] || 'http://localhost:5173').replace(/\/$/, '');
 const evidence = path.resolve(process.argv[3] || 'outputs/bus-route');
@@ -136,19 +136,15 @@ async function assertRouteLabels(page, operator, language = 'en', checkViewport 
     }
   }
 }
-// The right-hand stack grows by one button per active display switch; both the
-// stop switch and the route label switch must keep the layer toolbar clear of it
-// and stay inside the viewport at every supported layout.
+// Display switches live in Layers; the fixed map and utility stacks stay clear.
 async function assertRightHandStack(page) {
   const layout = await page.evaluate(() => {
-    const tools = document.querySelector('.map-tools'), toolbar = document.querySelector('.map-toolbar'), stops = document.querySelector('.map-tools .bus-stops-button');
-    if (!tools || !toolbar || !stops) return null;
-    const toolsRect = tools.getBoundingClientRect(), toolbarRect = toolbar.getBoundingClientRect(), stopsRect = stops.getBoundingClientRect();
-    return { toolsBottom: toolsRect.bottom, toolbarTop: toolbarRect.top, top: stopsRect.top, right: stopsRect.right, width: innerWidth };
+    const tools = document.querySelector('.map-tools').getBoundingClientRect();
+    const toolbar = document.querySelector('.map-toolbar').getBoundingClientRect();
+    return { bottom: tools.bottom, top: toolbar.top, right: toolbar.right, width: innerWidth };
   });
-  assert.ok(layout, 'Right-hand map stack, layer toolbar and bus stop button are all on screen');
-  assert.ok(layout.toolbarTop >= layout.toolsBottom, `Bus stop button keeps the layer toolbar below the right-hand stack clear: ${JSON.stringify(layout)}`);
-  assert.ok(layout.top > 0 && layout.right <= layout.width, `Bus stop button stays inside the viewport: ${JSON.stringify(layout)}`);
+  assert.ok(layout.top >= layout.bottom && layout.right <= layout.width, JSON.stringify(layout));
+  assert.equal(await page.locator('.map-tools .bus-stops-button,.map-tools .route-labels-button').count(), 0);
 }
 async function test(name, run) {
   if (process.env.BUS_TEST_FILTER && !new RegExp(process.env.BUS_TEST_FILTER).test(name)) return;
@@ -319,28 +315,20 @@ try {
     assert.equal(f.requests.length, before, 'Movement uses the remaining published stop times, without a new poll');
     await f.context.close();
   });
-  await test('Stop-label toggle clears names while route, circles and the moving bus remain, and exists only with a route', async () => {
+  await test('Layers stop-label switch clears names while route, circles and the moving bus remain', async () => {
     const f = await create();
-    assert.equal(await f.page.locator('.map-tools .route-labels-button').count(), 0, 'No toggle before a route is selected');
     await select(f, variants[0]); await f.page.locator('.bus-route-marker').first().waitFor();
-    const toggle = f.page.locator('.map-tools .route-labels-button');
-    await toggle.waitFor();
-    assert.equal(await toggle.getAttribute('aria-pressed'), 'true', 'Station labels are on by default');
-    assert.equal(await toggle.getAttribute('aria-label'), 'Hide route stop labels');
     await assertRouteLabels(f.page, 'kmb');
-    await toggle.click();
+    await toggleMapDisplay(f.page, 'labels');
     await f.page.waitForFunction(() => document.querySelectorAll('.bus-route-stop-label').length === 0);
-    assert.equal(await toggle.getAttribute('aria-pressed'), 'false', 'Toggle reads as off');
-    assert.equal(await toggle.getAttribute('aria-label'), 'Show route stop labels');
-    assert.equal(await f.page.locator('.bus-route-polyline').count(), 1, 'The route line stays');
-    assert.equal(await f.page.locator('.bus-route-stop').count(), routeStops.length, 'Stop circles stay');
-    assert.ok(new Set(await samples(f.page)).size >= 10, 'The estimated bus keeps moving without label clutter');
-    await toggle.click();
-    await f.page.waitForFunction(count => document.querySelectorAll('.bus-route-stop-label').length === count, routeStops.length);
+    assert.equal(await f.page.locator('.bus-route-polyline').count(), 1);
+    assert.equal(await f.page.locator('.bus-route-stop').count(), routeStops.length);
+    assert.ok(new Set(await samples(f.page)).size >= 10);
+    await toggleMapDisplay(f.page, 'labels');
     await assertRouteLabels(f.page, 'kmb');
     await openLayers(f.page);
     await f.page.getByRole('button', { name: 'Close route', exact: true }).click();
-    await f.page.locator('.route-labels-button').waitFor({ state: 'detached' }, { timeout: 10_000 });
+    assert.equal(await f.page.getByRole('switch', { name: 'Route stop labels', exact: true }).isChecked(), true);
     assert.deepEqual(await f.page.evaluate(() => window.__errors), []);
     await f.context.close();
   });
@@ -396,36 +384,32 @@ try {
   });
   await test('Bus stop toggle hides every enabled operator stop while the displayed route keeps its stops, labels and moving bus', async () => {
     const f = await create();
-    const toggle = f.page.locator('.map-tools .bus-stops-button');
-    await toggle.waitFor();
-    assert.equal(await toggle.getAttribute('aria-pressed'), 'true', 'Stop markers are on by default');
-    assert.equal(await toggle.getAttribute('aria-label'), 'Hide all bus stop markers');
+    const checked = () => f.page.evaluate(() => JSON.parse(localStorage.getItem('hk-traffic-session-v1')).showBusStops ?? true);
+    assert.equal(await checked(), true, 'Stop markers are on by default');
     for (const kind of ['kmb', 'citybus', 'gmb', 'nlb']) await f.page.locator(`.camera-marker[title$="${kind} fixture stop"]`).waitFor();
     const stopIds = await f.page.evaluate(() => [...document.querySelectorAll('.bus-stop-marker')].map(node => node.dataset.markerId));
     assert.equal(stopIds.length, 4, 'Every enabled bus layer draws its own stop marker');
-    await toggle.click();
+    await toggleMapDisplay(f.page, 'stops');
     await f.page.waitForFunction(() => document.querySelectorAll('.bus-stop-marker').length === 0);
-    assert.equal(await toggle.getAttribute('aria-pressed'), 'false', 'Toggle reads as off');
-    assert.equal(await toggle.getAttribute('aria-label'), 'Show all bus stop markers');
-    await toggle.click();
+    assert.equal(await checked(), false, 'Toggle reads as off');
+    await toggleMapDisplay(f.page, 'stops');
     await f.page.waitForFunction(ids => ids.every(id => [...document.querySelectorAll('.bus-stop-marker')].some(node => node.dataset.markerId === id)), stopIds);
-    assert.equal(await toggle.getAttribute('aria-pressed'), 'true', 'Toggling back restores every stop marker');
+    assert.equal(await checked(), true, 'Toggling back restores every stop marker');
     // A stop's ETA card follows its marker out of the map when the stops go off.
     await f.page.locator('.camera-marker[title$="kmb fixture stop"] .marker-displacement').click();
     await f.page.locator('.item-popup').waitFor();
-    await toggle.click();
+    await toggleMapDisplay(f.page, 'stops');
     await f.page.locator('.item-popup').waitFor({ state: 'detached' });
     assert.equal(await f.page.locator('.bus-stop-marker').count(), 0);
-    await toggle.click();
+    await toggleMapDisplay(f.page, 'stops');
     await f.page.waitForFunction(ids => ids.every(id => [...document.querySelectorAll('.bus-stop-marker')].some(node => node.dataset.markerId === id)), stopIds);
     // Open a route first, then hide the stops: the route's own line, stop
     // circles, names and estimated bus must survive the display switch.
     await select(f, variants[0]);
     await f.page.locator('.bus-route-marker').first().waitFor();
-    await toggle.click();
+    await toggleMapDisplay(f.page, 'stops');
     await f.page.waitForFunction(() => document.querySelectorAll('.bus-stop-marker').length === 0);
-    assert.equal(await toggle.getAttribute('aria-pressed'), 'false', 'Toggle reads as off beside a route');
-    assert.equal(await toggle.getAttribute('aria-label'), 'Show all bus stop markers');
+    assert.equal(await checked(), false, 'Toggle reads as off beside a route');
     await f.page.locator('.map-canvas').click({ position: { x: 30, y: 150 } });
     assert.equal(await f.page.locator('.map-canvas.route-focus').count(), 0, 'Blank map click clears route focus');
     assert.equal(await f.page.locator('.bus-stop-marker').count(), 0, 'Clearing route focus does not revive the hidden bus stops');
@@ -434,14 +418,14 @@ try {
     await assertRightHandStack(f.page);
     await assertRouteLabels(f.page, 'kmb');
     assert.ok(new Set(await samples(f.page)).size >= 10, 'The estimated bus keeps moving with the stops hidden');
-    await toggle.click();
+    await toggleMapDisplay(f.page, 'stops');
     await f.page.waitForFunction(() => document.querySelectorAll('.bus-stop-marker').length > 0);
     assert.equal(await f.page.locator('.bus-route-polyline').count(), 1, 'Restoring the stops leaves the route line alone');
     await assertRouteLabels(f.page, 'kmb');
     await openLayers(f.page);
     for (const kind of ['kmb', 'citybus', 'gmb', 'nlb']) await f.page.locator(`.layer-card.${kind} [role="switch"]`).click();
-    await toggle.waitFor({ state: 'detached' }, { timeout: 10_000 });
-    assert.equal(await f.page.locator('.bus-stop-marker').count(), 0, 'No bus layer leaves neither stops nor the stop switch');
+    assert.equal(await f.page.getByRole('switch', { name: 'Bus stops', exact: true }).count(), 1, 'The consolidated switch remains available');
+    assert.equal(await f.page.locator('.bus-stop-marker').count(), 0, 'No enabled bus layer leaves no stop markers');
     assert.deepEqual(await f.page.evaluate(() => window.__errors), []);
     await f.context.close();
   });

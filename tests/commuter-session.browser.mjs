@@ -1,6 +1,7 @@
 // PLAYWRIGHT_MODULE points to an existing Playwright runtime.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { openLayers, closeControls, toggleMapDisplay } from './browser-controls.mjs';
 import { commuterCatalogue } from '../lib/commuter-catalogue.ts';
 import { metresBetween } from '../lib/nearest.ts';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -114,14 +115,14 @@ try {
  const before=f.calls.arrivals;await step(page,65000);assert.ok(f.calls.arrivals>=before+2,'Open 3D stop popup polls independently');
  const popupCalls=f.calls.arrivals;await page.reload({waitUntil:'domcontentloaded'});await page.locator('.native-item-popup .arrival-board').waitFor();assert.ok(f.calls.arrivals>popupCalls,'Reopening restores the route-stop detail and requests current arrivals');
  await page.locator('.native-item-popup .maplibregl-popup-close-button').click();
- await page.locator('.bus-stops-button').click();await page.locator('.route-labels-button').click();
+ await toggleMapDisplay(page,'stops');await toggleMapDisplay(page,'labels');
  await page.evaluate(()=>window.__nativeMap.jumpTo({center:[114.18,22.30],zoom:14.25,pitch:48,bearing:-12}));
  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('hk-traffic-session-v1')).view?.zoom===15.25);
  await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>window.__nativeMap?.getLayer('hk-3d-buildings'));
  for(let i=0;f.calls.route<2&&i<80;i++)await page.waitForTimeout(100);assert.ok(f.calls.route>=2);
  const restored=await page.evaluate(()=>({lng:window.__nativeMap.getCenter().lng,lat:window.__nativeMap.getCenter().lat,zoom:window.__nativeMap.getZoom(),pitch:window.__nativeMap.getPitch(),bearing:window.__nativeMap.getBearing()}));
  assert.ok(Math.abs(restored.lng-114.18)<.00001&&Math.abs(restored.lat-22.30)<.00001);assert.equal(restored.zoom,14.25);assert.equal(restored.pitch,48);assert.equal(restored.bearing,-12);
- assert.equal(await page.locator('.bus-stops-button').getAttribute('aria-pressed'),'false');assert.equal(await page.locator('.route-labels-button').getAttribute('aria-pressed'),'false');assert.ok(f.calls.route>=2,'Route reloads current data after reopening');
+ await openLayers(page);assert.equal(await page.getByRole('switch',{name:'Bus stops',exact:true}).isChecked(),false);assert.equal(await page.getByRole('switch',{name:'Route stop labels',exact:true}).isChecked(),false);await closeControls(page);assert.ok(f.calls.route>=2,'Route reloads current data after reopening');
  assert.deepEqual(f.errors,[]);console.log('PASS '+width+'px 3D: popup polling and persisted mode, route, centre, zoom, tilt, bearing, stop/label controls');
  await page.screenshot({path:`${evidence}/restored-3d-${width}.png`});
  }

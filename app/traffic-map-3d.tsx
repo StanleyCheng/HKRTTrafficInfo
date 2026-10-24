@@ -4,7 +4,7 @@ import { sessionStore } from '@/lib/session-state';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BusFront, Compass, Layers3, LoaderCircle, LocateFixed, Maximize, Minus, Plus, RefreshCw, Tags } from 'lucide-react';
+import { Compass, Layers3, LoaderCircle, LocateFixed, Maximize, Minus, Plus, RefreshCw } from 'lucide-react';
 import type * as MapLibre from 'maplibre-gl';
 import { messages } from '@/lib/i18n';
 import { layers, layerText, readableInk, type Camera } from '@/lib/traffic';
@@ -30,7 +30,7 @@ const motionDuration = () => window.matchMedia('(prefers-reduced-motion: reduce)
 // Both renderers consume the same monitor data and renderItemDetails. MapLibre owns
 // this camera, WebGL canvas and GeoJSON geometry; there is no Leaflet bridge here.
 export default function TrafficMap3D(props: Props) {
-  const { language, onActivity, selected, focusTarget, cameras, segments, paths, busRoute, busSelection, transitFeeds, inactive, loading, allDisabled, hasErrors, hasDrawableLayers, hasBusStopLayers, renderItemDetails, onExit3D } = props;
+  const { language, onActivity, selected, focusTarget, cameras, segments, paths, busRoute, busSelection, transitFeeds, inactive, loading, allDisabled, hasErrors, hasDrawableLayers, renderItemDetails, onExit3D } = props;
   const copy = messages[language];
   const callbacks = useRef(props);
   useEffect(() => { callbacks.current = props; });
@@ -49,8 +49,8 @@ export default function TrafficMap3D(props: Props) {
   const [zoom, setZoom] = useState(nativeZoom(props.initialView?.zoom ?? 11));
   const popupContent = useRef<HTMLDivElement | null>(null);
   const [popupElement, setPopupElement] = useState<HTMLDivElement | null>(null);
-  const [showBusStops, setShowBusStops] = useSessionField('showBusStops');
-  const [routeLabels, setRouteLabels] = useSessionField('routeLabels');
+  const [showBusStops] = useSessionField('showBusStops');
+  const [routeLabels] = useSessionField('routeLabels');
   const [revealedRoute, setRevealedRoute] = useSessionField('revealedRoute');
   const [routeStop, setRouteStop] = useSessionField('routeStop');
   const [routeDetails, setRouteDetails] = useState<{ camera: Camera; language: string; status: 'loading' | 'error' | 'ready' } | null>(null);
@@ -467,6 +467,15 @@ export default function TrafficMap3D(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, popupElement, popupId]);
 
+  useEffect(() => {
+    const m = map.current, gl = library.current, focus = props.routeFocus;
+    if (!ready || !m || !gl || !focus || !focus.points.length) return;
+    const bounds = new gl.LngLatBounds();
+    focus.points.forEach(([lat, lng]) => bounds.extend([lng, lat]));
+    m.fitBounds(bounds, { padding: { top: 90, bottom: 185, left: 36, right: 80 }, maxZoom: nativeZoom(16), duration: motionDuration() });
+    props.onRouteFocusComplete?.();
+  }, [ready, props.routeFocus, props.onRouteFocusComplete]);
+
   const viewAll = () => map.current?.easeTo({ center: [114.13, 22.355], zoom: nativeZoom(11), duration: motionDuration() });
   const resetCamera = () => map.current?.easeTo({ bearing: 0, pitch: 55, duration: motionDuration() });
   const locationErrorText = locationError === 'denied' ? copy.locationDenied : locationError === 'timeout' ? copy.locationTimeout : locationError === 'unsupported' ? copy.locationUnsupported : copy.locationUnavailable;
@@ -476,8 +485,6 @@ export default function TrafficMap3D(props: Props) {
       <div className="zoom-buttons"><button type="button" aria-label={copy.zoomIn} title={copy.zoomIn} disabled={!ready} onClick={() => map.current?.zoomIn({ duration: motionDuration() })}><Plus size={19}/></button><button type="button" aria-label={copy.zoomOut} title={copy.zoomOut} disabled={!ready} onClick={() => map.current?.zoomOut({ duration: motionDuration() })}><Minus size={19}/></button></div>
       <button type="button" aria-label={copy.showAll} title={copy.returnToHongKong} disabled={!ready} onClick={viewAll}><Maximize size={20}/></button>
       <button type="button" className="gps-button" aria-label={following ? copy.stopFollowing : copy.locateMe} title={following ? copy.stopFollowing : copy.locateMe} aria-pressed={following} aria-busy={locating} disabled={!ready} onClick={() => { sessionStore.update({ followLocation: !following }); if (following) stopLocating(); else locate(); }}>{locating ? <LoaderCircle size={20} className="spin"/> : <LocateFixed size={20}/>}</button>
-      {hasBusStopLayers && <button type="button" className="bus-stops-button" aria-label={showBusStops ? copy.hideBusStops : copy.showBusStops} title={showBusStops ? copy.hideBusStops : copy.showBusStops} aria-pressed={showBusStops} onClick={() => setShowBusStops(value => !value)}><BusFront size={20}/></button>}
-      {busRoute?.route && <button type="button" className="route-labels-button" aria-label={routeLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} title={routeLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} aria-pressed={routeLabels} onClick={() => setRouteLabels(value => !value)}><Tags size={20}/></button>}
     </div>
     <div className="map-3d-camera"><button type="button" title={copy.reset3DCamera} aria-label={copy.reset3DCamera} disabled={!ready} onClick={resetCamera}><Compass size={19}/></button><label><Layers3 size={16}/><span>{copy.mapTilt}</span><input type="range" min="0" max="75" step="1" value={pitch} aria-label={copy.mapTilt} disabled={!ready} onChange={event => { const value = Number(event.target.value); setPitch(value); map.current?.setPitch(value); }}/></label></div>
     {ready && zoom < 14.5 && !error && <div className="map-3d-hint" role="status">{copy.zoomForBuildings}</div>}
@@ -485,7 +492,7 @@ export default function TrafficMap3D(props: Props) {
     {locationError && <div className="map-error location-error" role="alert">{locationErrorText}<button type="button" className="map-retry" onClick={() => setLocationError(null)}>{copy.dismissLocationError}</button></div>}
     {error && <div className="map-error" role="alert">{error === 'unsupported' ? copy.map3DUnsupported : copy.map3DLoadFailed}<div className="map-error-actions"><button type="button" className="map-retry" onClick={onExit3D}>{copy.returnTo2D}</button>{error === 'load' && <button type="button" className="map-retry" onClick={() => { setReady(false); setError(null); setRetry(value => value + 1); }}><RefreshCw size={14}/>{copy.retry}</button>}</div></div>}
     {!ready && !error && <div className="map-loading"><LoaderCircle className="spin" size={20}/>{copy.map3DLoading}</div>}
-    {ready && !loading && !busRoute?.route && cameras.length === 0 && !segments?.length && (allDisabled || hasDrawableLayers) && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
+    {ready && !loading && !busRoute?.route && cameras.length === 0 && !segments?.length && !paths?.length && (allDisabled || hasDrawableLayers) && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
     {popupElement && popupCamera && createPortal(renderItemDetails(popupCamera, selected ? undefined : {
       status: routeDetails?.camera.id === stopCamera?.id && routeDetails?.language === language ? routeDetails.status : 'loading',
       onRetry: () => setRouteStop(current => current ? { ...current } : null), onClose: () => setRouteStop(null),

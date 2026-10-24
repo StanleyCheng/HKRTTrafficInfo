@@ -13,6 +13,7 @@ import { routeDistances } from './bus-route-motion.ts'
 import { busRoadGeometry } from './bus-route-geometry.ts'
 import { busCompany } from './bus-company.ts'
 import type { Arrival } from './traffic.ts'
+import type { BusPathRequest } from './transport-routes.ts'
 
 export type BusRouteSelection = {
   operator: 'kmb' | 'citybus' | 'gmb' | 'nlb'
@@ -351,4 +352,37 @@ export async function loadBusRoute(selection: BusRouteSelection, now = Date.now(
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Bus route unavailable', vehicles: [], reverse: [], observedAt: null, stale: false }
   }
+}
+
+// The layer picker needs geometry for several routes, without polling every stop's ETA.
+export async function loadBusRoutePaths(request: BusPathRequest): Promise<BusRouteData[]> {
+  const { operator, route, stopId } = request
+  let selection = request.tracking
+  if (!selection) {
+    if (operator === 'kmb' || operator === 'citybus') selection = { operator, route, stopId, bound: 'O', ...(operator === 'kmb' ? { serviceType: '1', company: busCompany(route, '') } : {}) }
+    if (operator === 'gmb') {
+      const routeId = Object.entries(gmbStop(stopId)?.ids ?? {}).find(([, code]) => code === route)?.[0]
+      if (routeId) selection = { operator, route, stopId, routeId, routeSeq: 1 }
+    }
+    if (operator === 'nlb') {
+      const routeId = nlbStop(stopId)?.services.find(service => service.code === route)?.id
+      if (routeId) selection = { operator, route, stopId, routeId }
+    }
+  }
+  if (!selection || !validBusSelection(selection)) throw new Error('Bus route geometry unavailable')
+  const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
+  const directions = [selection, ...reverseSelections(selection)]
+  const results = await Promise.all(directions.map(async direction => {
+    try {
+      const stops = await routeStops(direction, false, signal)
+      const road = await waitForRequest(busRoadGeometry(direction, stops), signal).catch(() => null)
+      const coordinates: [number, number][] = road?.coordinates ?? stops.map(stop => [stop.lng, stop.lat])
+      const distances = road?.stopDistances ?? routeDistances(coordinates)
+      stops.forEach((stop, index) => { stop.distance = distances[index] })
+      return { key: [operator, route, direction.bound, direction.serviceType, direction.routeId, direction.routeSeq].join(':'), operator, route, stops, coordinates, geometry: road ? 'road' : 'stops' } satisfies BusRouteData
+    } catch { return null }
+  }))
+  const paths = results.filter((result): result is NonNullable<typeof result> => result !== null)
+  if (!paths.length) throw new Error('Bus route geometry unavailable')
+  return paths
 }

@@ -206,12 +206,12 @@ export function ferryFairway(fromId: string, toId: string, from: GeoPoint, to: G
   return [from, to]
 }
 
-export function ferryPaths(): { id: string; pathLng: number[]; pathLat: number[] }[] {
+export function ferryPaths(): { id: string; fromId: string; toId: string; pathLng: number[]; pathLat: number[] }[] {
   return Object.keys(FAIRWAY).map((key) => {
     const [fromId, toId] = key.split("|")
     const from = piersFile.piers.find((pier) => pier.id === fromId)!
     const to = piersFile.piers.find((pier) => pier.id === toId)!
     const path = ferryFairway(fromId, toId, from, to)
-    return { id: `ferry-${fromId}-${toId}`, pathLng: path.map((point) => point.lng), pathLat: path.map((point) => point.lat) }
+    return { id: `ferry-${fromId}-${toId}`, fromId, toId, pathLng: path.map((point) => point.lng), pathLat: path.map((point) => point.lat) }
   })
 }

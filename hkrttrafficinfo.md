@@ -20,6 +20,14 @@ The selected bus route uses `lib/bus-route.ts` to load operator-specific stops a
 
 These are ETA-derived estimates, not vehicle GPS or a complete fleet inventory. They can differ from the rider's GPS and cannot identify the bus being ridden. KMB 115 regression evidence, partial-failure behavior and validation are documented in `docs/bus-motion-review-2026-10-15.md`.
 
+### Consolidated transport layers (24 October 2026)
+
+The right-hand Layers popover now contains bus-stop and route-label display switches plus a transport selector, show/hide-all actions, bilingual search, independent route checkboxes and route-fit buttons (`app/transport-layers.tsx`). The separate rail popover and renderer-owned display buttons are removed. The remaining map utilities and bottom layer docks retain their existing roles. Non-route layers are available under Other map layers in the same popover.
+
+`lib/transport-routes.ts` builds route choices and filters paths, stops, arrivals and moving rail/ferry payloads before either renderer receives them. MTR interchanges remain while any selected line serves them. Light Rail can be selected by service rather than as one network switch. Bus choices are operator-scoped and based on currently loaded stops; the panel states this coverage boundary. MTR Bus and tram lines use approximate ordered-stop connections. Ferry fairways retain their existing inferred geometry.
+
+`/api/bus-route-paths` loads cached bus geometry without the selected-route ETA fan-out. Its client queue has two workers and aborts obsolete waits; failures remain explicit and retryable. `routeVisibility`, `transportMode` and `routeQuery` are validated saved-session fields. Previous rail-line preferences remain effective until the new rail controls are changed, and a restored legacy rail popover opens Layers. Both renderers accept the same route-focus bounds. See `docs/transport-layers-review-2026-10-24.md` for validation.
+
 ## 2. Technical framework
 
 ### 2.1 Toolchain versions (`package.json`)

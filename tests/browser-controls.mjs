@@ -1,7 +1,10 @@
 export async function openLayers(page) {
-  if (await page.locator('.layers-popover').count()) return;
-  await page.locator('.map-toolbar').getByRole('button', { name: /^(Map layers|地圖圖層)(?:$| ·)/ }).evaluate(button => button.click());
-  await page.locator('.layers-popover').waitFor();
+  if (!await page.locator('.layers-popover').count()) {
+    await page.locator('.map-toolbar').getByRole('button', { name: /^(Map layers|地圖圖層)(?:$| ·)/ }).evaluate(button => button.click());
+    await page.locator('.layers-popover').waitFor();
+  }
+  const other = page.locator('.other-map-layers');
+  if (await other.count() && await other.getAttribute('open') === null) await other.locator('summary').evaluate(button => button.click());
 }
 
 export async function openSearch(page) {
@@ -24,3 +27,9 @@ export async function reloadAll(page) {
   await info.evaluate(button => button.click());
 }
 
+
+export async function toggleMapDisplay(page, key) {
+  await openLayers(page);
+  await page.locator('.transport-layers').getByRole('switch', { name: key === 'stops' ? /^(Bus stops|巴士站)$/ : /^(Route stop labels|路線車站標籤)$/ }).click();
+  await closeControls(page);
+}

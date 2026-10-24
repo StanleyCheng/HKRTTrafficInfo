@@ -3,10 +3,11 @@ import { useSessionField } from './use-session-field';
 import { sessionStore } from '@/lib/session-state';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed, Tags, BusFront } from 'lucide-react';
+import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import { integrationMessages, messages } from '@/lib/i18n';
 import { Camera, CameraData, FlowSegment, Language, LayerKind, MapPath, hkTime, layerText, layers, parkingCounts, readableInk, speedLevelColors } from '@/lib/traffic';
+import type { RouteFocus } from '@/lib/transport-routes';
 import type { TrafficSearchItem } from '@/lib/traffic-view';
 import { ferryDepartures, movingCameras, railHoverText, busKinds, type MapViewport } from '@/lib/integration-client';
 import { stopPlate } from '@/lib/stop-plate';
@@ -92,8 +93,8 @@ function FerryPierPopup({ camera, language, now }: { camera: Camera; language: L
 
 export type Basemap = 'osm' | 'positron';
 type DetailOptions = { status: 'loading' | 'error' | 'ready'; onRetry?: () => void; onClose?: () => void };
-export type TrafficMapProps = { initialView?: MapViewport; autoLocate?: boolean; fitBusRoute?: boolean; busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; hasDrawableLayers: boolean; hasBusStopLayers: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; renderItemDetails: (camera: Camera, options?: DetailOptions) => ReactNode; onCloseDetails: () => void; onDetailsOpen?: (content: HTMLElement) => void };
-export default function TrafficMap({ initialView, autoLocate = true, fitBusRoute = true, busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, hasDrawableLayers, hasBusStopLayers, language, basemap, inactive = false, now, busSelection, renderItemDetails, onCloseDetails, onDetailsOpen }: TrafficMapProps) {
+export type TrafficMapProps = { routeFocus?: RouteFocus | null; onRouteFocusComplete?: () => void; initialView?: MapViewport; autoLocate?: boolean; fitBusRoute?: boolean; busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; hasDrawableLayers: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; renderItemDetails: (camera: Camera, options?: DetailOptions) => ReactNode; onCloseDetails: () => void; onDetailsOpen?: (content: HTMLElement) => void };
+export default function TrafficMap({ routeFocus: focusRoute, onRouteFocusComplete, initialView, autoLocate = true, fitBusRoute = true, busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, hasDrawableLayers, language, basemap, inactive = false, now, busSelection, renderItemDetails, onCloseDetails, onDetailsOpen }: TrafficMapProps) {
   const copy = messages[language];
   const startingView = useRef(initialView);
   const locateOnMount = useRef(autoLocate);
@@ -127,11 +128,11 @@ export default function TrafficMap({ initialView, autoLocate = true, fitBusRoute
   const detailsOpenRef = useRef(onDetailsOpen);
   const popupLanguage = useRef(language);
   const [revealedRouteKey, setRevealedRouteKey] = useSessionField('revealedRoute');
-  const [routeStopLabels, setRouteStopLabels] = useSessionField('routeLabels');
+  const [routeStopLabels] = useSessionField('routeLabels');
   // Every enabled bus layer's stop markers follow this one switch. It is a map
   // display preference, not a layer: popups, search and feeds stay untouched,
   // and the stops a displayed route draws are a separate surface.
-  const [showBusStops, setShowBusStops] = useSessionField('showBusStops');
+  const [showBusStops] = useSessionField('showBusStops');
   const routeFocusRef = useRef(false);
   const previousSelection = useRef<string | null>(null);
   const selectRef = useRef(onSelect);
@@ -1132,18 +1133,25 @@ export default function TrafficMap({ initialView, autoLocate = true, fitBusRoute
     }
     previousSegmentSelection.current = selectedSegmentId ?? null;
   }, [selectedSegmentId, segments]);
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m || !focusRoute || !focusRoute.points.length) return;
+    m.fitBounds(focusRoute.points, { paddingTopLeft: [36, 90], paddingBottomRight: [80, 185], maxZoom: 16, animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
+    onRouteFocusComplete?.();
+  }, [ready, focusRoute, onRouteFocusComplete]);
+
   function fit() {
     map.current?.setView([22.355, 114.13], 11, { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
   }
   const locationErrorMessage = locationError === 'denied' ? copy.locationDenied : locationError === 'timeout' ? copy.locationTimeout : locationError === 'unsupported' ? copy.locationUnsupported : copy.locationUnavailable;
   return <section className="map-area" aria-label={copy.mapLabel} aria-hidden={inactive || undefined} inert={inactive || undefined}>
     <div ref={element} className="map-canvas" data-basemap={basemap} role="group" aria-label={copy.mapKeyboardHelp} />
-    <div className="map-tools"><div className="zoom-buttons"><button aria-label={copy.zoomIn} title={copy.zoomIn} onClick={() => map.current?.zoomIn()}><Plus size={19}/></button><button aria-label={copy.zoomOut} title={copy.zoomOut} onClick={() => map.current?.zoomOut()}><Minus size={19}/></button></div><button aria-label={copy.showAll} title={copy.returnToHongKong} onClick={fit}><Maximize size={20}/></button><button type="button" className="gps-button" aria-label={followingLocation ? copy.stopFollowing : copy.locateMe} title={followingLocation ? copy.stopFollowing : copy.locateMe} aria-pressed={followingLocation} aria-busy={locating} disabled={!ready} onClick={() => { sessionStore.update({ followLocation: !followingLocation }); if (followingLocation) stopLocating(); else locate(); }}>{locating ? <LoaderCircle className="spin" size={20}/> : <LocateFixed size={20}/>}</button>{hasBusStopLayers && <button type="button" className="bus-stops-button" aria-label={showBusStops ? copy.hideBusStops : copy.showBusStops} title={showBusStops ? copy.hideBusStops : copy.showBusStops} aria-pressed={showBusStops} onClick={() => setShowBusStops(value => !value)}><BusFront size={20}/></button>}{busRoute?.route && <button type="button" className="route-labels-button" aria-label={routeStopLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} title={routeStopLabels ? copy.hideRouteStopLabels : copy.showRouteStopLabels} aria-pressed={routeStopLabels} onClick={() => setRouteStopLabels(value => !value)}><Tags size={20}/></button>}</div>
+    <div className="map-tools"><div className="zoom-buttons"><button aria-label={copy.zoomIn} title={copy.zoomIn} onClick={() => map.current?.zoomIn()}><Plus size={19}/></button><button aria-label={copy.zoomOut} title={copy.zoomOut} onClick={() => map.current?.zoomOut()}><Minus size={19}/></button></div><button aria-label={copy.showAll} title={copy.returnToHongKong} onClick={fit}><Maximize size={20}/></button><button type="button" className="gps-button" aria-label={followingLocation ? copy.stopFollowing : copy.locateMe} title={followingLocation ? copy.stopFollowing : copy.locateMe} aria-pressed={followingLocation} aria-busy={locating} disabled={!ready} onClick={() => { sessionStore.update({ followLocation: !followingLocation }); if (followingLocation) stopLocating(); else locate(); }}>{locating ? <LoaderCircle className="spin" size={20}/> : <LocateFixed size={20}/>}</button></div>
     <span className="sr-only" role="status">{locating ? copy.locating : locationFound ? copy.locationFound : ''}</span>
     {locationError && <div className={`map-error location-error${mapError ? ' with-map-error' : ''}`} role="alert">{locationErrorMessage}<button type="button" className="map-retry" onClick={() => setLocationError(null)}>{copy.dismissLocationError}</button></div>}
     {mapError && <div className="map-error" role="alert">{copy.mapLoadFailed}<button type="button" className="map-retry" onClick={() => ready ? setBasemapRetry(value => value + 1) : window.location.reload()}><RefreshCw size={14}/>{copy.retry}</button></div>}
     {!ready && !mapError && <div className="map-loading"><LoaderCircle className="spin" size={20}/> {copy.mapLoading}</div>}
-    {ready && !loading && !busRoute?.route && cameras.length === 0 && !segments?.length && (allDisabled || hasDrawableLayers) && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
+    {ready && !loading && !busRoute?.route && cameras.length === 0 && !segments?.length && !paths?.length && (allDisabled || hasDrawableLayers) && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
     {popupElement && popupCamera && createPortal(renderItemDetails(popupCamera, selected ? undefined : {
       status: routePopupData && routePopupData.stop === routePopupStop?.stop && routePopupData.language === language ? routePopupData.status : 'loading',
       onRetry: () => setRoutePopupStop(current => current ? { ...current } : null),

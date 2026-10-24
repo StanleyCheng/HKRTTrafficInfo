@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, lazy, Suspense, type CSSProperties } from 'react';
 import Image from 'next/image';
-import { Box, Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, Search, ShieldCheck, SlidersHorizontal, SquareParking, TrafficCone, TrainFront, TriangleAlert, Video, X, BusFront, TramFront, Accessibility, CarTaxiFront, Radar } from 'lucide-react';
+import { Box, Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, Search, ShieldCheck, Layers3, SquareParking, TrafficCone, TriangleAlert, Video, X, BusFront, TramFront, Accessibility, CarTaxiFront, Radar } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { messages, integrationMessages } from '@/lib/i18n';
 import { getCameraData } from '@/lib/traffic-client';
@@ -18,9 +18,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import TrafficSearch from './traffic-search';
 import TrafficStatus from './traffic-status';
 import IntelPanel from './intel-panel';
-import { getIntegrationData, initialViewport, integrationRequestKey, pollingMs, viewportNote, withBoundarySpeeds, movingCameras, retainTransitIdentities, busKinds, type MapViewport } from '@/lib/integration-client';
-import { linesThrough, mtrLineList } from '@/lib/mtr-network';
-import type { MtrResponse } from '@/lib/types';
+import { getIntegrationData, initialViewport, integrationRequestKey, pollingMs, viewportNote, withBoundarySpeeds, movingCameras, retainTransitIdentities, type MapViewport } from '@/lib/integration-client';
+import TransportLayers from './transport-layers';
+import { useRoutePaths } from './use-route-paths';
+import { transportRoutes, filterTransportFeed, routeVisible, setAllRoutes, transportKinds, type TransportMode, type TransportRoute, type RouteFocus } from '@/lib/transport-routes';
 import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
 import { getBusRoute } from '@/lib/bus-route-client';
 import { retainBusRoute } from '@/lib/bus-route-state';
@@ -133,9 +134,6 @@ function setStoredBasemap(basemap: Basemap) {
 }
 
 
-const mtrLines = mtrLineList();
-// The Light Rail network has no per-line split, so it rides along as one row.
-const railLineKeys: string[] = [...mtrLines.map(line => line.code), 'lrt'];
 
 // Stored boolean maps (rail lines, enabled layers) follow the language/basemap
 // subscription pattern: no hydration mismatch, no cross-tab drift, and a write
@@ -280,9 +278,16 @@ export default function TrafficMonitor() {
   const extra = integrationMessages[language];
   const numberLocale = language === 'en' ? 'en-HK' : 'zh-HK';
   const railLines = useSyncExternalStore(railLinesStore.subscribe, railLinesStore.getSnapshot, railLinesStore.getServerSnapshot);
-  const railLineOn = useCallback((key: string) => railLines[key] !== false, [railLines]);
-  const railHidden = railLineKeys.filter(key => railLines[key] === false);
-  const railControlLabel = `${copy.railLines}: ${copy.railLinesShown(railLineKeys.length - railHidden.length, railLineKeys.length)}`;
+  const [, setTransportMode] = useSessionField('transportMode');
+  const [storedRouteVisibility, setRouteVisibility] = useSessionField('routeVisibility');
+  const [chosenBusRoutes, setChosenBusRoutes] = useSessionField('chosenBusRoutes');
+  const routeVisibility = useMemo(() => {
+    const hasRailChoices = Object.keys(storedRouteVisibility).some(key => key === 'all:rail' || key.startsWith('rail:'));
+    const legacy = hasRailChoices ? {} : Object.fromEntries(Object.entries(railLines).map(([code, on]) => [code === 'lrt' ? 'rail:lrt' : `rail:mtr:${code}`, on]));
+    return { ...legacy, ...storedRouteVisibility };
+  }, [railLines, storedRouteVisibility]);
+  const [routeFocus, setRouteFocus] = useState<RouteFocus | null>(null);
+  const finishRouteFocus = useCallback(() => setRouteFocus(null), []);
   // Restored layer choices persist across launches; unavailable layers stay off.
   const enabledSelection = useSyncExternalStore(layerSelectionStore.subscribe, layerSelectionStore.getSnapshot, layerSelectionStore.getServerSnapshot);
   const enabled = useMemo<Record<LayerKind, boolean>>(() => Object.keys(enabledSelection).length
@@ -484,25 +489,20 @@ export default function TrafficMonitor() {
   const boundaryData = useMemo(() => withBoundarySpeeds(states.boundary.data, segments), [states.boundary.data, segments]);
   const displayStates = useMemo(() => ({ ...states, boundary: { ...states.boundary, data: boundaryData } }), [states, boundaryData]);
   const intelInput = useMemo(() => ({ states: Object.fromEntries(kinds.filter(kind => enabled[kind] && layerAvailable(kind)).map(kind => [kind, displayStates[kind]])), segments: enabled.flow ? segments : [], now }), [displayStates, enabled, segments, now]);
-  const mtrData = enabled.mtr ? states.mtr.data : undefined;
-  // The rail-line picker filters every MTR surface — tracks, station boards and
-  // moving trains — plus the Light Rail layer as one switch. An interchange
-  // station stays visible while any of its lines is selected.
-  const railMtrData = useMemo(() => {
-    if (!mtrData || !railHidden.length) return mtrData;
-    const payload = mtrData.payload as MtrResponse | undefined;
-    return {
-      ...mtrData,
-      payload: payload ? { ...payload, trains: payload.trains.filter(train => railLineOn(train.line)), boards: payload.boards.filter(board => railLineOn(board.line)) } : undefined,
-      paths: (mtrData.paths ?? []).filter(path => path.line === undefined || railLineOn(path.line)),
-      cameras: mtrData.cameras.filter(camera => linesThrough(camera.sourceId).some(railLineOn)),
-    };
-  }, [mtrData, railHidden.length, railLineOn]);
-  const lrtData = enabled.lrt && railLineOn('lrt') ? states.lrt.data : undefined;
-  const ferryData = enabled.ferry ? states.ferry.data : undefined;
-  const transitFeeds = useMemo(() => ({ mtr: railMtrData, lrt: lrtData, ferry: ferryData }), [railMtrData, lrtData, ferryData]);
-  const paths = useMemo(() => [railMtrData, lrtData, ferryData, ...(['tram', 'access'] as const).map(kind => enabled[kind] ? states[kind].data : undefined)].flatMap(data => data?.paths ?? []), [railMtrData, lrtData, ferryData, enabled, states]);
-  const viewStates = useMemo(() => ({ ...displayStates, mtr: { ...displayStates.mtr, data: railMtrData }, lrt: { ...displayStates.lrt, data: lrtData } }), [displayStates, railMtrData, lrtData]);
+  const routeFeeds = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, displayStates[kind].data])), [displayStates]);
+  const routeCatalogue = useMemo(() => transportRoutes(routeFeeds, chosenBusRoutes), [routeFeeds, chosenBusRoutes]);
+  const { loaded: routePaths, retry: retryRoutePaths } = useRoutePaths(routeCatalogue, enabled, routeVisibility);
+  const viewStates = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, { ...displayStates[kind], data: filterTransportFeed(kind, displayStates[kind].data, routeCatalogue, routeVisibility) }])) as Record<LayerKind, LayerState>, [displayStates, routeCatalogue, routeVisibility]);
+  const transitFeeds = useMemo(() => ({ mtr: enabled.mtr ? viewStates.mtr.data : undefined, lrt: enabled.lrt ? viewStates.lrt.data : undefined, ferry: enabled.ferry ? viewStates.ferry.data : undefined }), [enabled, viewStates]);
+  const paths = useMemo(() => [
+    ...(['mtr', 'lrt', 'ferry', 'tram', 'access'] as const).flatMap(kind => enabled[kind] ? viewStates[kind].data?.paths ?? [] : []),
+    ...routeCatalogue.flatMap(route => {
+      if (!route.bus || !enabled[route.kind] || !routeVisible(route, routeVisibility) || busSelection?.operator === route.kind && busSelection.route === route.code) return [];
+      const state = routePaths[route.id];
+      return state?.status === 'ready' ? state.paths : [];
+    }),
+    ...routeCatalogue.filter(route => route.kind === 'mtr-bus' && enabled[route.kind] && routeVisible(route, routeVisibility)).flatMap(route => route.paths),
+  ], [enabled, viewStates, routeCatalogue, routeVisibility, routePaths, busSelection]);
   const flowFresh = isLiveTrafficDataFresh(states.flow.data?.segmentsUpdated, now);
   const cameras = useMemo(() => {
     const visible = kinds.flatMap(kind => {
@@ -514,7 +514,7 @@ export default function TrafficMonitor() {
     });
     if (showNearbyOnMap) {
       const seen = new Set(visible.map(camera => camera.id));
-      const feeds = nearbyKinds.filter(kind => layerAvailable(kind) && !viewportNote(kind, viewport)).map(kind => displayStates[kind].data);
+      const feeds = nearbyKinds.filter(kind => layerAvailable(kind) && !viewportNote(kind, viewport)).map(kind => viewStates[kind].data);
       for (const { camera } of nearbyPlaces(feeds, viewport, nearbyRadius, now)) {
         if (seen.has(camera.id)) continue;
         seen.add(camera.id);
@@ -530,18 +530,15 @@ export default function TrafficMonitor() {
       return data ? movingCameras(kind, data, now).find(camera => camera.id === selectedSnapshot.id) ?? null : null;
     }
     if (!selectedSnapshot?.id.startsWith('flow-segment-')) {
-      const latestCamera = selectedSnapshot && displayStates[selectedSnapshot.kind].data?.cameras.find(camera => camera.id === selectedSnapshot.id);
+      const latestCamera = selectedSnapshot && viewStates[selectedSnapshot.kind].data?.cameras.find(camera => camera.id === selectedSnapshot.id);
       const camera = latestCamera ?? selectedSnapshot;
       if (camera?.kind === 'flow' && !flowFresh) return { ...camera, speedKmh: null, level: 'unknown' as const, color: speedLevelColors.unknown };
       return camera && (isFeedDataStale(camera.kind, displayStates[camera.kind].data, now) || isCameraDataStale(camera, now)) ? { ...camera, color: speedLevelColors.unknown } : camera;
     }
     const segment = segments.find(candidate => candidate.id === selectedSnapshot.id);
     return segment ? cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated) : null;
-  }, [selectedSnapshot, states, displayStates, segments, flowFresh, now]);
-  const activeBusSelection = busSelection && enabled[busSelection.operator] ? busSelection : null;
-  // The map's stop switch is offered while any enabled bus layer can draw stops;
-  // the switch state itself belongs to the map, next to the other map buttons.
-  const hasBusStopLayers = mapEnabled['mtr-bus'] || busKinds.some(kind => mapEnabled[kind] && layerAvailable(kind));
+  }, [selectedSnapshot, states, displayStates, viewStates, segments, flowFresh, now]);
+  const activeBusSelection = busSelection && enabled[busSelection.operator] && routeVisible({ id: `bus:${busSelection.operator}:${busSelection.route}`, mode: 'bus' }, routeVisibility) ? busSelection : null;
   const busRoute = activeBusSelection && busRouteState?.selection === activeBusSelection ? busRouteState.data : undefined;
   useEffect(() => {
     if (!activeBusSelection) return;
@@ -635,12 +632,13 @@ export default function TrafficMonitor() {
   const showBusRoute = useCallback((camera: Camera, tracking: BusRouteSelection) => {
     pendingDetailsFocus.current = false;
     layerSelectionStore.write({ ...enabled, [camera.kind]: true });
+    setRouteVisibility(previous => ({ ...previous, [`bus:${tracking.operator}:${tracking.route}`]: true }));
     setBusSelection(tracking);
     setRouteToFit(tracking);
     sessionStore.update({ routeStop: null });
     setSelectedSnapshot(null);
     setOpenControl(null);
-  }, [enabled, setBusSelection, setSelectedSnapshot, setOpenControl]);
+  }, [enabled, setBusSelection, setSelectedSnapshot, setOpenControl, setRouteVisibility]);
 
   function selectSearchItem(item: TrafficSearchItem) {
     layerSelectionStore.write({ ...enabled, [item.camera.kind]: true });
@@ -676,12 +674,27 @@ export default function TrafficMonitor() {
     return <ItemDetails camera={camera} language={language} now={now} stale={stale} onActivity={beginActivity} activeBusSelection={activeBusSelection} routeStatus={relatedRoute ? routeStatus : undefined} status={options?.status} onRetry={options?.onRetry} onShowRoute={tracking => { showBusRoute(camera, tracking); options?.onClose?.(); }}/>;
   }
 
+  function rememberBusRoute(route: TransportRoute, on: boolean) {
+    const bus = route.bus;
+    if (!bus) return;
+    setChosenBusRoutes(previous => {
+      const remaining = previous.filter(saved => saved.operator !== bus.operator || saved.route !== bus.route);
+      return on ? [...remaining, { operator: bus.operator, route: bus.route, stopId: bus.stopId, name: route.name, nameEn: route.nameEn }] : remaining;
+    });
+  }
+
+  function enableTransport(mode: TransportMode) {
+    const next = { ...enabled };
+    for (const kind of transportKinds[mode]) if (layerAvailable(kind)) next[kind] = true;
+    layerSelectionStore.write(next);
+  }
+
   const mapProps: TrafficMapProps = {
-    onActivity: beginActivity, busRoute, fitBusRoute: activeBusSelection === routeToFit, paths, transitFeeds, onViewport: updateViewport, initialView: viewport, autoLocate: followLocation,
+    routeFocus, onRouteFocusComplete: finishRouteFocus, onActivity: beginActivity, busRoute, fitBusRoute: activeBusSelection === routeToFit, paths, transitFeeds, onViewport: updateViewport, initialView: viewport, autoLocate: followLocation,
     cameras, segments: enabled.flow ? segments : undefined, selected,
     selectedSegmentId: selected?.id.startsWith('flow-segment-') ? selected.id : null,
     onSelect: choose, onSelectSegment, focusTarget, loading,
-    allDisabled: kinds.every(kind => !mapEnabled[kind]), hasErrors: errors, hasDrawableLayers, hasBusStopLayers,
+    allDisabled: kinds.every(kind => !mapEnabled[kind]), hasErrors: errors, hasDrawableLayers,
     language, basemap, now, busSelection: activeBusSelection, renderItemDetails,
     onCloseDetails: closeDetails, onDetailsOpen: focusDetails,
   };
@@ -712,26 +725,22 @@ export default function TrafficMonitor() {
       <IntelPanel input={intelInput} language={language} onSelect={selectSearchItem}/>
       <TrafficStatus feeds={activeKinds.map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={refreshAllLayers}/>
       <div className="map-toolbar" role="group" aria-label={copy.openControls}>
-        <Popover open={openControl === 'nearby'} onOpenChange={open => setOpenControl(open ? 'nearby' : null)}>
-          <PopoverTrigger asChild><button type="button" className="toolbar-button nearby-toggle" aria-label={language === 'en' ? 'Nearby transport' : '附近交通'} title={language === 'en' ? 'Nearby transport' : '附近交通'}><Radar size={20}/></button></PopoverTrigger>
-          <PopoverContent className="map-control-popover nearby-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="nearby-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
-            <div className="control-popover-head"><h2 id="nearby-popover-title">{language === 'en' ? 'Nearby transport' : '附近交通'}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
-            <div className="control-popover-body"><NearbyPanel states={displayStates} view={viewport} language={language} now={now} onSelect={camera => selectSearchItem({ camera })} onRefresh={() => nearbyKinds.forEach(kind => void fetchLayer(kind, true))}/></div>
-          </PopoverContent>
-        </Popover>
-        <Popover open={openControl === 'search'} onOpenChange={open => setOpenControl(open ? 'search' : null)}>
-          <PopoverTrigger asChild><button type="button" className="toolbar-button" aria-label={copy.searchTab} title={copy.searchTab}><Search size={20}/></button></PopoverTrigger>
-          <PopoverContent className="map-control-popover search-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="search-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
-            <div className="control-popover-head"><h2 id="search-popover-title">{copy.searchTab}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
-            <div className="control-popover-body"><TrafficSearch items={searchItems} language={language} selected={selected} loading={loading} onSelect={selectSearchItem}/></div>
-          </PopoverContent>
-        </Popover>
         <Popover open={openControl === 'layers'} onOpenChange={open => setOpenControl(open ? 'layers' : null)}>
-          <PopoverTrigger asChild><button type="button" className={`toolbar-button ${routeError ? 'error' : ''}`} aria-label={routeControlLabel} title={routeControlLabel}>{routeLoading ? <LoaderCircle size={20} className="spin"/> : routeError ? <TriangleAlert size={20}/> : <SlidersHorizontal size={20}/>}</button></PopoverTrigger>
+          <PopoverTrigger asChild><button type="button" className={`toolbar-button ${routeError ? 'error' : ''}`} aria-label={routeControlLabel} title={routeControlLabel}>{routeLoading ? <LoaderCircle size={20} className="spin"/> : routeError ? <TriangleAlert size={20}/> : <Layers3 size={20}/>}</button></PopoverTrigger>
           <PopoverContent className="map-control-popover layers-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="layers-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
             <div className="control-popover-head"><h2 id="layers-popover-title">{copy.mapLayers}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
             <div className="control-popover-body">
+              <TransportLayers language={language} routes={routeCatalogue} visibility={routeVisibility} enabled={enabled} loaded={routePaths} onRetry={retryRoutePaths}
+                onMode={mode => { setTransportMode(mode); sessionStore.update({ routeQuery: '' }); enableTransport(mode); }}
+                onAll={(mode, on) => { setRouteVisibility(setAllRoutes(routeVisibility, mode, on)); if (mode === 'bus') setChosenBusRoutes([]); if (on) enableTransport(mode); closeDetails(); }}
+                onToggle={(route, on) => { rememberBusRoute(route, on); setRouteVisibility({ ...routeVisibility, [route.id]: on }); if (on) layerSelectionStore.write({ ...enabled, [route.kind]: true }); closeDetails(); }}
+                onZoom={route => {
+                  const state = routePaths[route.id];
+                  const points = (state?.status === 'ready' ? state.paths : route.paths).flatMap(path => path.points);
+                  if (points.length) { rememberBusRoute(route, true); layerSelectionStore.write({ ...enabled, [route.kind]: true }); setRouteVisibility({ ...routeVisibility, [route.id]: true }); setRouteFocus({ points }); sessionStore.update({ followLocation: false }); setOpenControl(null); closeDetails(); }
+                }}/>
               {routeStatus}
+              <details className="other-map-layers"><summary>{language === 'en' ? 'Other map layers' : '其他地圖圖層'}</summary>
           <div className="summary" aria-live="polite"><strong>{total ? total.toLocaleString(numberLocale) : loading ? '—' : '0'}</strong><span>{copy.publishedLocations}</span>{complete && <small>{copy.completeInventory}</small>}</div>
           <div className="section-label"><h3>{copy.mapLayers}</h3><span>{copy.showingLocations(cameras.length.toLocaleString(numberLocale))}</span></div>
           <div className="layer-list">{kinds.map(kind => {
@@ -776,32 +785,22 @@ export default function TrafficMonitor() {
             </div>;
           })}</div>
           <p className="layer-note">{copy.layerNote}</p>
+              </details>
             </div>
           </PopoverContent>
         </Popover>
-        <Popover open={openControl === 'rail'} onOpenChange={open => setOpenControl(open ? 'rail' : null)}>
-          <PopoverTrigger asChild><button type="button" className={`toolbar-button ${railHidden.length ? 'filtered' : ''}`} aria-label={railControlLabel} title={railControlLabel}><TrainFront size={20}/></button></PopoverTrigger>
-          <PopoverContent className="map-control-popover rail-lines-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="rail-lines-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
-            <div className="control-popover-head"><h2 id="rail-lines-popover-title">{copy.railLines}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
-            <div className="control-popover-body">
-              <div className="rail-lines-actions">
-                <button type="button" onClick={() => railLinesStore.write(Object.fromEntries(railLineKeys.map(key => [key, true])))}>{copy.railLinesAll}</button>
-                <button type="button" onClick={() => railLinesStore.write(Object.fromEntries(railLineKeys.map(key => [key, false])))}>{copy.railLinesNone}</button>
-                <span className="rail-lines-count">{copy.railLinesShown(railLineKeys.length - railHidden.length, railLineKeys.length)}</span>
-              </div>
-              <ul className="rail-lines-list">
-                {mtrLines.map(line => <li key={line.code}>
-                  <button type="button" className={`rail-line-row ${railLineOn(line.code) ? 'active' : ''}`} role="switch" aria-checked={railLineOn(line.code)} aria-label={`${copy.layerSwitch(language === 'en' ? line.en : line.tc)}`} onClick={() => railLinesStore.write({ ...railLines, [line.code]: !railLineOn(line.code) })}>
-                    <span className="rail-line-chip" style={{ background: line.color }}/><span className="rail-line-name">{language === 'en' ? line.en : line.tc}</span><span className="switch"/>
-                  </button>
-                </li>)}
-                <li>
-                  <button type="button" className={`rail-line-row lrt ${railLineOn('lrt') ? 'active' : ''}`} role="switch" aria-checked={railLineOn('lrt')} aria-label={copy.layerSwitch(layerText('lrt', language).name)} onClick={() => railLinesStore.write({ ...railLines, lrt: !railLineOn('lrt') })}>
-                    <span className="rail-line-chip" style={{ background: layers.lrt.color }}/><span className="rail-line-name">{layerText('lrt', language).name}</span><span className="switch"/>
-                  </button>
-                </li>
-              </ul>
-            </div>
+        <Popover open={openControl === 'nearby'} onOpenChange={open => setOpenControl(open ? 'nearby' : null)}>
+          <PopoverTrigger asChild><button type="button" className="toolbar-button nearby-toggle" aria-label={language === 'en' ? 'Nearby transport' : '附近交通'} title={language === 'en' ? 'Nearby transport' : '附近交通'}><Radar size={20}/></button></PopoverTrigger>
+          <PopoverContent className="map-control-popover nearby-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="nearby-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
+            <div className="control-popover-head"><h2 id="nearby-popover-title">{language === 'en' ? 'Nearby transport' : '附近交通'}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
+            <div className="control-popover-body"><NearbyPanel states={displayStates} view={viewport} language={language} now={now} onSelect={camera => selectSearchItem({ camera })} onRefresh={() => nearbyKinds.forEach(kind => void fetchLayer(kind, true))}/></div>
+          </PopoverContent>
+        </Popover>
+        <Popover open={openControl === 'search'} onOpenChange={open => setOpenControl(open ? 'search' : null)}>
+          <PopoverTrigger asChild><button type="button" className="toolbar-button" aria-label={copy.searchTab} title={copy.searchTab}><Search size={20}/></button></PopoverTrigger>
+          <PopoverContent className="map-control-popover search-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="search-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
+            <div className="control-popover-head"><h2 id="search-popover-title">{copy.searchTab}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
+            <div className="control-popover-body"><TrafficSearch items={searchItems} language={language} selected={selected} loading={loading} onSelect={selectSearchItem}/></div>
           </PopoverContent>
         </Popover>
         {activeBusSelection && <span className="sr-only" role="status">{extra.selectedBusRoute} {activeBusSelection.route} · {routeLoading ? extra.loadingBusRoute : routeError ? extra.busRouteError : extra.estimatedBuses(busCount)}</span>}
