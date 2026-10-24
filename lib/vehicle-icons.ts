@@ -9,7 +9,7 @@ export const railVehicleIcons: Record<string, string> = {
   TML: 'rail-tuen-ma', TWL: 'rail-urban',
 };
 export const vehicleIconAssets = [...new Set(Object.values(railVehicleIcons)), 'rail-light',
-  'bus-kmb', 'bus-lwb', 'bus-citybus', 'bus-gmb', 'bus-nlb',
+  'bus-kmb', 'bus-lwb', 'bus-citybus', 'bus-gmb', 'bus-nlb', 'bus-mtr',
   'ferry-star', 'ferry-sun', 'ferry-hkkf', 'ferry-fortune'];
 
 export function ferryVehicleIcon(route: string, sourceId = ''): string | undefined {
@@ -27,7 +27,8 @@ export function vehicleIcon(camera: Pick<Camera, 'kind'> & Partial<Pick<Camera, 
     ?? (camera.kind === 'mtr' ? railVehicleIcons[route]
       : camera.kind === 'lrt' ? 'rail-light'
         : camera.kind === 'kmb' ? `bus-${busCompany(route, camera.company ?? arrival?.tracking?.company ?? '').toLowerCase()}`
-          : ['citybus', 'gmb', 'nlb'].includes(camera.kind) ? `bus-${camera.kind}`
+          : camera.kind === 'mtr-bus' ? 'bus-mtr'
+            : ['citybus', 'gmb', 'nlb'].includes(camera.kind) ? `bus-${camera.kind}`
             : camera.kind === 'ferry' ? ferryVehicleIcon(route, camera.sourceId) : undefined);
   return asset && vehicleIconAssets.includes(asset) ? `/vehicles/${asset}.webp` : null;
 }

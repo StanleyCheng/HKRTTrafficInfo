@@ -160,6 +160,16 @@
         "https://estore.mtr.com.hk/en/products/q-train-models"
       ],
       "src": "/vehicles/rail-urban.webp"
+    },
+    {
+      "asset": "bus-mtr",
+      "original": "exec-182ae8c1-3c36-4534-b458-1234653e118d.png",
+      "prompt": "Use case: stylized-concept. Project-bound map vehicle icon for Hong Kong transport app. The reference image shows the exact composition/style target, not an edit target. Create one representative MTR feeder bus with an off-white/light silver body, muted burgundy red lower band, dark windows and roof, no legible operator logos and no text. Compact realistic 3D double-decker bus viewed from above in three-quarter perspective, front facing downwards and slightly left, match the reference bus silhouette, framing and softly rendered miniature realism. Only one isolated vehicle, fully visible, tight centered square framing with 6% clear margin. Actual transparent background, no floor, no shadow outside the silhouette, no scene, no watermark. This image represents a vehicle type, not a photograph or confirmed vehicle identity.",
+      "sources": [
+        "https://data.gov.hk/en-data/dataset/mtr-mtr_bus-mtr-bus-eta-data"
+      ],
+      "src": "/vehicles/bus-mtr.webp",
+      "representative": true
     }
   ],
   "fleetNote": "Artwork represents recognizable fleet liveries. Position feeds do not identify exact rolling stock or vessels for each run."

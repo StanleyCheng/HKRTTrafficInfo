@@ -7,6 +7,7 @@ import { Maximize, Plus, Minus, LoaderCircle, RefreshCw, LocateFixed } from 'luc
 import type * as Leaflet from 'leaflet';
 import { integrationMessages, messages } from '@/lib/i18n';
 import { Camera, CameraData, FlowSegment, Language, LayerKind, MapPath, hkTime, layerText, layers, parkingCounts, readableInk, speedLevelColors } from '@/lib/traffic';
+import { selectedVehicleCameras, type RouteVehicleFeeds } from '@/lib/route-vehicles';
 import type { RouteFocus } from '@/lib/transport-routes';
 import type { TrafficSearchItem } from '@/lib/traffic-view';
 import { ferryDepartures, movingCameras, railHoverText, busKinds, type MapViewport } from '@/lib/integration-client';
@@ -93,8 +94,8 @@ function FerryPierPopup({ camera, language, now }: { camera: Camera; language: L
 
 export type Basemap = 'osm' | 'positron';
 type DetailOptions = { status: 'loading' | 'error' | 'ready'; onRetry?: () => void; onClose?: () => void };
-export type TrafficMapProps = { routeFocus?: RouteFocus | null; onRouteFocusComplete?: () => void; initialView?: MapViewport; autoLocate?: boolean; fitBusRoute?: boolean; busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; hasDrawableLayers: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; renderItemDetails: (camera: Camera, options?: DetailOptions) => ReactNode; onCloseDetails: () => void; onDetailsOpen?: (content: HTMLElement) => void };
-export default function TrafficMap({ routeFocus: focusRoute, onRouteFocusComplete, initialView, autoLocate = true, fitBusRoute = true, busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, hasDrawableLayers, language, basemap, inactive = false, now, busSelection, renderItemDetails, onCloseDetails, onDetailsOpen }: TrafficMapProps) {
+export type TrafficMapProps = { selectedVehicleFeeds?: RouteVehicleFeeds; routeFocus?: RouteFocus | null; onRouteFocusComplete?: () => void; initialView?: MapViewport; autoLocate?: boolean; fitBusRoute?: boolean; busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; hasDrawableLayers: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; renderItemDetails: (camera: Camera, options?: DetailOptions) => ReactNode; onCloseDetails: () => void; onDetailsOpen?: (content: HTMLElement) => void };
+export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRoute, onRouteFocusComplete, initialView, autoLocate = true, fitBusRoute = true, busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, hasDrawableLayers, language, basemap, inactive = false, now, busSelection, renderItemDetails, onCloseDetails, onDetailsOpen }: TrafficMapProps) {
   const copy = messages[language];
   const startingView = useRef(initialView);
   const locateOnMount = useRef(autoLocate);
@@ -145,7 +146,7 @@ export default function TrafficMap({ routeFocus: focusRoute, onRouteFocusComplet
   const vehicleGroup = useRef<Leaflet.LayerGroup | null>(null);
   const fittedBusRoute = useRef<string | null>(autoLocate ? null : busRoute?.route?.key ?? null);
   const busVehicles = useRef(new Map<string, { marker: Leaflet.Marker; distance: number; drawnAt: number; feed: BusRouteResponse; direction: { route: BusRouteData }; correction?: VehicleCorrection; heading: HTMLElement | null }>());
-  const vehicles = useRef(new Map<string, { marker: Leaflet.Marker; camera: Camera; feed: CameraData | undefined; language: Language; hoverAt: number; routeDistance?: number; drawnAt: number; correction?: VehicleCorrection }>());
+  const vehicles = useRef(new Map<string, { marker: Leaflet.Marker; camera: Camera; feed: unknown; language: Language; hoverAt: number; routeDistance?: number; drawnAt: number; correction?: VehicleCorrection }>());
   const previousSegmentSelection = useRef<string | null>(null);
   const onSelectSegmentRef = useRef(onSelectSegment);
   const [ready, setReady] = useState(false);
@@ -614,15 +615,17 @@ export default function TrafficMap({ routeFocus: focusRoute, onRouteFocusComplet
       const stop = routePopupStop.stop;
       const terminus = busRoute?.route?.stops.at(-1);
       setRoutePopupData({ stop, language, status: 'loading' });
+      const finish = onActivity();
+      controller.signal.addEventListener('abort', finish, { once: true });
       void getBusStopArrivals({ ...busSelection, stopId: stop.id, stopSeq: stop.seq }, controller.signal).then(data => {
         if (controller.signal.aborted) return;
         if (!data.ok || data.stale || data.error || !data.observedAt) throw new Error('Stop arrivals unavailable');
         const camera: Camera = { id: `${busSelection.operator}-${stop.id}`, sourceId: stop.id, kind: busSelection.operator, name: stop.nameTc, nameEn: stop.nameEn, lat: stop.lat, lng: stop.lng, dataUpdated: data.observedAt, arrivals: data.arrivals.map(call => ({ ...call, destination: call.destination || terminus?.nameTc || '', destinationEn: call.destinationEn || terminus?.nameEn || terminus?.nameTc || '' })) };
         setRoutePopupData({ stop, language, camera, status: 'ready' });
-      }).catch(() => { if (!controller.signal.aborted) setRoutePopupData({ stop, language, status: 'error' }); });
+      }).catch(() => { if (!controller.signal.aborted) setRoutePopupData({ stop, language, status: 'error' }); }).finally(() => { controller.signal.removeEventListener('abort', finish); finish(); });
     });
     return () => { controller.abort(); };
-  }, [routePopupStop, busRouteKey, busSelection, busRoute, language, setRoutePopupStop]);
+  }, [routePopupStop, busRouteKey, busSelection, busRoute, language, setRoutePopupStop, onActivity]);
   useEffect(() => {
     const m = map.current;
     if (!ready || !m || !focusTarget) return;
@@ -972,14 +975,14 @@ export default function TrafficMap({ routeFocus: focusRoute, onRouteFocusComplet
     let zooming = m.getContainer().classList.contains('leaflet-zoom-anim');
     const tick = () => {
       const now = Date.now();
-      const next = (['mtr', 'lrt', 'ferry'] as const).flatMap(kind => transitFeeds?.[kind] ? movingCameras(kind, transitFeeds[kind]!, now) : []).filter(camera => Number.isFinite(camera.lat) && Number.isFinite(camera.lng));
+      const next = [...(['mtr', 'lrt', 'ferry'] as const).flatMap(kind => transitFeeds?.[kind] ? movingCameras(kind, transitFeeds[kind]!, now) : []), ...selectedVehicleCameras(selectedVehicleFeeds ?? {}, now)].filter(camera => Number.isFinite(camera.lat) && Number.isFinite(camera.lng));
       const ids = new Set(next.map(camera => camera.id));
       entries.forEach((entry, id) => { if (!ids.has(id)) { group.removeLayer(entry.marker); entries.delete(id); if (popupRef.current?.stopId === id) popupRef.current.popup.remove(); } });
       next.forEach(camera => {
         const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
         const rail = camera.kind === 'mtr' || camera.kind === 'lrt';
         const routePosition = camera.routePosition;
-        const feed = transitFeeds?.[camera.kind as 'mtr' | 'lrt' | 'ferry'];
+        const feed = camera.id.startsWith('selected-vehicle:') ? selectedVehicleFeeds : transitFeeds?.[camera.kind as 'mtr' | 'lrt' | 'ferry'];
         const existing = entries.get(camera.id);
         if (existing) {
           const node = existing.marker.getElement();
@@ -1000,7 +1003,7 @@ export default function TrafficMap({ routeFocus: focusRoute, onRouteFocusComplet
           // An interpolated boat keeps the label of its source, so a marker projected forward from
           // an operator GPS fix still reads as GPS rather than as a timetable estimate.
           if (!rail && (existing.language !== language || existing.camera.name !== camera.name || existing.camera.nameEn !== camera.nameEn || existing.camera.positionSource !== camera.positionSource)) {
-            const icon = existing.marker.getElement(); if (icon) { icon.title = name; icon.setAttribute('aria-label', `${name} · ${camera.positionSource === 'gps' ? integrationMessages[language].gps : integrationMessages[language].estimatedFerry}`); }
+            const icon = existing.marker.getElement(); if (icon) { icon.title = name; icon.setAttribute('aria-label', `${name} · ${camera.positionSource === 'gps' ? integrationMessages[language].gps : camera.kind === 'ferry' ? integrationMessages[language].estimatedFerry : messages[language].estimatedPosition}`); }
           }
           const displayed = vehicleFrame(target, reducedMotion.matches ? undefined : existing.correction, now);
           const point = L.latLng(displayed.point[1], displayed.point[0]);
@@ -1033,9 +1036,9 @@ export default function TrafficMap({ routeFocus: focusRoute, onRouteFocusComplet
           return;
         }
         const hover = rail ? railHoverText(camera, language, now) : name;
-        const icon = L.divIcon({ className: `camera-marker vehicle-marker${rail ? ' rail-marker' : ' ferry-marker'}`, html: vehicleHtml(vehicleIcon(camera), camera.color ?? layers[camera.kind].color, vehicleDestination(camera, language, name)), iconSize: [24, 24], iconAnchor: [12, 12] });
+        const icon = L.divIcon({ className: `camera-marker vehicle-marker${rail ? ' rail-marker' : camera.kind === 'ferry' ? ' ferry-marker' : ' selected-bus-marker'}`, html: vehicleHtml(vehicleIcon(camera), camera.color ?? layers[camera.kind].color, vehicleDestination(camera, language, name)), iconSize: [24, 24], iconAnchor: [12, 12] });
         const marker = enableMarkerKeyboard(L.marker([camera.lat, camera.lng], { icon, title: hover, alt: name, keyboard: true }).addTo(group));
-        const vehicleLabel = rail ? hover : `${name} · ${camera.positionSource === 'gps' ? integrationMessages[language].gps : integrationMessages[language].estimatedFerry}`;
+        const vehicleLabel = rail ? hover : `${name} · ${camera.positionSource === 'gps' ? integrationMessages[language].gps : camera.kind === 'ferry' ? integrationMessages[language].estimatedFerry : messages[language].estimatedPosition}`;
         const node = marker.getElement();
         node?.setAttribute('aria-label', vehicleLabel); node?.setAttribute('aria-haspopup', 'dialog');
         if (node) node.dataset.markerId = camera.id;
@@ -1064,7 +1067,7 @@ export default function TrafficMap({ routeFocus: focusRoute, onRouteFocusComplet
     const endZoom = () => { zooming = false; visible(); };
     visible(); document.addEventListener('visibilitychange', visible); reducedMotion.addEventListener('change', visible); m.on('zoomstart', startZoom); m.on('zoomend', endZoom);
     return () => { if (frame !== undefined) cancelAnimationFrame(frame); if (timer) clearInterval(timer); document.removeEventListener('visibilitychange', visible); reducedMotion.removeEventListener('change', visible); m.off('zoomstart', startZoom); m.off('zoomend', endZoom); };
-  }, [ready, transitFeeds, language, inactive, setRoutePopupStop]);
+  }, [ready, transitFeeds, selectedVehicleFeeds, language, inactive, setRoutePopupStop]);
   useEffect(() => {
     const L = library.current, group = segmentGroup.current;
     if (!ready || !L || !group) return;

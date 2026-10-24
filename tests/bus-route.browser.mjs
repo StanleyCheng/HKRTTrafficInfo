@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { openLayers, closeControls, reloadAll, toggleMapDisplay } from './browser-controls.mjs';
+import { openLayers, closeControls, reloadAll, toggleMapDisplay, emptyRouteVehicles } from './browser-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = (process.argv[2] || 'http://localhost:5173').replace(/\/$/, '');
 const evidence = path.resolve(process.argv[3] || 'outputs/bus-route');
@@ -49,6 +49,7 @@ async function create({ mobile = false, reducedMotion = 'no-preference' } = {}) 
   await context.route('**/api/**', async route => {
     const url = new URL(route.request().url());
     const kind = url.pathname.split('/')[2];
+    if (kind === 'route-vehicles') return route.fulfill({ json: emptyRouteVehicles(url) });
     if (kind === 'bus-route') {
       const selection = Object.fromEntries(url.searchParams);
       if (selection.stopArrivals === '1') {

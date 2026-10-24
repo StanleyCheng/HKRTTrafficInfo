@@ -88,3 +88,11 @@ export async function loadMtrBusNear(lng: number, lat: number, now = Date.now(),
     stale: missed > 0, error: missed ? 'Some MTR bus schedules are unavailable or carry an operator alert' : undefined,
   }
 }
+
+export async function loadMtrBusRoute(route: string, now = Date.now()) {
+  const cameras = commuterCatalogue('mtr-bus').filter(camera => camera.routes?.includes(route))
+  if (!cameras.length) throw new Error('Unknown MTR bus route')
+  const snapshot = await loadRoute(route, AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS), now)
+  return { cameras: cameras.map(camera => ({ ...camera, dataUpdated: new Date(snapshot.at).toISOString(), arrivals: snapshot.boards.find(board => board.id === camera.sourceId)?.arrivals ?? [] })),
+    observedAt: new Date(snapshot.at).toISOString(), stale: snapshot.alert }
+}

@@ -9,6 +9,7 @@ import type * as MapLibre from 'maplibre-gl';
 import { messages } from '@/lib/i18n';
 import { layers, layerText, readableInk, type Camera } from '@/lib/traffic';
 import { busKinds, movingCameras } from '@/lib/integration-client';
+import { selectedVehicleCameras } from '@/lib/route-vehicles';
 import { buildings3D, nativeZoom, sharedZoom, trafficLines, transportLines } from '@/lib/map-scene';
 import { escapeHtml, symbols, vehicleDestination, vehicleHtml } from '@/lib/map-markers';
 import { stopPlate } from '@/lib/stop-plate';
@@ -30,7 +31,7 @@ const motionDuration = () => window.matchMedia('(prefers-reduced-motion: reduce)
 // Both renderers consume the same monitor data and renderItemDetails. MapLibre owns
 // this camera, WebGL canvas and GeoJSON geometry; there is no Leaflet bridge here.
 export default function TrafficMap3D(props: Props) {
-  const { language, onActivity, selected, focusTarget, cameras, segments, paths, busRoute, busSelection, transitFeeds, inactive, loading, allDisabled, hasErrors, hasDrawableLayers, renderItemDetails, onExit3D } = props;
+  const { routeFocus: requestedFocus, onRouteFocusComplete, language, onActivity, selected, focusTarget, cameras, segments, paths, busRoute, busSelection, transitFeeds, selectedVehicleFeeds, inactive, loading, allDisabled, hasErrors, hasDrawableLayers, renderItemDetails, onExit3D } = props;
   const copy = messages[language];
   const callbacks = useRef(props);
   useEffect(() => { callbacks.current = props; });
@@ -118,6 +119,8 @@ export default function TrafficMap3D(props: Props) {
   useEffect(() => {
     let disposed = false, m: MapLibre.Map | undefined;
     let loadTimeout: ReturnType<typeof setTimeout> | undefined;
+    let finishTiles: (() => void) | undefined;
+    const tilesLoaded = () => { finishTiles?.(); finishTiles = undefined; };
     const finish = onActivity();
     const staticEntries = markers.current, movingEntries = vehicles.current;
     (async () => {
@@ -136,6 +139,10 @@ export default function TrafficMap3D(props: Props) {
         });
       } catch { if (!disposed) setError('unsupported'); return; }
       map.current = m;
+      m.on('dataloading', event => {
+        if (!disposed && !finishTiles && (!('sourceId' in event) || event.sourceId !== 'hk-traffic' && event.sourceId !== 'hk-transport')) finishTiles = onActivity();
+      });
+      m.on('idle', tilesLoaded);
       m.addControl(new gl.ScaleControl({ unit: 'metric' }), 'bottom-left');
       const report = () => {
         if (!m || disposed) return;
@@ -146,8 +153,8 @@ export default function TrafficMap3D(props: Props) {
         layout.current();
       };
       m.on('moveend', report);
-      m.on('error', () => { if (!disposed) { setError('load'); clearTimeout(loadTimeout); finish(); } });
-      m.on('webglcontextlost', () => { if (!disposed) { setError('unsupported'); finish(); } });
+      m.on('error', () => { if (!disposed) { setError('load'); clearTimeout(loadTimeout); finish(); tilesLoaded(); } });
+      m.on('webglcontextlost', () => { if (!disposed) { setError('unsupported'); finish(); tilesLoaded(); } });
       m.on('click', event => {
         if (!m || event.originalEvent.target instanceof Element && event.originalEvent.target.closest('.maplibregl-marker,.maplibregl-popup,.maplibregl-control-container')) return;
         const features = m.getLayer('hk-traffic-lines') ? m.queryRenderedFeatures(event.point, { layers: ['hk-traffic-lines'] }) : [];
@@ -176,10 +183,10 @@ export default function TrafficMap3D(props: Props) {
         popupContent.current = document.createElement('div');
         setPopupElement(popupContent.current); setReady(true); finish(); report(); if (callbacks.current.autoLocate) locate();
       });
-      loadTimeout = setTimeout(() => { if (!disposed) { setError('load'); finish(); } }, 20000);
-    })().catch(() => { if (!disposed) setError('load'); }).finally(() => { if (!m || disposed) finish(); });
+      loadTimeout = setTimeout(() => { if (!disposed) { setError('load'); finish(); tilesLoaded(); } }, 20000);
+    })().catch(() => { if (!disposed) { setError('load'); tilesLoaded(); } }).finally(() => { if (!m || disposed) finish(); });
     return () => {
-      disposed = true; clearTimeout(loadTimeout); finish(); stopLocating();
+      disposed = true; clearTimeout(loadTimeout); finish(); tilesLoaded(); stopLocating();
       staticEntries.forEach(entry => entry.marker.remove()); staticEntries.clear();
       movingEntries.forEach(entry => entry.marker.remove()); movingEntries.clear();
       popup.current?.remove(); popup.current = null;
@@ -287,7 +294,7 @@ export default function TrafficMap3D(props: Props) {
     let frame: number | undefined, timer: ReturnType<typeof setInterval> | undefined, last = 0;
     const tick = () => {
       const now = Date.now();
-      const moving = (['mtr', 'lrt', 'ferry'] as const).flatMap(kind => transitFeeds?.[kind] ? movingCameras(kind, transitFeeds[kind]!, now) : []);
+      const moving = [...(['mtr', 'lrt', 'ferry'] as const).flatMap(kind => transitFeeds?.[kind] ? movingCameras(kind, transitFeeds[kind]!, now) : []), ...selectedVehicleCameras(selectedVehicleFeeds ?? {}, now)];
       for (const direction of directions) for (const bus of direction.vehicles) {
         const distance = busVehicleDistanceAtTime(bus, now);
         if (distance === null) continue;
@@ -298,7 +305,8 @@ export default function TrafficMap3D(props: Props) {
         moving.push({ id: `bus-vehicle:${bus.id}`, sourceId: bus.id, kind: direction.route.operator,
           name: `${direction.route.route} → ${terminus?.nameTc ?? ''}`, nameEn: `${direction.route.route} → ${terminus?.nameEn ?? ''}`,
           lng: coordinate[0], lat: coordinate[1], estimated: true, positionType: 'vehicle', dataUpdated: busRoute?.observedAt ?? undefined,
-          vehicleIcon: vehicleIcon({ kind: direction.route.operator, route: direction.route.route, company: direction.route.company }) ?? undefined,
+          company: direction.route.company === 'KMB' || direction.route.company === 'LWB' ? direction.route.company : undefined,
+          arrivals: [{ route: direction.route.route, destination: terminus?.nameTc ?? '', destinationEn: terminus?.nameEn ?? '', minutes: null }],
           routePosition: { key: direction.route.key, distance, coordinates: direction.route.coordinates, distances },
         });
       }
@@ -308,16 +316,16 @@ export default function TrafficMap3D(props: Props) {
         if (!Number.isFinite(camera.lat) || !Number.isFinite(camera.lng)) continue;
         const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
         const destination = vehicleDestination(camera, language, name), color = camera.color ?? layers[camera.kind].color;
-        const html = vehicleHtml(camera.vehicleIcon ?? vehicleIcon({ kind: camera.kind, route: camera.arrivals?.[0]?.route }), color, destination);
+        const html = vehicleHtml(vehicleIcon(camera), color, destination);
         let entry = vehicles.current.get(camera.id);
         if (!entry) {
           const node = document.createElement('button'); node.type = 'button'; node.dataset.markerId = camera.id;
           node.className = `maplibregl-marker native-marker camera-marker vehicle-marker${camera.kind === 'mtr' || camera.kind === 'lrt' ? ' rail-marker' : ''}`;
-          entry = { node, camera, html: '', marker: new gl.Marker({ element: node, opacityWhenCovered: 1, pitchAlignment: 'viewport', rotationAlignment: 'viewport' }).setLngLat([camera.lng, camera.lat]).addTo(m) };
+          entry = { node, camera, html: '', marker: new gl.Marker({ element: node, subpixelPositioning: true, opacityWhenCovered: 1, pitchAlignment: 'viewport', rotationAlignment: 'viewport' }).setLngLat([camera.lng, camera.lat]).addTo(m) };
           vehicles.current.set(camera.id, entry);
           node.addEventListener('click', event => { event.stopPropagation(); const current = vehicles.current.get(camera.id); if (current) { popupOrigin.current = node; setRouteStop(null); callbacks.current.onSelect(current.camera); } });
         }
-        const feed = camera.id.startsWith('bus-vehicle:') ? busRoute : transitFeeds?.[camera.kind as 'mtr' | 'lrt' | 'ferry'];
+        const feed = camera.id.startsWith('selected-vehicle:') ? selectedVehicleFeeds : camera.id.startsWith('bus-vehicle:') ? busRoute : transitFeeds?.[camera.kind as 'mtr' | 'lrt' | 'ferry'];
         const position = camera.routePosition;
         const target = { point: [camera.lng, camera.lat] as [number, number], route: position };
         if (entry.feed !== feed) {
@@ -349,7 +357,7 @@ export default function TrafficMap3D(props: Props) {
     };
     resume(); document.addEventListener('visibilitychange', resume); reduced.addEventListener('change', resume);
     return () => { if (frame !== undefined) cancelAnimationFrame(frame); clearInterval(timer); document.removeEventListener('visibilitychange', resume); reduced.removeEventListener('change', resume); };
-  }, [ready, busRoute, transitFeeds, language, inactive, setRouteStop]);
+  }, [ready, busRoute, transitFeeds, selectedVehicleFeeds, language, inactive, setRouteStop]);
 
   useEffect(() => {
     const m = map.current, gl = library.current, route = busRoute?.route;
@@ -366,6 +374,8 @@ export default function TrafficMap3D(props: Props) {
     const refresh = async () => {
       if (pending || controller.signal.aborted || document.visibilityState !== 'visible') return;
       pending = true;
+      const finish = onActivity();
+      controller.signal.addEventListener('abort', finish, { once: true });
       try {
         const data = await getBusStopArrivals({ ...busSelection, stopId: routeStop.stop.id, stopSeq: routeStop.stop.seq }, controller.signal);
         if (controller.signal.aborted) return;
@@ -374,7 +384,7 @@ export default function TrafficMap3D(props: Props) {
       } catch {
         if (!controller.signal.aborted) setRouteDetails(previous => previous?.camera.id === camera.id && previous.language === language
           ? { ...previous, status: 'error' } : { camera, language, status: 'error' });
-      } finally { pending = false; }
+      } finally { controller.signal.removeEventListener('abort', finish); finish(); pending = false; }
     };
     queueMicrotask(() => { if (!controller.signal.aborted) { setRouteDetails({ camera, language, status: 'loading' }); void refresh(); } });
     const timer = setInterval(() => void refresh(), 30_000);
@@ -384,7 +394,7 @@ export default function TrafficMap3D(props: Props) {
     return () => { controller.abort(); clearInterval(timer); document.removeEventListener('visibilitychange', resume); window.removeEventListener('online', resume); };
     // camera is derived from this stop and route; feed refreshes should not reset its popup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeStop, routeKey, busSelection, language]);
+  }, [routeStop, routeKey, busSelection, language, onActivity]);
 
   useEffect(() => {
     const m = map.current, gl = library.current;
@@ -468,13 +478,13 @@ export default function TrafficMap3D(props: Props) {
   }, [ready, popupElement, popupId]);
 
   useEffect(() => {
-    const m = map.current, gl = library.current, focus = props.routeFocus;
+    const m = map.current, gl = library.current, focus = requestedFocus;
     if (!ready || !m || !gl || !focus || !focus.points.length) return;
     const bounds = new gl.LngLatBounds();
     focus.points.forEach(([lat, lng]) => bounds.extend([lng, lat]));
     m.fitBounds(bounds, { padding: { top: 90, bottom: 185, left: 36, right: 80 }, maxZoom: nativeZoom(16), duration: motionDuration() });
-    props.onRouteFocusComplete?.();
-  }, [ready, props.routeFocus, props.onRouteFocusComplete]);
+    onRouteFocusComplete?.();
+  }, [ready, requestedFocus, onRouteFocusComplete]);
 
   const viewAll = () => map.current?.easeTo({ center: [114.13, 22.355], zoom: nativeZoom(11), duration: motionDuration() });
   const resetCamera = () => map.current?.easeTo({ bearing: 0, pitch: 55, duration: motionDuration() });

@@ -1,5 +1,7 @@
 # HKRTTrafficInfo — agent notes
 
+## use impeccable skill for front-end design
+
 ## Communication
 
 - Reply to the user in **English**. Code, code comments, commit messages, `README.md` and
@@ -18,3 +20,4 @@
   `validator.ts` imports. Delete `.next/types` (gitignored build output) if that happens.
 - Documentation to keep in step with code changes: `README.md` (layer table, deploy targets),
   `hkrttrafficinfo.md` (handover spec), `docs/` (dated reviews).
+

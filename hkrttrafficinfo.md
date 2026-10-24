@@ -28,6 +28,14 @@ The right-hand Layers popover now contains bus-stop and route-label display swit
 
 `/api/bus-route-paths` loads cached bus geometry without the selected-route ETA fan-out. Its client queue has two workers and aborts obsolete waits; failures remain explicit and retryable. `routeVisibility`, `transportMode` and `routeQuery` are validated saved-session fields. Previous rail-line preferences remain effective until the new rail controls are changed, and a restored legacy rail popover opens Layers. Both renderers accept the same route-focus bounds. See `docs/transport-layers-review-2026-10-24.md` for validation.
 
+### Selected-route vehicles and processing feedback (24 October 2026)
+
+Selecting a bus or MTR Bus route starts a separate two-worker vehicle queue through `/api/route-vehicles`. Four bus operators reuse the existing route ETA inference and caches; MTR Bus uses its full route schedule with approximate ordered-stop geometry. Fresh ETAs already loaded around the viewport seed direction- and service-matched bus estimates while the full request is pending. All selected routes can display moving miniatures in either renderer, with exact source expiry, retained estimates during brief failures, explicit empty results and per-route loading/error/retry feedback. A valid opposite bound remains available when the default bound is absent. Focused routes opened from a stop keep their existing tracking and share the panel's status display without duplicate markers.
+
+Rail and ferry route selections trigger an immediate refresh while respecting their existing source coverage, shared caches and rate limits. GPS fixes and ETA estimates retain their existing distinctions; trams state that no GPS or ETA source is available. A representative MTR Bus image is registered in `public/vehicles/prompts.json`. Native MapLibre markers use subpixel positions for smooth movement and resolve the registered ferry artwork correctly.
+
+The shared activity counter now covers selected-route requests, focused-route and stop-arrival requests, and native map resource loading alongside existing feeds, snapshots and 2D resources. The bilingual Updating data indicator sits in the map workspace, so collapsing the header does not conceal ongoing processing. Abort and completion paths balance each activity. See `docs/selected-route-vehicles-review-2026-10-24.md` for local validation.
+
 ## 2. Technical framework
 
 ### 2.1 Toolchain versions (`package.json`)

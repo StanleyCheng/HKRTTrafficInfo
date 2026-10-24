@@ -29,7 +29,7 @@ export const symbols = {
 export const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 export const vehicleHtml = (src: string | null, color: string, destination: string) => `<span class="marker-leader" aria-hidden="true" hidden></span><div class="marker-displacement" style="--marker-color:${escapeHtml(color)}"><span class="vehicle-dest" aria-hidden="true">${escapeHtml(destination)}</span><div class="marker-inner"><div class="vehicle-heading" style="transform:rotate(${vehicleIconHeadingOffset}deg)"><img class="vehicle-art" src="${escapeHtml(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}${src ?? ''}`)}" alt="" draggable="false"/></div></div></div>`;
 export const vehicleDestination = (camera: Pick<Camera, 'kind' | 'arrivals'>, language: Language, name: string) => {
-  if (camera.kind === 'mtr' || camera.kind === 'lrt') return name;
+  if (camera.kind === 'mtr' || camera.kind === 'lrt' || ['kmb', 'citybus', 'gmb', 'nlb', 'mtr-bus'].includes(camera.kind)) return name;
   const arrival = camera.arrivals?.[0];
   return language === 'en' ? arrival?.destinationEn || arrival?.destination || name : arrival?.destination || name;
 };

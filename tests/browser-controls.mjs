@@ -33,3 +33,10 @@ export async function toggleMapDisplay(page, key) {
   await page.locator('.transport-layers').getByRole('switch', { name: key === 'stops' ? /^(Bus stops|巴士站)$/ : /^(Route stop labels|路線車站標籤)$/ }).click();
   await closeControls(page);
 }
+
+export function emptyRouteVehicles(url) {
+  const at = new Date().toISOString();
+  return { ok: true, observedAt: at, stale: false, snapshot: url.searchParams.get('operator') === 'mtr-bus'
+    ? { kind: 'mtr-bus', data: { cameras: [], count: 0, expectedCount: 0, fetchedAt: at, observedAt: at, sourceLastModified: null, source: 'fixture', complete: true, stale: false } }
+    : { kind: 'bus', data: { ok: true, observedAt: at, stale: false, vehicles: [], reverse: [] } } };
+}

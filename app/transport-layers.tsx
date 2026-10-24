@@ -1,6 +1,7 @@
 'use client'
 import type { CSSProperties } from 'react'
-import { Crosshair, LoaderCircle, Search } from 'lucide-react'
+import { Crosshair, LoaderCircle, RefreshCw, Search } from 'lucide-react'
+import { selectedVehicleCameras, type RouteVehicleFeeds, type RouteVehicleState } from '@/lib/route-vehicles'
 import { useSessionField } from './use-session-field'
 import { layers, layerAvailable, type Language, type LayerKind, type MapPath } from '@/lib/traffic'
 import { routeVisible, transportModes, transportKinds, type TransportMode, type TransportRoute, type RouteVisibility } from '@/lib/transport-routes'
@@ -13,9 +14,10 @@ type PathState = { status: 'ready'; paths: MapPath[]; approximate: boolean } | {
 type Props = {
   language: Language; routes: TransportRoute[]; visibility: RouteVisibility; enabled: Record<LayerKind, boolean>
   loaded: Record<string, PathState>; onMode: (mode: TransportMode) => void; onToggle: (route: TransportRoute, on: boolean) => void
+  positions: Record<string, RouteVehicleState>; vehicleFeeds: RouteVehicleFeeds; now: number; onRetryPositions: () => void
   onAll: (mode: TransportMode, on: boolean) => void; onZoom: (route: TransportRoute) => void; onRetry: () => void
 }
-export default function TransportLayers({ language, routes, visibility, enabled, loaded, onMode, onToggle, onAll, onZoom, onRetry }: Props) {
+export default function TransportLayers({ language, routes, visibility, enabled, loaded, positions, vehicleFeeds, now, onRetryPositions, onMode, onToggle, onAll, onZoom, onRetry }: Props) {
   const copy = labels[language]
   const [mode] = useSessionField('transportMode')
   const [query, setQuery] = useSessionField('routeQuery')
@@ -25,6 +27,7 @@ export default function TransportLayers({ language, routes, visibility, enabled,
   const matching = choices.filter(route => `${route.code} ${route.name} ${route.nameEn} ${layers[route.kind].name} ${layers[route.kind].nameEn}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   const shown = choices.filter(route => enabled[route.kind] && routeVisible(route, visibility)).length
   const available = transportKinds[mode].some(layerAvailable)
+  const moving = selectedVehicleCameras(vehicleFeeds, now)
   return <section className="transport-layers" aria-label={copy.transport}>
     <div className="transport-visibility">
       <label className="transport-switch"><span><strong>{copy.stops}</strong><small>{copy.stopNote}</small></span><input type="checkbox" role="switch" checked={showStops} onChange={event => setShowStops(event.target.checked)} aria-label={copy.stops}/><span className="switch" aria-hidden="true"/></label>
@@ -38,10 +41,14 @@ export default function TransportLayers({ language, routes, visibility, enabled,
     <ul className="transport-route-list">{matching.map(route => {
       const on = enabled[route.kind] && routeVisible(route, visibility), state = loaded[route.id]
       const loading = route.bus && on && !state, failed = state?.status === 'error'
+      const supportsPositions = Boolean(route.bus || route.kind === 'mtr-bus')
+      const position = positions[route.id], positionLoading = supportsPositions && on && (!position || position.status === 'loading')
+      const count = moving.filter(camera => camera.id.startsWith(`selected-vehicle:${route.id}:`)).length
       const canZoom = route.paths.some(path => path.points.length > 1) || state?.status === 'ready'
       return <li key={route.id} className={on ? 'selected' : ''} style={{ '--transport-color': layers[route.kind].color } as CSSProperties}>
-        <label className="transport-route-choice"><input type="checkbox" checked={on} onChange={event => onToggle(route, event.target.checked)} aria-label={`${language === 'en' ? 'Show' : '顯示'} ${route.code} ${language === 'en' ? route.nameEn : route.name}`.trim()}/><span className="transport-route-copy"><strong>{route.code && <b>{route.code}</b>}{language === 'en' ? route.nameEn : route.name}</strong>{route.bus && <small>{layers[route.kind][language === 'en' ? 'nameEn' : 'name']}</small>}{loading && <small><LoaderCircle size={12} className="spin"/>{copy.loading}</small>}{state?.status === 'ready' && state.approximate && <small>{copy.approximate}</small>}{failed && <small className="warning-text">{copy.unavailable}</small>}</span></label>
-        {failed ? <button type="button" className="transport-route-zoom" onClick={onRetry} aria-label={`${copy.retry} ${route.code}`} title={copy.retry}>↻</button> : <button type="button" className="transport-route-zoom" disabled={!canZoom} onClick={() => onZoom(route)} aria-label={`${copy.zoom} ${route.code || (language === 'en' ? route.nameEn : route.name)}`} title={copy.zoom}><Crosshair size={18}/></button>}
+        <label className="transport-route-choice"><input type="checkbox" checked={on} onChange={event => onToggle(route, event.target.checked)} aria-label={`${language === 'en' ? 'Show' : '顯示'} ${route.code} ${language === 'en' ? route.nameEn : route.name}`.trim()}/><span className="transport-route-copy"><strong>{route.code && <b>{route.code}</b>}{language === 'en' ? route.nameEn : route.name}</strong>{route.bus && <small>{layers[route.kind][language === 'en' ? 'nameEn' : 'name']}</small>}{loading && <small><LoaderCircle size={12} className="spin"/>{copy.loading}</small>}{state?.status === 'ready' && state.approximate && <small>{copy.approximate}</small>}{failed && <small className="warning-text">{copy.unavailable}</small>}{positionLoading && <small className="route-position-status"><LoaderCircle size={12} className="spin"/>{language === 'en' ? 'Loading vehicle positions…' : '正在載入車輛位置…'}</small>}{on && supportsPositions && count > 0 && <small className="route-position-status">{language === 'en' ? `${count} ETA position estimates` : `${count} 個 ETA 估算位置`}</small>}{on && supportsPositions && !positionLoading && count === 0 && <small className="route-position-status">{language === 'en' ? 'No current position estimate' : '暫無位置估算'}</small>}{on && position?.status === 'error' && <small className="warning-text">{language === 'en' ? 'Vehicle update unavailable' : '未能更新車輛位置'}</small>}{on && route.kind === 'tram' && <small>{language === 'en' ? 'No published GPS or ETA feed' : '未有公布 GPS 或到站時間資料'}</small>}</span></label>
+        {on && position?.status === 'error' && <button type="button" className="transport-route-zoom" onClick={onRetryPositions} aria-label={`${language === 'en' ? 'Retry vehicle positions' : '重試車輛位置'} ${route.code}`}><RefreshCw size={16}/></button>}
+        {failed ? <button type="button" className="transport-route-zoom" onClick={onRetry} aria-label={`${copy.retry} ${route.code}`} title={copy.retry}><RefreshCw size={16}/></button> : <button type="button" className="transport-route-zoom" disabled={!canZoom} onClick={() => onZoom(route)} aria-label={`${copy.zoom} ${route.code || (language === 'en' ? route.nameEn : route.name)}`} title={copy.zoom}><Crosshair size={18}/></button>}
       </li>
     })}</ul>
     {!matching.length && <p className="transport-route-empty">{copy.empty}</p>}

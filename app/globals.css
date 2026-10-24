@@ -45,6 +45,8 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .header-meta { display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0; }
 .activity-indicator-slot { display: inline-grid; place-items: center; width: 8px; height: 8px; flex-shrink: 0; }
 .live-loading-dot { display: block; width: 8px; height: 8px; border-radius: 50%; background: #168647; animation: live-dot-blink 1s ease-in-out infinite; }
+.background-activity { position: absolute; z-index: 950; top: calc(var(--bar-offset) + 4px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; gap: 8px; max-width: calc(100% - 128px); padding: 9px 12px; border-radius: 8px; background: var(--header-surface); color: var(--header-ink); box-shadow: var(--elevation-panel); font-size: 12px; line-height: 1.5; pointer-events: none; }
+.background-activity span { min-width: 0; overflow-wrap: anywhere; }
 .official-tag { color: var(--header-accent); background: var(--header-control); padding: 8px 12px; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
 .language-toggle { display: flex; align-items: center; padding: 3px; background: var(--header-control); border-radius: 9px; }
 .language-toggle button { min-width: 38px; min-height: 38px; border: 0; border-radius: 6px; background: transparent; color: #34594a; font-size: 12px; font-weight: 700; }

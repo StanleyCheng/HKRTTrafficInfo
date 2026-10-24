@@ -11,6 +11,8 @@ import { nlbRouteIds, nlbStop } from './nlb-network.ts'
 import { waitForRequest } from './request-wait.ts'
 import { routeDistances } from './bus-route-motion.ts'
 import { busRoadGeometry } from './bus-route-geometry.ts'
+import { inferBusVehicles } from './bus-estimate.ts'
+export { inferBusVehicles } from './bus-estimate.ts'
 import { busCompany } from './bus-company.ts'
 import type { Arrival } from './traffic.ts'
 import type { BusPathRequest } from './transport-routes.ts'
@@ -27,8 +29,8 @@ export type BusRouteSelection = {
   stopSeq?: number
 }
 export type BusRouteStop = { id: string; seq: number; nameTc: string; nameEn: string; lng: number; lat: number; distance: number }
-export type BusRouteData = { key: string; operator: BusRouteSelection['operator']; company?: string; route: string; stops: BusRouteStop[]; coordinates: [number, number][]; geometry: 'road' | 'stops' }
-export type BusVehicle = { id: string; fromDistance: number; toDistance: number; departureAt: number; arrivalAt: number; validUntil: number; timeline?: { distance: number; at: number }[] }
+export type BusRouteData = { key: string; operator: BusRouteSelection['operator']; company?: string; route: string; stops: BusRouteStop[]; coordinates: [number, number][]; geometry: 'road' | 'stops'; selection?: BusRouteSelection }
+export type BusVehicle = { id: string; fromDistance: number; toDistance: number; departureAt: number; arrivalAt: number; validUntil: number; scheduled?: boolean; timeline?: { distance: number; at: number }[] }
 export type BusRouteDirection = { route: BusRouteData; vehicles: BusVehicle[]; stale?: boolean }
 export type BusRouteResponse = {
   ok: boolean
@@ -206,104 +208,6 @@ async function routeEtas(selection: BusRouteSelection, stops: BusRouteStop[], si
   return result
 }
 
-// ETA rank is local to a stop, not a vehicle ID. Once a bus passes a stop,
-// its following bus becomes rank 1 there while remaining rank 2 downstream.
-// Match successive boards in arrival order, allowing ranks to shift. Keep
-// timetable and live rows separate and reject physically impossible links.
-// These chains remain estimates: the feeds publish neither bus GPS nor IDs.
-export function inferBusVehicles(stops: BusRouteStop[], etas: BusEta[], now: number, idPrefix: string): BusVehicle[] {
-  if (!Number.isFinite(now)) return [];
-  const bySeq = new Map(stops.map((stop) => [stop.seq, stop]));
-  const byEntry = new Map<string, BusEta>();
-  for (const eta of etas) {
-    if (!Number.isFinite(eta.at) || !Number.isFinite(eta.observed) || now - eta.observed >= FRESH || eta.observed > now + 30_000
-      || !Number.isInteger(eta.rank) || eta.rank < 1 || !Number.isFinite(bySeq.get(eta.seq)?.distance) || bySeq.get(eta.seq)!.distance < 0) continue;
-    const key = `${eta.seq}:${eta.rank}`;
-    const existing = byEntry.get(key);
-    if (!existing || eta.observed > existing.observed) byEntry.set(key, eta);
-  }
-  const boards = new Map<number, BusEta[]>();
-  for (const eta of byEntry.values()) {
-    const board = boards.get(eta.seq) ?? [];
-    board.push(eta);
-    boards.set(eta.seq, board);
-  }
-  type Chain = { rows: BusEta[]; startDistance: number };
-  const chains: Chain[] = [];
-  let previous: Chain[] = [];
-  for (const [seq, board] of [...boards].sort(([a], [b]) => a - b)) {
-    board.sort((a, b) => a.at - b.at || a.rank - b.rank);
-    const current: Chain[] = [];
-    let cursor = 0;
-    for (const eta of board) {
-      const stop = bySeq.get(seq)!;
-      const index = previous.findIndex((chain, index) => {
-        if (index < cursor) return false;
-        const last = chain.rows.at(-1)!;
-        const distance = stop.distance - bySeq.get(last.seq)!.distance;
-        const seconds = (eta.at - last.at) / 1000;
-        // Slow traffic is legitimate. A lower speed threshold used to remove
-        // every bus in congestion; only non-forward/impossible links fail.
-        return eta.scheduled === last.scheduled && distance > 0 && seconds > 0 && distance / seconds <= 25;
-      });
-      if (index !== -1) {
-        const chain = previous[index];
-        cursor = index + 1;
-        chain.rows.push(eta);
-        current.push(chain);
-      } else {
-        const inconsistent = previous.findIndex((chain, index) => {
-          const last = chain.rows.at(-1)!;
-          return index >= cursor && last.rank === eta.rank && last.scheduled === eta.scheduled && eta.at >= last.at;
-        });
-        if (inconsistent !== -1) {
-          // Rounded/equal or impossibly close ETAs cannot establish another
-          // bus. Skip this anchor and keep the preceding evidence available.
-          current.push(previous[inconsistent]);
-          cursor = inconsistent + 1;
-          continue;
-        }
-        // A new earlier arrival at the immediately downstream stop indicates
-        // a bus has passed the previous stop. Never project it back through
-        // that stop (possibly kilometres toward the origin).
-        const preceding = boards.get(seq - 1);
-        const passed = preceding?.length && preceding.every(row => row.at > eta.at);
-        const chain = { rows: [eta], startDistance: passed ? bySeq.get(seq - 1)!.distance : 0 };
-        chains.push(chain);
-        current.push(chain);
-      }
-    }
-    previous = current;
-  }
-  // Each arrival is consumed once. Nearby buses may be bunched together, so
-  // geographical proximity alone must not collapse separate services.
-  return chains.flatMap(chain => {
-    const first = chain.rows[0];
-    const vehicle = vehicleFromChain(chain.rows, bySeq, chain.startDistance, now, `${idPrefix}:${first.rank}:${first.seq}`);
-    return vehicle ? [vehicle] : [];
-  });
-}
-
-function vehicleFromChain(chain: BusEta[], bySeq: Map<number, BusRouteStop>, startDistance: number, now: number, id: string): BusVehicle | null {
-  const first = chain[0]!, last = chain.at(-1)!;
-  const firstStop = bySeq.get(first.seq)!;
-  // A later observation elsewhere must not renew an older trajectory anchor.
-  const validUntil = Math.min(...chain.map(eta => eta.observed)) + FRESH;
-  if (now >= validUntil || chain.length === 1 && (firstStop.distance <= 0 || now >= last.at)) return null;
-  const timeline = chain.map(eta => ({ distance: bySeq.get(eta.seq)!.distance, at: eta.at }));
-  if (now < first.at && firstStop.distance > startDistance) {
-    const second = timeline[1];
-    const speed = second ? (second.distance - firstStop.distance) / ((second.at - first.at) / 1000) : 6;
-    if (!(speed > 0) || speed > 25) return null;
-    timeline.unshift({ distance: startDistance, at: first.at - (firstStop.distance - startDistance) / speed * 1000 });
-  }
-  if (timeline.length < 2) return null;
-  const next = timeline.findIndex(point => point.at > now);
-  const index = next < 0 ? timeline.length - 2 : Math.max(0, next - 1);
-  const from = timeline[index], to = timeline[index + 1];
-  return { id, fromDistance: from.distance, toDistance: to.distance, departureAt: from.at, arrivalAt: to.at, validUntil, timeline };
-}
-
 type DirectionLoad = { route: BusRouteData; vehicles: BusVehicle[]; observed: number; failed: boolean }
 
 async function loadDirection(selection: BusRouteSelection, now: number, requireSelectedStop: boolean, signal: AbortSignal): Promise<DirectionLoad> {
@@ -313,7 +217,7 @@ async function loadDirection(selection: BusRouteSelection, now: number, requireS
   const coordinates: [number, number][] = road?.coordinates ?? stops.map((stop) => [stop.lng, stop.lat])
   const distances = road?.stopDistances ?? routeDistances(coordinates)
   stops.forEach((stop, index) => { stop.distance = distances[index] })
-  const route: BusRouteData = { key, operator: selection.operator, company: selection.company, route: selection.route, stops, coordinates, geometry: road ? 'road' : 'stops' }
+  const route: BusRouteData = { selection, key, operator: selection.operator, company: selection.company, route: selection.route, stops, coordinates, geometry: road ? 'road' : 'stops' }
   return {
     route,
     vehicles: inferBusVehicles(stops, etaResult.etas, now, key),
@@ -330,11 +234,17 @@ function reverseSelections(selection: BusRouteSelection): BusRouteSelection[] {
   return nlbRouteIds(selection.route).filter((routeId) => routeId !== selection.routeId).map((routeId) => ({ ...selection, routeId, stopSeq: undefined }))
 }
 
-export async function loadBusRoute(selection: BusRouteSelection, now = Date.now()): Promise<BusRouteResponse> {
+export async function loadBusRoute(selection: BusRouteSelection, now = Date.now(), requireSelectedStop = true): Promise<BusRouteResponse> {
   if (!validBusSelection(selection)) return { ok: false, error: 'Invalid bus route selection', vehicles: [], reverse: [], observedAt: null, stale: false }
   try {
     const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
-    const [forward, ...reverseLoads] = await Promise.all([loadDirection(selection, now, true, signal), ...reverseSelections(selection).map((reverse) => loadDirection(reverse, now, false, signal).catch(() => null))])
+    const loads = await Promise.all([selection, ...reverseSelections(selection)].map((direction, index) => {
+      const pending = loadDirection(direction, now, index === 0 && requireSelectedStop, signal)
+      return index === 0 && requireSelectedStop ? pending : pending.catch(() => null)
+    }))
+    const forward = loads.find((load): load is DirectionLoad => load !== null)
+    if (!forward) throw new Error('Bus route unavailable')
+    const reverseLoads = loads.filter((load): load is DirectionLoad => load !== null && load !== forward)
     const observed = forward.observed
     // Staleness follows the rider's own bound; a reverse bound that fails to
     // load simply drops out of the view.
@@ -344,7 +254,7 @@ export async function loadBusRoute(selection: BusRouteSelection, now = Date.now(
       ok: true,
       route: forward.route,
       vehicles: forward.vehicles,
-      reverse: reverseLoads.filter((load): load is DirectionLoad => Boolean(load)).map(keep),
+      reverse: reverseLoads.map(keep),
       observedAt: observed ? new Date(observed).toISOString() : null,
       stale,
       ...(forward.failed ? { error: 'Arrival estimates could not refresh' } : {}),
@@ -356,6 +266,26 @@ export async function loadBusRoute(selection: BusRouteSelection, now = Date.now(
 
 // The layer picker needs geometry for several routes, without polling every stop's ETA.
 export async function loadBusRoutePaths(request: BusPathRequest): Promise<BusRouteData[]> {
+  const selection = resolveBusPathSelection(request)
+  const { operator, route } = request
+  const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
+  const directions = [selection, ...reverseSelections(selection)]
+  const results = await Promise.all(directions.map(async direction => {
+    try {
+      const stops = await routeStops(direction, false, signal)
+      const road = await waitForRequest(busRoadGeometry(direction, stops), signal).catch(() => null)
+      const coordinates: [number, number][] = road?.coordinates ?? stops.map(stop => [stop.lng, stop.lat])
+      const distances = road?.stopDistances ?? routeDistances(coordinates)
+      stops.forEach((stop, index) => { stop.distance = distances[index] })
+      return { selection: direction, company: direction.company, key: [operator, route, direction.bound, direction.serviceType, direction.routeId, direction.routeSeq].join(':'), operator, route, stops, coordinates, geometry: road ? 'road' : 'stops' } satisfies BusRouteData
+    } catch { return null }
+  }))
+  const paths = results.filter((result): result is NonNullable<typeof result> => result !== null)
+  if (!paths.length) throw new Error('Bus route geometry unavailable')
+  return paths
+}
+
+export function resolveBusPathSelection(request: BusPathRequest): BusRouteSelection {
   const { operator, route, stopId } = request
   let selection = request.tracking
   if (!selection) {
@@ -369,20 +299,10 @@ export async function loadBusRoutePaths(request: BusPathRequest): Promise<BusRou
       if (routeId) selection = { operator, route, stopId, routeId }
     }
   }
-  if (!selection || !validBusSelection(selection)) throw new Error('Bus route geometry unavailable')
-  const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
-  const directions = [selection, ...reverseSelections(selection)]
-  const results = await Promise.all(directions.map(async direction => {
-    try {
-      const stops = await routeStops(direction, false, signal)
-      const road = await waitForRequest(busRoadGeometry(direction, stops), signal).catch(() => null)
-      const coordinates: [number, number][] = road?.coordinates ?? stops.map(stop => [stop.lng, stop.lat])
-      const distances = road?.stopDistances ?? routeDistances(coordinates)
-      stops.forEach((stop, index) => { stop.distance = distances[index] })
-      return { key: [operator, route, direction.bound, direction.serviceType, direction.routeId, direction.routeSeq].join(':'), operator, route, stops, coordinates, geometry: road ? 'road' : 'stops' } satisfies BusRouteData
-    } catch { return null }
-  }))
-  const paths = results.filter((result): result is NonNullable<typeof result> => result !== null)
-  if (!paths.length) throw new Error('Bus route geometry unavailable')
-  return paths
+  if (!selection || !validBusSelection(selection)) throw new Error('Bus route unavailable')
+  return selection
+}
+
+export async function loadBusRouteVehicles(request: BusPathRequest, now = Date.now()): Promise<BusRouteResponse> {
+  return loadBusRoute(resolveBusPathSelection(request), now, false)
 }

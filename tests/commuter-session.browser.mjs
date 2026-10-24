@@ -1,7 +1,7 @@
 // PLAYWRIGHT_MODULE points to an existing Playwright runtime.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { openLayers, closeControls, toggleMapDisplay } from './browser-controls.mjs';
+import { openLayers, closeControls, toggleMapDisplay, emptyRouteVehicles } from './browser-controls.mjs';
 import { commuterCatalogue } from '../lib/commuter-catalogue.ts';
 import { metresBetween } from '../lib/nearest.ts';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -31,6 +31,7 @@ async function create(width, language, mode = '2d', route = false, nearbyOverlay
  await context.route(url=>url.hostname.endsWith('.gov.hk'),route=>route.fulfill({status:503,headers:{'access-control-allow-origin':'*'},body:'Unrelated fixture'}));
  await context.route('**/api/**', route=>{
   const url=new URL(route.request().url()), kind=url.pathname.split('/').at(-1), at=Date.now(), observedAt=new Date(at).toISOString();
+  if(kind==='route-vehicles')return route.fulfill({json:emptyRouteVehicles(url)});
   const base={ok:true,observedAt,fetchedAt:observedAt,complete:true,stale:false};
   if(kind==='mtr-bus') {calls.bus++; const camera=commuterCatalogue('mtr-bus').find(c=>c.sourceId==='K12-U010');return route.fulfill({json:{...base,cameras:[{...camera,dataUpdated:observedAt,arrivals:[{route:'K12',destination:'八號花園',destinationEn:'Eightland Garden',eta:new Date(at+120000).toISOString(),minutes:2,scheduled:false}]}]}})}
   if(kind==='pedestrian')return route.fulfill({json:{...base,cameras:[],paths:[{id:'fixture-walk',color:'#137f87',points:[[22.282,114.16],[22.283,114.161]]}]}});

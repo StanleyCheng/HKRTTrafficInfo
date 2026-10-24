@@ -19,6 +19,7 @@ export type Camera = {
   lat: number; lng: number; district?: string; districtEn?: string; region?: string; regionEn?: string; remarks?: string;
   sourceUpdated?: string; imageUrl?: string;
   color?: string; lineColors?: string[]; rotation?: number; vehicleIcon?: string;
+  company?: 'KMB' | 'LWB';
   level?: SpeedLevel; speedKmh?: number | null;
   speedLimitKmh?: number;
   heightLimit?: number; openingStatus?: string;

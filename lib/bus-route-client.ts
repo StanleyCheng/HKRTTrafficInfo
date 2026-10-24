@@ -3,13 +3,11 @@ import type { BusRouteResponse, BusRouteSelection, BusStopArrivalsResponse } fro
 import { waitForRequest } from './request-wait.ts'
 import type { BusPathRequest } from './transport-routes.ts'
 import type { BusRouteData } from './bus-route.ts'
+import { isBusRouteData } from './route-vehicle-response.ts'
+import { readRouteVehicleSnapshot } from './route-vehicle-response.ts'
+import type { RouteVehicleSnapshot } from './route-vehicles.ts'
 
-type BusRoutePath = Pick<BusRouteData, 'key' | 'operator' | 'coordinates' | 'geometry'>
-const isBusRoutePath = (value: unknown): value is BusRoutePath => {
-  if (!value || typeof value !== 'object' || !('key' in value) || typeof value.key !== 'string' || !('operator' in value) || !['kmb', 'citybus', 'gmb', 'nlb'].includes(String(value.operator)) || !('geometry' in value) || value.geometry !== 'road' && value.geometry !== 'stops' || !('coordinates' in value) || !Array.isArray(value.coordinates)) return false
-  return value.coordinates.length > 1 && value.coordinates.every(point => Array.isArray(point) && point.length === 2 && point.every(n => typeof n === 'number' && Number.isFinite(n)))
-}
-export async function getBusRoutePaths(request: BusPathRequest, signal: AbortSignal): Promise<BusRoutePath[]> {
+export async function getBusRoutePaths(request: BusPathRequest, signal: AbortSignal): Promise<BusRouteData[]> {
   const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(55_000)])
   requestSignal.throwIfAborted()
   if (staticExport) {
@@ -20,8 +18,23 @@ export async function getBusRoutePaths(request: BusPathRequest, signal: AbortSig
   const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/api/bus-route-paths?${params}`, { signal: requestSignal })
   if (!response.ok) throw new Error('Bus route geometry unavailable')
   const body = await response.json()
-  if (!body || typeof body !== 'object' || !('ok' in body) || body.ok !== true || !('routes' in body) || !Array.isArray(body.routes) || !body.routes.length || !body.routes.every(isBusRoutePath)) throw new Error('Bus route geometry unavailable')
+  if (!body || typeof body !== 'object' || !('ok' in body) || body.ok !== true || !('routes' in body) || !Array.isArray(body.routes) || !body.routes.length || !body.routes.every(isBusRouteData)) throw new Error('Bus route geometry unavailable')
   return body.routes
+}
+
+export type RouteVehicleRequest = { kind: 'bus'; bus: BusPathRequest } | { kind: 'mtr-bus'; route: string }
+export async function getRouteVehicles(request: RouteVehicleRequest, signal: AbortSignal): Promise<RouteVehicleSnapshot> {
+  const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(55_000)])
+  if (staticExport) {
+    if (request.kind !== 'bus') throw new Error('Hosted feed required')
+    const { loadBusRouteVehicles } = await import('./bus-route.ts')
+    return { kind: 'bus', data: await waitForRequest(loadBusRouteVehicles(request.bus), requestSignal) }
+  }
+  const values = request.kind === 'bus' ? request.bus.tracking ?? request.bus : { operator: 'mtr-bus', route: request.route }
+  const params = new URLSearchParams(Object.entries(values).filter(([key, value]) => key !== 'tracking' && value != null).map(([key, value]) => [key, String(value)]))
+  const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/api/route-vehicles?${params}`, { signal: requestSignal, cache: 'no-store' })
+  if (!response.ok) throw new Error('Vehicle positions unavailable')
+  return readRouteVehicleSnapshot(await response.json())
 }
 
 export async function getBusRoute(selection: BusRouteSelection, signal?: AbortSignal): Promise<BusRouteResponse> {

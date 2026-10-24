@@ -20,8 +20,10 @@ import TrafficStatus from './traffic-status';
 import IntelPanel from './intel-panel';
 import { getIntegrationData, initialViewport, integrationRequestKey, pollingMs, viewportNote, withBoundarySpeeds, movingCameras, retainTransitIdentities, type MapViewport } from '@/lib/integration-client';
 import TransportLayers from './transport-layers';
+import { useRouteVehicles } from './use-route-vehicles';
+import { selectedVehicleCameras, type RouteVehicleFeeds, type RouteVehicleState } from '@/lib/route-vehicles';
 import { useRoutePaths } from './use-route-paths';
-import { transportRoutes, filterTransportFeed, routeVisible, setAllRoutes, transportKinds, type TransportMode, type TransportRoute, type RouteFocus } from '@/lib/transport-routes';
+import { transportRoutes, filterTransportFeed, routeVisible, setAllRoutes, busPaths, transportKinds, type TransportMode, type TransportRoute, type RouteFocus } from '@/lib/transport-routes';
 import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
 import { getBusRoute } from '@/lib/bus-route-client';
 import { retainBusRoute } from '@/lib/bus-route-state';
@@ -489,9 +491,11 @@ export default function TrafficMonitor() {
   const boundaryData = useMemo(() => withBoundarySpeeds(states.boundary.data, segments), [states.boundary.data, segments]);
   const displayStates = useMemo(() => ({ ...states, boundary: { ...states.boundary, data: boundaryData } }), [states, boundaryData]);
   const intelInput = useMemo(() => ({ states: Object.fromEntries(kinds.filter(kind => enabled[kind] && layerAvailable(kind)).map(kind => [kind, displayStates[kind]])), segments: enabled.flow ? segments : [], now }), [displayStates, enabled, segments, now]);
+  const activeBusSelection = busSelection && enabled[busSelection.operator] && routeVisible({ id: `bus:${busSelection.operator}:${busSelection.route}`, mode: 'bus' }, routeVisibility) ? busSelection : null;
   const routeFeeds = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, displayStates[kind].data])), [displayStates]);
   const routeCatalogue = useMemo(() => transportRoutes(routeFeeds, chosenBusRoutes), [routeFeeds, chosenBusRoutes]);
-  const { loaded: routePaths, retry: retryRoutePaths } = useRoutePaths(routeCatalogue, enabled, routeVisibility);
+  const { loaded: routePaths, retry: retryRoutePaths } = useRoutePaths(routeCatalogue, enabled, routeVisibility, beginActivity);
+  const { states: positionStates, snapshots: selectedVehicleFeeds, retry: retryPositions } = useRouteVehicles(routeCatalogue, enabled, routeVisibility, routePaths, routeFeeds, beginActivity, activeBusSelection, now);
   const viewStates = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, { ...displayStates[kind], data: filterTransportFeed(kind, displayStates[kind].data, routeCatalogue, routeVisibility) }])) as Record<LayerKind, LayerState>, [displayStates, routeCatalogue, routeVisibility]);
   const transitFeeds = useMemo(() => ({ mtr: enabled.mtr ? viewStates.mtr.data : undefined, lrt: enabled.lrt ? viewStates.lrt.data : undefined, ferry: enabled.ferry ? viewStates.ferry.data : undefined }), [enabled, viewStates]);
   const paths = useMemo(() => [
@@ -499,10 +503,12 @@ export default function TrafficMonitor() {
     ...routeCatalogue.flatMap(route => {
       if (!route.bus || !enabled[route.kind] || !routeVisible(route, routeVisibility) || busSelection?.operator === route.kind && busSelection.route === route.code) return [];
       const state = routePaths[route.id];
-      return state?.status === 'ready' ? state.paths : [];
+      if (state?.status === 'ready') return state.paths;
+      const snapshot = selectedVehicleFeeds[route.id];
+      return snapshot?.kind === 'bus' && snapshot.data.route ? busPaths([snapshot.data.route, ...snapshot.data.reverse.map(direction => direction.route)]) : [];
     }),
     ...routeCatalogue.filter(route => route.kind === 'mtr-bus' && enabled[route.kind] && routeVisible(route, routeVisibility)).flatMap(route => route.paths),
-  ], [enabled, viewStates, routeCatalogue, routeVisibility, routePaths, busSelection]);
+  ], [enabled, viewStates, routeCatalogue, routeVisibility, routePaths, selectedVehicleFeeds, busSelection]);
   const flowFresh = isLiveTrafficDataFresh(states.flow.data?.segmentsUpdated, now);
   const cameras = useMemo(() => {
     const visible = kinds.flatMap(kind => {
@@ -525,7 +531,9 @@ export default function TrafficMonitor() {
   }, [states, viewStates, displayStates, enabled, showDetectors, flowFresh, viewport, now, showNearbyOnMap, nearbyRadius]);
   const selected = useMemo(() => {
     if (selectedSnapshot?.positionType === 'vehicle') {
-      const kind = selectedSnapshot.kind as 'mtr' | 'lrt' | 'ferry';
+      if (selectedSnapshot.id.startsWith('selected-vehicle:')) return selectedVehicleCameras(selectedVehicleFeeds, now).find(camera => camera.id === selectedSnapshot.id) ?? null;
+      const kind = selectedSnapshot.kind;
+      if (kind !== 'mtr' && kind !== 'lrt' && kind !== 'ferry') return selectedSnapshot;
       const data = states[kind].data;
       return data ? movingCameras(kind, data, now).find(camera => camera.id === selectedSnapshot.id) ?? null : null;
     }
@@ -537,8 +545,7 @@ export default function TrafficMonitor() {
     }
     const segment = segments.find(candidate => candidate.id === selectedSnapshot.id);
     return segment ? cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated) : null;
-  }, [selectedSnapshot, states, displayStates, viewStates, segments, flowFresh, now]);
-  const activeBusSelection = busSelection && enabled[busSelection.operator] && routeVisible({ id: `bus:${busSelection.operator}:${busSelection.route}`, mode: 'bus' }, routeVisibility) ? busSelection : null;
+  }, [selectedSnapshot, states, displayStates, viewStates, selectedVehicleFeeds, segments, flowFresh, now]);
   const busRoute = activeBusSelection && busRouteState?.selection === activeBusSelection ? busRouteState.data : undefined;
   useEffect(() => {
     if (!activeBusSelection) return;
@@ -550,6 +557,7 @@ export default function TrafficMonitor() {
       let cached = busRouteCache.current.get(key);
       if (!cached || !cached.pending) {
         const previous = cached;
+        const finishActivity = beginActivity();
         const promise = getBusRoute(selection).then<BusRouteState>(async result => {
           const retained = await previous?.promise;
           const data = retainBusRoute(retained?.data, result, Date.now());
@@ -558,6 +566,7 @@ export default function TrafficMonitor() {
           const retained = await previous?.promise;
           return { selection, data: retained?.data ? retainBusRoute(retained.data, { ok: false, vehicles: [], reverse: [], observedAt: null, stale: true }, Date.now()) : undefined, error: true, loading: false };
         });
+        void promise.finally(finishActivity);
         const entry = { promise, pending: true };
         void promise.then(() => { entry.pending = false; });
         busRouteCache.current.set(key, entry);
@@ -575,14 +584,14 @@ export default function TrafficMonitor() {
     document.addEventListener('visibilitychange', visible);
     window.addEventListener('online', visible);
     return () => { disposed = true; clearInterval(timer); document.removeEventListener('visibilitychange', visible); window.removeEventListener('online', visible); };
-  }, [activeBusSelection, busRouteRetry]);
+  }, [activeBusSelection, busRouteRetry, beginActivity]);
   const searchItems = useMemo<TrafficSearchItem[]>(() => [
     ...segments.map(segment => ({ camera: cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated), segment })),
     ...kinds.filter(kind => kind !== 'flow' && layerAvailable(kind) && !viewportNote(kind, viewport)).flatMap(kind => (viewStates[kind].data?.cameras ?? []).map(camera => ({ camera }))),
   ], [segments, states, viewStates, viewport]);
   const total = kinds.reduce((count, kind) => count + (states[kind].data?.count ?? 0), 0);
   const loading = kinds.some(kind => (originalKinds.includes(kind as OriginalLayerKind) || mapEnabled[kind]) && states[kind].loading);
-  const appBusy = pendingActivity > 0;
+  const appBusy = pendingActivity > 0 || loading;
   const errors = kinds.some(kind => mapEnabled[kind] && states[kind].error);
   // Map content is genuinely expected only while an enabled layer can still
   // draw: flow's speed segments, or a camera layer outside its viewport gate.
@@ -598,6 +607,7 @@ export default function TrafficMonitor() {
   function refreshAllLayers() {
     kinds.forEach(kind => void fetchLayer(kind, true));
     if (activeBusSelection) setBusRouteRetry(value => value + 1);
+    retryPositions();
   }
 
   function toggle(kind: LayerKind) {
@@ -657,6 +667,14 @@ export default function TrafficMonitor() {
 
   const routeLoading = Boolean(activeBusSelection && (busRouteState?.selection !== activeBusSelection || busRouteState.loading));
   const routeError = Boolean(activeBusSelection && busRouteState?.selection === activeBusSelection && busRouteState.error);
+  const panelPositions: Record<string, RouteVehicleState> = { ...positionStates };
+  const panelVehicleFeeds: RouteVehicleFeeds = { ...selectedVehicleFeeds };
+  if (activeBusSelection) {
+    const id = `bus:${activeBusSelection.operator}:${activeBusSelection.route}`;
+    const data = busRoute ? { kind: 'bus' as const, data: busRoute } : undefined;
+    panelPositions[id] = routeLoading ? { status: 'loading', data } : routeError || !data ? { status: 'error', data } : { status: 'ready', data };
+    if (data) panelVehicleFeeds[id] = data;
+  }
   const busCount = busRoute ? [busRoute.vehicles, ...busRoute.reverse.map(direction => direction.vehicles)].flat().filter(vehicle => busVehicleDistanceAtTime(vehicle, now) !== null).length : 0;
   const routeControlLabel = activeBusSelection ? `${copy.mapLayers} · ${extra.selectedBusRoute} ${activeBusSelection.route}${routeLoading ? ` · ${extra.loadingBusRoute}` : routeError ? ` · ${extra.busRouteError}` : ''}` : copy.mapLayers;
   const routeStatus = activeBusSelection && <section className="bus-route-status" aria-label={`${extra.selectedBusRoute} ${activeBusSelection.route}`}>
@@ -685,12 +703,20 @@ export default function TrafficMonitor() {
 
   function enableTransport(mode: TransportMode) {
     const next = { ...enabled };
-    for (const kind of transportKinds[mode]) if (layerAvailable(kind)) next[kind] = true;
+    for (const kind of transportKinds[mode]) if (layerAvailable(kind)) {
+      next[kind] = true;
+      if (enabled[kind] && (kind === 'mtr' || kind === 'lrt' || kind === 'ferry')) void fetchLayer(kind, true);
+    }
     layerSelectionStore.write(next);
   }
 
+  function enableRoute(route: TransportRoute) {
+    layerSelectionStore.write({ ...enabled, [route.kind]: true });
+    if (enabled[route.kind] && (route.kind === 'mtr' || route.kind === 'lrt' || route.kind === 'ferry')) void fetchLayer(route.kind, true);
+  }
+
   const mapProps: TrafficMapProps = {
-    routeFocus, onRouteFocusComplete: finishRouteFocus, onActivity: beginActivity, busRoute, fitBusRoute: activeBusSelection === routeToFit, paths, transitFeeds, onViewport: updateViewport, initialView: viewport, autoLocate: followLocation,
+    selectedVehicleFeeds, routeFocus, onRouteFocusComplete: finishRouteFocus, onActivity: beginActivity, busRoute, fitBusRoute: activeBusSelection === routeToFit, paths, transitFeeds, onViewport: updateViewport, initialView: viewport, autoLocate: followLocation,
     cameras, segments: enabled.flow ? segments : undefined, selected,
     selectedSegmentId: selected?.id.startsWith('flow-segment-') ? selected.id : null,
     onSelect: choose, onSelectSegment, focusTarget, loading,
@@ -722,6 +748,7 @@ export default function TrafficMonitor() {
       {!hydrated ? <div className="map-loading" role="status"><LoaderCircle className="spin" size={20}/>{copy.loadingOfficialData}</div> : mapMode === '3d' ? <Suspense fallback={<div className="map-loading" role="status"><LoaderCircle className="spin" size={20}/>{copy.map3DLoading}</div>}>
         <TrafficMap3D {...mapProps} camera3D={camera3D} onCamera3D={updateCamera3D} onExit3D={switchMapMode}/>
       </Suspense> : <TrafficMap {...mapProps}/>}
+      {appBusy && <div className="background-activity" role="status" aria-live="polite" aria-atomic="true"><LoaderCircle size={16} className="spin" aria-hidden="true"/><span>{language === 'en' ? 'Updating data…' : '正在更新資料…'}</span></div>}
       <IntelPanel input={intelInput} language={language} onSelect={selectSearchItem}/>
       <TrafficStatus feeds={activeKinds.map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={refreshAllLayers}/>
       <div className="map-toolbar" role="group" aria-label={copy.openControls}>
@@ -730,14 +757,14 @@ export default function TrafficMonitor() {
           <PopoverContent className="map-control-popover layers-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="layers-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
             <div className="control-popover-head"><h2 id="layers-popover-title">{copy.mapLayers}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
             <div className="control-popover-body">
-              <TransportLayers language={language} routes={routeCatalogue} visibility={routeVisibility} enabled={enabled} loaded={routePaths} onRetry={retryRoutePaths}
+              <TransportLayers language={language} routes={routeCatalogue} visibility={routeVisibility} enabled={enabled} loaded={routePaths} positions={panelPositions} vehicleFeeds={panelVehicleFeeds} now={now} onRetryPositions={() => { retryPositions(); if (activeBusSelection) setBusRouteRetry(value => value + 1); }} onRetry={retryRoutePaths}
                 onMode={mode => { setTransportMode(mode); sessionStore.update({ routeQuery: '' }); enableTransport(mode); }}
                 onAll={(mode, on) => { setRouteVisibility(setAllRoutes(routeVisibility, mode, on)); if (mode === 'bus') setChosenBusRoutes([]); if (on) enableTransport(mode); closeDetails(); }}
-                onToggle={(route, on) => { rememberBusRoute(route, on); setRouteVisibility({ ...routeVisibility, [route.id]: on }); if (on) layerSelectionStore.write({ ...enabled, [route.kind]: true }); closeDetails(); }}
+                onToggle={(route, on) => { rememberBusRoute(route, on); setRouteVisibility({ ...routeVisibility, [route.id]: on }); if (on) enableRoute(route); closeDetails(); }}
                 onZoom={route => {
                   const state = routePaths[route.id];
                   const points = (state?.status === 'ready' ? state.paths : route.paths).flatMap(path => path.points);
-                  if (points.length) { rememberBusRoute(route, true); layerSelectionStore.write({ ...enabled, [route.kind]: true }); setRouteVisibility({ ...routeVisibility, [route.id]: true }); setRouteFocus({ points }); sessionStore.update({ followLocation: false }); setOpenControl(null); closeDetails(); }
+                  if (points.length) { rememberBusRoute(route, true); enableRoute(route); setRouteVisibility({ ...routeVisibility, [route.id]: true }); setRouteFocus({ points }); sessionStore.update({ followLocation: false }); setOpenControl(null); closeDetails(); }
                 }}/>
               {routeStatus}
               <details className="other-map-layers"><summary>{language === 'en' ? 'Other map layers' : '其他地圖圖層'}</summary>

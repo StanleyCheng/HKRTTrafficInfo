@@ -1,6 +1,7 @@
 // Run against the local dev server with PLAYWRIGHT_MODULE set to the installed runtime.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { emptyRouteVehicles } from './browser-controls.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.argv[2] || 'http://localhost:5173';
 const evidence = process.argv[3] || 'output/playwright/transport-layers';
@@ -33,6 +34,7 @@ try {
     await context.route('**/api/**', route => {
       const url = new URL(route.request().url()), kind = url.pathname.split('/').at(-1), now = new Date().toISOString();
       const base = { ok: true, observedAt: now, fetchedAt: now, stale: false };
+      if (kind === 'route-vehicles') return route.fulfill({ json: emptyRouteVehicles(url) });
       if (kind === 'bus-route-paths') {
         const code = url.searchParams.get('route'); pathRequests.push(code);
         return route.fulfill({ json: { ok: true, routes: [{ key: `fixture-${code}`, operator: 'kmb', route: code, geometry: 'road', coordinates: code === '1' ? [[114.15, 22.29], [114.17, 22.31]] : [[114.16, 22.29], [114.19, 22.33]], stops: [] }] } });
