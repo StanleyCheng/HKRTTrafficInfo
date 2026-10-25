@@ -697,7 +697,7 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
         const style = getComputedStyle(node); return style.display !== 'none' && style.visibility !== 'hidden' && node.getBoundingClientRect().height > 0;
       }).map(node => node.getBoundingClientRect());
       const top = Math.max(area.top, ...visibleBounds('.topbar,.traffic-status').map(bounds => bounds.bottom));
-      const bottom = Math.min(area.bottom, ...visibleBounds('.intel-shell,.desktop-layer-dock,.mobile-dock,.layer-group-picker').map(bounds => bounds.top));
+      const bottom = Math.min(area.bottom, ...visibleBounds('.intel-shell').map(bounds => bounds.top));
       const right = Math.min(area.right, ...visibleBounds('.map-tools').map(bounds => bounds.left));
       const node = popup.getElement();
       node?.style.setProperty('--item-popup-width', `${Math.max(180, Math.min(320, right - area.left - 24))}px`);
@@ -774,7 +774,7 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
     document.addEventListener('keydown', escape);
     const observer = new ResizeObserver(() => { if (popup.isOpen()) { sizePopup(); checkViewport(); } });
     observer.observe(popupElement);
-    m.getContainer().closest('.app-shell')?.querySelectorAll<HTMLElement>('.topbar,.traffic-status,.intel-shell,.desktop-layer-dock,.mobile-dock,.layer-group-picker,.map-tools').forEach(node => observer.observe(node));
+    m.getContainer().closest('.app-shell')?.querySelectorAll<HTMLElement>('.topbar,.traffic-status,.intel-shell,.map-tools').forEach(node => observer.observe(node));
     return () => {
       observer.disconnect(); m.off('moveend', open); m.off('moveend', checkViewport); m.off('moveend', endReveal); m.off('resize', resize); m.off('click', closeOnBlank); document.removeEventListener('keydown', escape);
       popup.getElement()?.removeEventListener('focusin', focusIn); popup.getElement()?.removeEventListener('focusout', focusOut);

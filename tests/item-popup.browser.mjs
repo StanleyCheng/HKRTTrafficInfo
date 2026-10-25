@@ -187,7 +187,7 @@ try {
       await select(f.page, 'kmb-fixture', touch);
       const geometry = await f.page.locator('.item-popup').evaluate(element => {
         const rect = element.getBoundingClientRect(), scroll = element.querySelector('.item-popup-content'), title = element.querySelector('.item-detail-title').getBoundingClientRect(), close = element.querySelector('.leaflet-popup-close-button').getBoundingClientRect();
-        const coveredBy = [...document.querySelectorAll('.topbar,.traffic-info-toggle,.map-tools,.map-toolbar,.desktop-layer-dock,.mobile-dock,.layer-group-picker,.intel-shell')].filter(overlay => {
+        const coveredBy = [...document.querySelectorAll('.topbar,.traffic-info-toggle,.map-tools,.map-toolbar,.intel-shell')].filter(overlay => {
           const style = getComputedStyle(overlay), bounds = overlay.getBoundingClientRect();
           return style.display !== 'none' && style.visibility !== 'hidden' && bounds.width > 0 && bounds.height > 0 && rect.left < bounds.right && rect.right > bounds.left && rect.top < bounds.bottom && rect.bottom > bounds.top;
         }).map(overlay => overlay.className);
@@ -200,7 +200,7 @@ try {
         }).map(control => control.className);
         let popup; window.__map.eachLayer(layer => { if (layer.options?.className === 'item-popup') popup = layer; });
         const native = { paddingTopLeft: popup.options.autoPanPaddingTopLeft, paddingBottomRight: popup.options.autoPanPaddingBottomRight, offset: popup.options.offset, anchor: popup.getLatLng(), center: window.__map.getCenter() };
-        const bounds = Object.fromEntries(['.item-popup-content','.mobile-dock','.topbar','.traffic-status','.map-canvas'].map(selector => [selector, document.querySelector(selector)?.getBoundingClientRect().toJSON()]));
+        const bounds = Object.fromEntries(['.item-popup-content','.topbar','.traffic-status','.map-canvas'].map(selector => [selector, document.querySelector(selector)?.getBoundingClientRect().toJSON()]));
         const nativeStack = [...document.querySelectorAll('.leaflet-map-pane,.leaflet-popup-pane,.leaflet-bottom')].map(node => ({ className: node.className, zIndex: getComputedStyle(node).zIndex, insideMap: Boolean(node.closest('.map-canvas')) }));
         return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, readingHeight: scroll.clientHeight, titleVisible: title.top >= rect.top && title.bottom <= rect.bottom, closeWidth: close.width, closeHeight: close.height, bodySize: parseFloat(getComputedStyle(element.querySelector('.arrival-destination')).fontSize), coveredBy, nativeControlsObscure, nativeStack, bounds, native, css: { height: element.style.getPropertyValue('--item-popup-max-height'), width: element.style.getPropertyValue('--item-popup-width') } };
       });
@@ -232,7 +232,7 @@ try {
       assert.equal(await f.page.locator('.item-popup').count(), 1, 'A visible anchor retains its details when the phone rotates');
       const fitted = await f.page.locator('.item-popup').evaluate(element => {
         const rect = element.getBoundingClientRect();
-        const covered = [...document.querySelectorAll('.topbar,.traffic-info-toggle,.mobile-dock,.layer-group-picker,.intel-shell')].some(overlay => {
+        const covered = [...document.querySelectorAll('.topbar,.traffic-info-toggle,.intel-shell')].some(overlay => {
           const style = getComputedStyle(overlay), bounds = overlay.getBoundingClientRect();
           return style.display !== 'none' && bounds.width > 0 && rect.left < bounds.right && rect.right > bounds.left && rect.top < bounds.bottom && rect.bottom > bounds.top;
         });

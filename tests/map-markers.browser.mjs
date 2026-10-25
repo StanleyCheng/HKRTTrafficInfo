@@ -100,6 +100,16 @@ async function hoverMarker(page, marker) {
   assert.equal(hit, await marker.getAttribute('data-marker-id'), 'Hover must reach the visible marker');
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 }
+// A storage event models a layer change from another tab without moving the hover pointer.
+async function toggleSavedLayer(page, kind) {
+  await page.evaluate(kind => {
+    const key = 'hk-traffic-layers-v1';
+    const enabled = JSON.parse(localStorage.getItem(key));
+    const next = JSON.stringify({ ...enabled, [kind]: !enabled[kind] });
+    localStorage.setItem(key, next);
+    dispatchEvent(new StorageEvent('storage', { key, newValue: next }));
+  }, kind);
+}
 async function closeTooltips(page) {
   // Leaflet keeps tooltips that were opened for a selected item, so tests close them explicitly.
   await page.evaluate(() => { window.__map.eachLayer(layer => layer.closeTooltip?.()); });
@@ -145,12 +155,9 @@ try {
     assert.equal(await card.locator('img').evaluate(image => getComputedStyle(image).objectFit), 'contain', 'Full image retains the stamped capture time');
     await card.hover(); await page.waitForTimeout(400);
     assert.equal(await card.count(), 1, 'Pointer can enter and inspect the rich card');
-    await page.locator('.layer-group-picker button').nth(1).evaluate(button => button.click());
-    const unrelatedLayer = page.locator('.desktop-layer-button.rainfall');
-    await unrelatedLayer.evaluate(button => button.click());
+    await toggleSavedLayer(page, 'rainfall');
     assert.equal(await card.count(), 1, 'Unrelated feed/layer updates retain the hovered snapshot');
-    await unrelatedLayer.evaluate(button => button.click());
-    await page.locator('.layer-group-picker button').first().evaluate(button => button.click());
+    await toggleSavedLayer(page, 'rainfall');
     await card.getByRole('button', { name: 'Refresh snapshot', exact: true }).click();
     await page.waitForFunction(() => !document.querySelector('.snapshot-hover .refresh-image')?.disabled);
     assert.equal(requests, loadedRequests + 1, 'Refresh remains usable inside hover');
@@ -214,12 +221,11 @@ try {
     await card.getByRole('button', { name: 'Reload snapshot', exact: true }).click();
     await card.locator('img').waitFor(); assert.equal(requests, failedRequests + 1);
     const retriedRequests = requests;
-    const toggle = page.locator('.desktop-layer-button.snapshot');
-    await toggle.click(); await card.waitFor({ state: 'detached' });
+    await toggleSavedLayer(page, 'snapshot'); await card.waitFor({ state: 'detached' });
     assert.equal(await marker.count(), 0);
-    await toggle.click(); await marker.waitFor();
+    await toggleSavedLayer(page, 'snapshot'); await marker.waitFor();
     await hoverMarker(page, marker); await page.waitForTimeout(500);
-    await toggle.click(); await page.waitForTimeout(1700);
+    await toggleSavedLayer(page, 'snapshot'); await page.waitForTimeout(1700);
     assert.equal(requests, retriedRequests, 'Removing the layer cancels a pending photo request');
     assert.deepEqual(await page.evaluate(() => window.__errors), []);
     await context.close();

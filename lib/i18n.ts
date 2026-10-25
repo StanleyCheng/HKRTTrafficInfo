@@ -413,7 +413,6 @@ export const tollNames: Record<string, string> = { WHC: '西區海底隧道', CH
 export const integrationMessages = {
   en: {
     refreshCadence: (seconds: number) => seconds > 0 ? `Refresh interval: ${seconds} seconds while visible.` : 'Loads initially; use Refresh or Retry to update.', delayed: 'Delayed', arrival: 'Arrival', departure: 'Departure', busyPoints: (n: number) => `${n} busy control points`, activeWarnings: (n: number) => `${n} active warnings`,
-    groups: { roads: 'Roads', conditions: 'Boundary & weather', rail: 'Rail', bus: 'Buses', ferry: 'Ferries' },
     tabs: { ranked: 'Priority', roads: 'Roads', boundary: 'Boundary', weather: 'Weather', systems: 'Systems', notes: 'Notes' },
     intel: 'Traffic intelligence', expand: 'Open traffic intelligence', close: 'Close traffic intelligence', empty: 'No active items in this view.',
     hostedOnly: 'This layer needs the full hosted version.', hostedLink: 'Open full version',
@@ -433,7 +432,6 @@ export const integrationMessages = {
   },
   zh: {
     refreshCadence: (seconds: number) => seconds > 0 ? `頁面顯示時每 ${seconds} 秒更新。` : '首次啟用時讀取；請按重新讀取或重試更新。', delayed: '延誤', arrival: '到站', departure: '開出', busyPoints: (n: number) => `${n} 個繁忙管制站`, activeWarnings: (n: number) => `${n} 個生效警告`,
-    groups: { roads: '道路', conditions: '口岸及天氣', rail: '鐵路', bus: '巴士', ferry: '渡輪' },
     tabs: { ranked: '重點', roads: '道路', boundary: '口岸', weather: '天氣', systems: '系統', notes: '說明' },
     intel: '交通情報', expand: '展開交通情報', close: '關閉交通情報', empty: '此分類暫無消息。',
     hostedOnly: '此圖層需使用完整託管版本。', hostedLink: '開啟完整版本',

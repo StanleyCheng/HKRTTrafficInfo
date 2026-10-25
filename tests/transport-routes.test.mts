@@ -6,7 +6,7 @@ import { parseSession } from '../lib/session-state.ts'
 import { GET } from '../app/api/bus-route-paths/route.ts'
 import { loadBusRoutePaths } from '../lib/bus-route.ts'
 import type { MtrResponse } from '../lib/types.ts'
-import { kinds, layerCategoryKinds, layerCategories, layerGroups, type CameraData } from '../lib/traffic.ts'
+import { kinds, layerCategoryKinds, layerCategories, type CameraData } from '../lib/traffic.ts'
 
 test('route catalogue retains all rail lines, individual Light Rail services, ferry pairs and ordered tram/bus paths', () => {
   const routes = transportRoutes({})
@@ -60,11 +60,10 @@ test('saved route preferences survive reload and reject malformed records; old r
   assert.deepEqual(state.routeVisibility, { 'all:bus': false, 'rail:mtr:TWL': true })
 })
 
-test('layer categories cover every dock layer exactly once and restore validated browsing independently of routes', () => {
+test('layer categories cover every map layer exactly once and restore validated browsing independently of routes', () => {
   const categorized = layerCategories.flatMap(category => layerCategoryKinds[category])
   assert.deepEqual([...categorized].sort(), [...kinds].sort())
   assert.equal(new Set(categorized).size, categorized.length)
-  assert.deepEqual(layerGroups.flatMap(group => group.kinds).sort(), [...categorized].sort())
   const visibility = { 'all:rail': false, 'rail:mtr:TWL': true }
   const restored = parseSession({ version: 1, layerCategory: 'roads', transportMode: 'rail', routeVisibility: visibility })
   assert.equal(restored.layerCategory, 'roads')

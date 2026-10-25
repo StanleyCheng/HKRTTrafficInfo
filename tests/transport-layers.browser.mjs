@@ -10,7 +10,8 @@ const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgQIAI7mY6QAAAABJRU5ErkJggg==', 'base64');
 const results = [];
 try {
-  for (const [width, height, language, mode] of [[1440, 960, 'en', '2d'], [390, 844, 'zh', '2d'], [320, 700, 'en', '2d'], [844, 500, 'en', '2d'], [1440, 960, 'en', '3d'], [390, 844, 'zh', '3d']]) {
+  for (const [width, height, language, mode] of [[1440, 960, 'en', '2d'], [484, 807, 'en', '2d'], [390, 844, 'zh', '2d'], [320, 700, 'en', '2d'], [844, 500, 'en', '2d'], [1440, 960, 'en', '3d'], [390, 844, 'zh', '3d']]) {
+    if (process.env.TRANSPORT_TEST_FILTER && !new RegExp(process.env.TRANSPORT_TEST_FILTER).test(`${width}-${height}-${language}-${mode}`)) continue;
     const context = await browser.newContext({ viewport: { width, height }, hasTouch: width < 700, reducedMotion: 'reduce' });
     const page = await context.newPage(), errors = [], pathRequests = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -82,11 +83,10 @@ try {
       const speed = page.locator('.layer-card.speed > .layer-toggle');
       await speed.click();
       await close();
-      const dock = page.locator('.mobile-dock:visible, .desktop-layer-dock:visible');
-      const dockSpeed = dock.locator('button.speed');
-      assert.equal(await dockSpeed.getAttribute('aria-pressed'), 'true');
-      await dockSpeed.click();
+      assert.equal(await page.locator('.mobile-dock,.desktop-layer-dock,.layer-group-picker').count(), 0, 'Layer controls are exclusively in the right-side panel');
       await open();
+      assert.equal(await speed.getAttribute('aria-checked'), 'true', 'Layer choices survive closing the panel');
+      await speed.click();
       assert.equal(await speed.getAttribute('aria-checked'), 'false');
       await page.screenshot({ path: `${evidence}/${prefix}-road.png` });
       await page.locator('#layer-category').selectOption('bus');

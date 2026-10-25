@@ -422,13 +422,13 @@ export default function TrafficMap3D(props: Props) {
     const focusOut = (event: FocusEvent) => { if (event.relatedTarget instanceof Node && !popupNode?.contains(event.relatedTarget)) focused = false; };
     popupNode?.addEventListener('focusin', focusIn); popupNode?.addEventListener('focusout', focusOut);
     const shell = m.getContainer().closest('.app-shell');
-    const overlaySelectors = '.topbar,.traffic-status,.intel-shell,.desktop-layer-dock,.mobile-dock,.layer-group-picker,.map-3d-camera,.map-tools';
+    const overlaySelectors = '.topbar,.traffic-status,.intel-shell,.map-3d-camera,.map-tools';
     const size = () => {
       if (popup.current !== card) return;
       const area = m.getContainer().getBoundingClientRect();
       const visible = (selector: string) => [...(shell?.querySelectorAll<HTMLElement>(selector) ?? [])].map(node => node.getBoundingClientRect()).filter(rect => rect.height > 0 && rect.width > 0);
       const top = Math.max(area.top, ...visible('.topbar,.traffic-status').map(rect => rect.bottom)) + 12;
-      const bottom = Math.min(area.bottom, ...visible('.intel-shell,.desktop-layer-dock,.mobile-dock,.layer-group-picker,.map-3d-camera').map(rect => rect.top)) - 12;
+      const bottom = Math.min(area.bottom, ...visible('.intel-shell,.map-3d-camera').map(rect => rect.top)) - 12;
       const left = area.left + 12;
       const right = Math.min(area.right, ...visible('.map-tools').map(rect => rect.left)) - 12;
       content.style.setProperty('--item-popup-max-height', `${Math.max(44, Math.min(420, bottom - top - 28))}px`);

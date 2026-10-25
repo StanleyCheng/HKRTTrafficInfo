@@ -102,11 +102,12 @@ try {
       const cardBounds = await page.evaluate(() => {
         const card = document.querySelector('.native-item-popup .maplibregl-popup-content').getBoundingClientRect();
         const bar = document.querySelector('.topbar').getBoundingClientRect();
-        const dock = document.querySelector(innerWidth > 700 ? '.desktop-layer-dock' : '.mobile-dock').getBoundingClientRect();
-        return { top: card.top, bottom: card.bottom, barBottom: bar.bottom, dockTop: dock.top };
+        const overlays = [...document.querySelectorAll('.intel-shell,.map-3d-camera')].map(node => node.getBoundingClientRect());
+        const lowerBoundary = Math.min(innerHeight, ...overlays.map(rect => rect.top));
+        return { top: card.top, bottom: card.bottom, barBottom: bar.bottom, lowerBoundary };
       });
       await page.screenshot({ path: path.join(evidence, file + '-popup.png'), fullPage: true });
-      assert.ok(cardBounds.top >= cardBounds.barBottom + 8 && cardBounds.bottom <= cardBounds.dockTop - 8, 'Snapshot popup stays clear of the top menu and layer dock: ' + JSON.stringify(cardBounds));
+      assert.ok(cardBounds.top >= cardBounds.barBottom + 8 && cardBounds.bottom <= cardBounds.lowerBoundary - 8, 'Snapshot popup stays clear of the top menu and lower map controls: ' + JSON.stringify(cardBounds));
       await page.keyboard.press('Escape');
       await page.locator('.native-item-popup').waitFor({ state: 'detached' });
       const marker = page.locator('.native-marker[data-marker-id="snapshot-1"]');

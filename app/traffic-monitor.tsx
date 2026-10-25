@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, lazy, Suspense, type CSSProperties } from 'react';
 import Image from 'next/image';
 import { Box, Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, Search, ShieldCheck, Layers3, SquareParking, TrafficCone, TriangleAlert, Video, X, BusFront, TramFront, Accessibility, CarTaxiFront, Radar } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { messages, integrationMessages, layerCategoryMessages } from '@/lib/i18n';
 import { getCameraData } from '@/lib/traffic-client';
-import { Camera, CameraData, FlowSegment, Language, LayerKind, IntegrationKind, OriginalLayerKind, featureService, hkTime, isLiveTrafficDataFresh, isFeedDataStale, isCameraDataStale, kinds, originalKinds, integrationKinds, layerGroups, layerCategories, layerCategoryKinds, layerAvailable, hostedUrl, layerText, layers, snapshotInventory, snapshotInventoryEn, speedLevelColors } from '@/lib/traffic';
+import { Camera, CameraData, FlowSegment, Language, LayerKind, IntegrationKind, OriginalLayerKind, featureService, hkTime, isLiveTrafficDataFresh, isFeedDataStale, isCameraDataStale, kinds, originalKinds, integrationKinds, layerCategories, layerCategoryKinds, layerAvailable, hostedUrl, layerText, layers, snapshotInventory, snapshotInventoryEn, speedLevelColors } from '@/lib/traffic';
 import { cameraFromFlowSegment, displayFlowSegments, type TrafficSearchItem } from '@/lib/traffic-view';
 import TrafficMap, { type Basemap, type TrafficMapProps } from './traffic-map';
 import ItemDetails from './item-details';
@@ -313,8 +312,6 @@ export default function TrafficMonitor() {
   const [storedViewport] = useSessionField('view');
   const viewport = storedViewport ?? initialViewport;
   const updateViewport = useCallback((view: MapViewport) => { const previous = sessionStore.getSnapshot().view; if (!previous || previous.lat !== view.lat || previous.lng !== view.lng || previous.zoom !== view.zoom) sessionStore.update({ view }); }, []);
-  const [dockGroup, setDockGroup] = useSessionField('dockGroup');
-  const dockKinds = layerGroups.find(group => group.id === dockGroup)!.kinds;
   const [selectedSnapshot] = useSessionField('selectedPlace');
   const setSelectedSnapshot = useCallback((camera: Camera | null) => sessionStore.update({ selectedPlace: savedPlace(camera) }), []);
   const pendingDetailsFocus = useRef(false);
@@ -833,60 +830,6 @@ export default function TrafficMonitor() {
         </Popover>
         {activeBusSelection && <span className="sr-only" role="status">{extra.selectedBusRoute} {activeBusSelection.route} · {routeLoading ? extra.loadingBusRoute : routeError ? extra.busRouteError : extra.estimatedBuses(busCount)}</span>}
       </div>
-      <TooltipProvider delayDuration={180} skipDelayDuration={100}>
-        <div className="layer-group-picker" role="group" aria-label={copy.mapLayers}>{layerGroups.map(group => <button type="button" key={group.id} aria-pressed={dockGroup === group.id} onClick={() => setDockGroup(group.id)}>{extra.groups[group.id]}</button>)}</div>
-        <nav className="desktop-layer-dock" aria-label={copy.mapLayers}>
-          {dockKinds.map(kind => {
-            const Icon = icons[kind];
-            const text = layerText(kind, language);
-            const state = states[kind];
-            const enabledLabel = enabled[kind] ? extra.enabled : extra.disabled;
-            const countLabel = state.data ? `${state.data.count.toLocaleString(numberLocale)} ${copy.publishedLocations}` : copy.noData;
-            return <Tooltip key={kind}>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  style={{ '--layer-color': layers[kind].color } as CSSProperties}
-                  className={`desktop-layer-button ${kind} ${enabled[kind] ? 'active' : ''} ${state.error ? 'error' : ''}`}
-                  aria-label={`${copy.layerSwitch(text.name)}: ${enabledLabel}`}
-                  aria-pressed={enabled[kind]}
-                  disabled={!layerAvailable(kind)}
-                  onClick={() => toggle(kind)}
-                >
-                  <Icon size={22}/><span>{text.short}</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" sideOffset={12} collisionPadding={16} className="layer-dock-tooltip">
-                <strong>{text.name}</strong>
-                <span>{enabledLabel} · {countLabel}</span>
-                {state.loading && <span>{copy.loadingOfficialData}</span>}
-                {state.error && <span className="tooltip-error">{state.data ? copy.layerUpdateFailed : copy.dataLoadFailed}</span>}
-              </TooltipContent>
-            </Tooltip>;
-          })}
-        </nav>
-        <nav className="mobile-dock" aria-label={copy.mapLayers}>
-          <div className="mobile-layer-scroll">
-            {dockKinds.map(kind => {
-              const Icon = icons[kind];
-              const text = layerText(kind, language);
-              const state = states[kind];
-              const enabledLabel = enabled[kind] ? extra.enabled : extra.disabled;
-              return <button key={kind}
-                    type="button"
-                    className={`mobile-layer-button ${kind} ${enabled[kind] ? 'active' : ''} ${state.error ? 'error' : ''}`}
-                    style={{ '--layer-color': layers[kind].color } as CSSProperties}
-                    aria-label={`${copy.layerSwitch(text.name)}: ${enabledLabel}`}
-                    aria-pressed={enabled[kind]}
-                  disabled={!layerAvailable(kind)}
-                    onClick={() => toggle(kind)}
-                  >
-                    <span className="mobile-layer-icon"><Icon size={20}/></span><span>{text.short}</span>
-                  </button>;
-            })}
-          </div>
-        </nav>
-      </TooltipProvider>
       </div>
     </div>
     <p className="sr-only" role="status">{selectedName ? copy.selectionAnnounced(selectedName) : ''}</p>

@@ -118,7 +118,7 @@ async function assertRouteLabels(page, operator, language = 'en', checkViewport 
   await page.waitForFunction(count => document.querySelectorAll('.bus-route-stop-label').length === count, routeStops.length);
   assert.deepEqual(await labels.allTextContents(), routeStops.map(stop => language === 'en' ? stop.nameEn : stop.nameTc), 'Every selected-route stop keeps its complete name in the app language');
   const rendered = await labels.evaluateAll(elements => {
-    const overlays = [...document.querySelectorAll('.topbar,.map-tools,.map-toolbar,.traffic-status,.mobile-dock,.desktop-layer-dock,.layer-group-picker,.intel-shell')].filter(element => { const style = getComputedStyle(element), rect = element.getBoundingClientRect(); return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0; });
+    const overlays = [...document.querySelectorAll('.topbar,.map-tools,.map-toolbar,.traffic-status,.intel-shell')].filter(element => { const style = getComputedStyle(element), rect = element.getBoundingClientRect(); return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0; });
     return elements.map(element => {
       const style = getComputedStyle(element), rect = element.getBoundingClientRect();
       const coveredBy = overlays.filter(overlay => { const area = overlay.getBoundingClientRect(); return rect.left < area.right && rect.right > area.left && rect.top < area.bottom && rect.bottom > area.top; }).map(overlay => overlay.className);
