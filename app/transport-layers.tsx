@@ -4,7 +4,7 @@ import { Crosshair, LoaderCircle, RefreshCw, Search } from 'lucide-react'
 import { selectedVehicleCameras, type RouteVehicleFeeds, type RouteVehicleState } from '@/lib/route-vehicles'
 import { useSessionField } from './use-session-field'
 import { layers, layerAvailable, type Language, type LayerKind, type MapPath } from '@/lib/traffic'
-import { routeVisible, transportModes, transportKinds, type TransportMode, type TransportRoute, type RouteVisibility } from '@/lib/transport-routes'
+import { routeVisible, transportKinds, type TransportMode, type TransportRoute, type RouteVisibility } from '@/lib/transport-routes'
 
 const labels = {
   en: { stops: 'Bus stops', stopNote: 'Show stop markers on the map', routeLabels: 'Route stop labels', transport: 'Transport', bus: 'Buses & minibuses', rail: 'Trains & Light Rail', ferry: 'Ferries', tram: 'Trams', all: 'Show all routes', none: 'Hide all routes', search: 'Search routes or destinations', empty: 'No matching routes', busNote: 'Bus routes are listed from stops loaded around the map. Zoom in or move the map to find more. MTR Bus lines connect published stops and are approximate.', otherNote: 'Select several routes to compare them on the map.', zoom: 'Zoom to route', unavailable: 'Route geometry unavailable', approximate: 'Approximate stop connections', retry: 'Retry route geometry', loading: 'Loading route geometry', shown: (shown: number, total: number) => `${shown} of ${total} shown` },
@@ -13,13 +13,12 @@ const labels = {
 type PathState = { status: 'ready'; paths: MapPath[]; approximate: boolean } | { status: 'error' }
 type Props = {
   language: Language; routes: TransportRoute[]; visibility: RouteVisibility; enabled: Record<LayerKind, boolean>
-  loaded: Record<string, PathState>; onMode: (mode: TransportMode) => void; onToggle: (route: TransportRoute, on: boolean) => void
+  mode: TransportMode; loaded: Record<string, PathState>; onToggle: (route: TransportRoute, on: boolean) => void
   positions: Record<string, RouteVehicleState>; vehicleFeeds: RouteVehicleFeeds; now: number; onRetryPositions: () => void
   onAll: (mode: TransportMode, on: boolean) => void; onZoom: (route: TransportRoute) => void; onRetry: () => void
 }
-export default function TransportLayers({ language, routes, visibility, enabled, loaded, positions, vehicleFeeds, now, onRetryPositions, onMode, onToggle, onAll, onZoom, onRetry }: Props) {
+export default function TransportLayers({ language, mode, routes, visibility, enabled, loaded, positions, vehicleFeeds, now, onRetryPositions, onToggle, onAll, onZoom, onRetry }: Props) {
   const copy = labels[language]
-  const [mode] = useSessionField('transportMode')
   const [query, setQuery] = useSessionField('routeQuery')
   const [showStops, setShowStops] = useSessionField('showBusStops')
   const [showLabels, setShowLabels] = useSessionField('routeLabels')
@@ -30,10 +29,9 @@ export default function TransportLayers({ language, routes, visibility, enabled,
   const moving = selectedVehicleCameras(vehicleFeeds, now)
   return <section className="transport-layers" aria-label={copy.transport}>
     <div className="transport-visibility">
-      <label className="transport-switch"><span><strong>{copy.stops}</strong><small>{copy.stopNote}</small></span><input type="checkbox" role="switch" checked={showStops} onChange={event => setShowStops(event.target.checked)} aria-label={copy.stops}/><span className="switch" aria-hidden="true"/></label>
+      {mode === 'bus' && <label className="transport-switch"><span><strong>{copy.stops}</strong><small>{copy.stopNote}</small></span><input type="checkbox" role="switch" checked={showStops} onChange={event => setShowStops(event.target.checked)} aria-label={copy.stops}/><span className="switch" aria-hidden="true"/></label>}
       <label className="transport-switch compact"><span>{copy.routeLabels}</span><input type="checkbox" role="switch" checked={showLabels} onChange={event => setShowLabels(event.target.checked)} aria-label={copy.routeLabels}/><span className="switch" aria-hidden="true"/></label>
     </div>
-    <label className="transport-select" htmlFor="transport-mode">{copy.transport}<select id="transport-mode" value={mode} onChange={event => { const next = transportModes.find(mode => mode === event.target.value); if (next) onMode(next) }}>{transportModes.map(mode => <option key={mode} value={mode}>{copy[mode]}</option>)}</select></label>
     <p className="transport-scope">{mode === 'bus' ? copy.busNote : copy.otherNote}</p>
     <div className="transport-route-actions"><button type="button" disabled={!available} onClick={() => onAll(mode, true)}>{copy.all}</button><button type="button" disabled={!available} onClick={() => onAll(mode, false)}>{copy.none}</button></div>
     <label className="transport-route-search"><Search size={16} aria-hidden="true"/><input type="search" value={query} maxLength={200} placeholder={copy.search} aria-label={copy.search} onChange={event => setQuery(event.target.value)}/></label>

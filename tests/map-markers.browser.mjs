@@ -81,8 +81,12 @@ async function create(mobile = false, parking = [{ vacancy: 10, space: 100 }, { 
   await page.waitForFunction(() => window.__map?._loaded);
   await page.evaluate(center => { window.__map.setView(center, 17, { animate: false }); }, center);
   await openLayers(page);
-  for (const toggle of await page.locator('.layer-card .layer-toggle').all()) if (await toggle.getAttribute('aria-checked') !== 'true') await toggle.click();
-  await page.waitForFunction(() => [...document.querySelectorAll('.layer-card')].every(card => !card.querySelector('.spin')));
+  for (const category of ['roads', 'conditions', 'bus', 'rail', 'ferry', 'tram', 'taxi']) {
+    await openLayers(page, category);
+    for (const toggle of await page.locator('.layer-card .layer-toggle').all()) if (await toggle.getAttribute('aria-checked') !== 'true') await toggle.click();
+    await page.waitForFunction(() => [...document.querySelectorAll('.layer-card')].every(card => !card.querySelector('.spin')));
+  }
+  await openLayers(page, 'roads');
   const detectors = page.getByRole('switch', { name: 'Show detector locations', exact: true });
   await detectors.waitFor(); if (await detectors.getAttribute('aria-checked') !== 'true') await detectors.click();
   await closeControls(page);

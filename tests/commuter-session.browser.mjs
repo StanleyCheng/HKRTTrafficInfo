@@ -123,7 +123,7 @@ try {
  for(let i=0;f.calls.route<2&&i<80;i++)await page.waitForTimeout(100);assert.ok(f.calls.route>=2);
  const restored=await page.evaluate(()=>({lng:window.__nativeMap.getCenter().lng,lat:window.__nativeMap.getCenter().lat,zoom:window.__nativeMap.getZoom(),pitch:window.__nativeMap.getPitch(),bearing:window.__nativeMap.getBearing()}));
  assert.ok(Math.abs(restored.lng-114.18)<.00001&&Math.abs(restored.lat-22.30)<.00001);assert.equal(restored.zoom,14.25);assert.equal(restored.pitch,48);assert.equal(restored.bearing,-12);
- await openLayers(page);assert.equal(await page.getByRole('switch',{name:'Bus stops',exact:true}).isChecked(),false);assert.equal(await page.getByRole('switch',{name:'Route stop labels',exact:true}).isChecked(),false);await closeControls(page);assert.ok(f.calls.route>=2,'Route reloads current data after reopening');
+ await openLayers(page, 'bus');assert.equal(await page.getByRole('switch',{name:'Bus stops',exact:true}).isChecked(),false);assert.equal(await page.getByRole('switch',{name:'Route stop labels',exact:true}).isChecked(),false);await closeControls(page);assert.ok(f.calls.route>=2,'Route reloads current data after reopening');
  assert.deepEqual(f.errors,[]);console.log('PASS '+width+'px 3D: popup polling and persisted mode, route, centre, zoom, tilt, bearing, stop/label controls');
  await page.screenshot({path:`${evidence}/restored-3d-${width}.png`});
  }

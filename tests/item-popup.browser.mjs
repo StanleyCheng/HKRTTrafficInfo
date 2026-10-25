@@ -60,7 +60,7 @@ async function create({ viewport = { width: 1440, height: 1000 }, touch = false 
   await page.waitForFunction(() => window.__map?._loaded);
   await page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
   await openLayers(page);
-  for (const kind of ['redlight', 'snapshot', 'kmb', 'works']) await page.locator(`.layer-card.${kind} [role="switch"]`).click();
+  for (const kind of ['redlight', 'snapshot', 'kmb', 'works']) { await openLayers(page, kind); await page.locator(`.layer-card.${kind} [role="switch"]`).click(); }
   await page.locator('[data-marker-id="kmb-fixture"]').waitFor();
   await closeControls(page);
   return { page, context, controls, requests, observedAt };
@@ -119,7 +119,7 @@ try {
     await popup.locator('.bus-route-button').first().click();
     await popup.waitFor({ state: 'detached' }); await f.page.locator('.bus-route-polyline').waitFor({ state: 'attached' });
     assert.ok(f.requests.length > 0);
-    await openLayers(f.page); await f.page.locator('.layers-popover .bus-route-status').waitFor();
+    await openLayers(f.page, 'bus'); await f.page.locator('.layers-popover .bus-route-status').waitFor();
     assert.equal(await f.page.getByRole('button', { name: 'Close route', exact: true }).count(), 1, 'Active route remains manageable after popup dismissal');
     await closeControls(f.page);
     assert.equal(await f.page.locator('.bus-route-polyline').count(), 1);

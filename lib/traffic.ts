@@ -119,12 +119,23 @@ export function isCameraDataStale(camera: Camera, now = Date.now()): boolean {
   const age = now - Date.parse(camera.dataUpdated);
   return !Number.isFinite(age) || age < -300000 || age > feedMaxAgeMs(camera.kind);
 }
+export const layerCategoryKinds = {
+  roads: ['flow', 'incident', 'crossing', 'works', 'toll', 'redlight', 'speed', 'snapshot', 'parking'],
+  conditions: ['boundary', 'rainfall', 'weather-warning', 'access'],
+  bus: ['kmb', 'citybus', 'gmb', 'nlb', 'mtr-bus'],
+  rail: ['mtr', 'lrt'],
+  ferry: ['ferry'],
+  tram: ['tram'],
+  taxi: ['taxi'],
+} satisfies Record<string, LayerKind[]>;
+export type LayerCategory = keyof typeof layerCategoryKinds;
+export const layerCategories = Object.keys(layerCategoryKinds).filter((id): id is LayerCategory => id in layerCategoryKinds);
 export const layerGroups: { id: 'roads' | 'conditions' | 'rail' | 'bus' | 'ferry'; kinds: LayerKind[] }[] = [
-  { id: 'roads', kinds: ['flow', 'incident', 'crossing', 'works', 'toll', 'redlight', 'speed', 'snapshot', 'parking'] },
-  { id: 'conditions', kinds: ['boundary', 'rainfall', 'weather-warning', 'access'] },
-  { id: 'rail', kinds: ['mtr', 'lrt', 'tram'] },
-  { id: 'bus', kinds: ['kmb', 'citybus', 'gmb', 'nlb', 'mtr-bus', 'taxi'] },
-  { id: 'ferry', kinds: ['ferry'] },
+  { id: 'roads', kinds: layerCategoryKinds.roads },
+  { id: 'conditions', kinds: layerCategoryKinds.conditions },
+  { id: 'rail', kinds: [...layerCategoryKinds.rail, ...layerCategoryKinds.tram] },
+  { id: 'bus', kinds: [...layerCategoryKinds.bus, ...layerCategoryKinds.taxi] },
+  { id: 'ferry', kinds: layerCategoryKinds.ferry },
 ];
 export const speedLevelColors: Record<SpeedLevel, string> = { free: '#1f9d63', moderate: '#d49b25', slow: '#e15d69', unknown: '#8a9aa5' };
 // Relative luminance per WCAG 2.x for a #rrggbb colour, or null when unparsable.

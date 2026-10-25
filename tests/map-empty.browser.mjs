@@ -61,6 +61,7 @@ async function settle(page) {
 }
 
 async function toggle(page, kind, on) {
+  await openLayers(page, kind);
   const card = page.locator(`.layer-card.${kind} [role="switch"]`);
   if ((await card.getAttribute('aria-checked')) !== String(on)) await card.click();
 }
@@ -156,7 +157,7 @@ try {
     const moving = await page.evaluate(count => new Promise(resolve => { const frames = []; function frame() { const element = document.querySelector('.bus-route-marker'); frames.push(element?.style.transform); if (frames.length >= count) resolve(new Set(frames).size); else requestAnimationFrame(frame); } requestAnimationFrame(frame); }), 20);
     assert.ok(moving >= 10, 'The estimated bus keeps moving on the displayed route');
     await page.screenshot({ path: path.join(evidence, 'route-display-no-notice.png') });
-    await openLayers(page);
+    await openLayers(page, 'bus');
     await page.getByRole('button', { name: 'Close route', exact: true }).click();
     await page.locator('.bus-route-polyline').waitFor({ state: 'detached' });
     await settle(page);

@@ -49,10 +49,47 @@ try {
       await page.waitForFunction(mode => mode === '3d' ? window.__nativeMap?.getLayer('hk-transport-lines') : window.__map?._loaded, mode);
       const open = async () => {
         if (!await page.locator('.layers-popover').count()) await page.locator('.map-toolbar button').first().click();
-        await page.locator('.transport-layers').waitFor();
+        await page.locator('#layer-category').waitFor();
       };
       const close = async () => { if (await page.locator('.layers-popover').count()) await page.locator('.layers-popover .close-button').click(); };
       await open();
+      assert.equal(await page.locator('#layer-category').inputValue(), 'roads');
+      const categories = {
+        roads: ['flow', 'incident', 'crossing', 'works', 'toll', 'redlight', 'speed', 'snapshot', 'parking'],
+        conditions: ['boundary', 'rainfall', 'weather-warning', 'access'],
+        bus: ['kmb', 'citybus', 'gmb', 'nlb', 'mtr-bus'], rail: ['mtr', 'lrt'], ferry: ['ferry'], tram: ['tram'], taxi: ['taxi'],
+      };
+      const savedLayers = () => page.evaluate(() => JSON.parse(localStorage.getItem('hk-traffic-layers-v1')));
+      const initial = await savedLayers();
+      for (const [category, kinds] of Object.entries(categories)) {
+        const before = await savedLayers();
+        await page.locator('#layer-category').selectOption(category);
+        assert.deepEqual(await savedLayers(), before, 'Browsing categories must never enable layers');
+        assert.equal(await page.locator('.layers-popover .control-popover-body').evaluate(body => body.scrollTop), 0, 'A newly browsed category starts at its sub-layer controls');
+        assert.equal(await page.locator('.layer-list > .layer-card').count(), kinds.length);
+        for (const kind of kinds) {
+          const toggle = page.locator(`.layer-card.${kind} > .layer-toggle`);
+          const wasOn = await toggle.getAttribute('aria-checked') === 'true';
+          await toggle.click();
+          assert.equal((await savedLayers())[kind], !wasOn);
+          await toggle.click();
+          assert.equal((await savedLayers())[kind], wasOn);
+        }
+      }
+      const afterBrowsing = await savedLayers();
+      for (const kind of Object.values(categories).flat()) assert.equal(Boolean(afterBrowsing[kind]), Boolean(initial[kind]));
+      await page.locator('#layer-category').selectOption('roads');
+      const speed = page.locator('.layer-card.speed > .layer-toggle');
+      await speed.click();
+      await close();
+      const dock = page.locator('.mobile-dock:visible, .desktop-layer-dock:visible');
+      const dockSpeed = dock.locator('button.speed');
+      assert.equal(await dockSpeed.getAttribute('aria-pressed'), 'true');
+      await dockSpeed.click();
+      await open();
+      assert.equal(await speed.getAttribute('aria-checked'), 'false');
+      await page.screenshot({ path: `${evidence}/${prefix}-road.png` });
+      await page.locator('#layer-category').selectOption('bus');
       assert.equal(await page.locator('.map-toolbar > button, .map-toolbar > [data-slot="popover-trigger"]').count(), 3);
       assert.equal(await page.locator('.bus-stops-button,.route-labels-button,.rail-lines-popover').count(), 0);
       await page.waitForFunction(() => document.querySelector('.transport-route-list')?.textContent.match(/KMB|九巴/));
@@ -81,7 +118,7 @@ try {
       await open();
       await page.getByRole('checkbox', { name: language === 'en' ? /^Show 3 KMB/ : /^顯示 3 九巴/ }).waitFor();
       assert.equal(await one.getByRole('checkbox').isChecked(), true, 'An explicitly selected route stays available after moving to another area');
-      await page.locator('#transport-mode').selectOption('rail');
+      await page.locator('#layer-category').selectOption('rail');
       await page.getByRole('button', { name: language === 'en' ? 'Hide all routes' : '隱藏所有路線', exact: true }).click();
       const twl = page.getByRole('checkbox', { name: /TWL/ });
       const eal = page.getByRole('checkbox', { name: /EAL/ });
@@ -89,11 +126,12 @@ try {
       assert.equal(await page.locator('.transport-route-list input:checked').count(), 2);
       const bounds = await page.locator('.layers-popover').boundingBox();
       assert.ok(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width + 1 && bounds.y + bounds.height <= height + 1, JSON.stringify(bounds));
+      await page.locator('.layers-popover .control-popover-body').evaluate(body => { body.scrollTop = 0; });
       await page.screenshot({ path: `${evidence}/${prefix}.png` });
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.locator('.transport-layers').waitFor();
       await page.waitForFunction(mode => mode === '2d' ? window.__map?._loaded : window.__nativeMap?.getLayer('hk-transport-lines') && document.querySelector('.native-map-area .zoom-buttons button:not(:disabled)'), mode);
-      assert.equal(await page.locator('#transport-mode').inputValue(), 'rail');
+      assert.equal(await page.locator('#layer-category').inputValue(), 'rail');
       assert.equal(await page.locator('.transport-route-list input:checked').count(), 2);
       await page.locator('.transport-route-list li').filter({ has: twl }).getByRole('button').click();
       await page.waitForFunction(mode => Math.abs((mode === '2d' ? window.__map.getCenter() : window.__nativeMap.getCenter()).lng - 114.25) > .001, mode);
@@ -111,9 +149,13 @@ try {
       assert.ok(Math.abs(switchedView.lng - 114.25) < .00001 && Math.abs(switchedView.lat - 22.4) < .00001 && switchedView.zoom === 16, 'Switching renderers preserves a manual pan after route zoom: ' + JSON.stringify(switchedView));
       await open();
       assert.equal(await page.locator('.transport-route-list input:checked').count(), 2);
-      await page.locator('#transport-mode').selectOption('ferry');
+      await page.locator('#layer-category').selectOption('roads');
+      assert.equal(await page.locator('.layer-list > .layer-card').count(), 9);
+      await page.locator('#layer-category').selectOption('rail');
+      assert.equal(await page.locator('.transport-route-list input:checked').count(), 2, 'Road browsing preserves selected rail routes');
+      await page.locator('#layer-category').selectOption('ferry');
       assert.equal(await page.locator('.transport-route-list li').count(), 16);
-      await page.locator('#transport-mode').selectOption('tram');
+      await page.locator('#layer-category').selectOption('tram');
       assert.equal(await page.locator('.transport-route-list li').count(), 6);
       assert.deepEqual(errors, []);
       results.push({ name: prefix, ok: true }); console.log('PASS ' + prefix);

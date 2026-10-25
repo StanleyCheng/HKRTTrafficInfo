@@ -51,7 +51,7 @@ async function create(viewport) {
   });
   await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => window.__map?._loaded);
-  await openLayers(page);
+  await openLayers(page, 'rail');
   await page.locator('.layer-card.lrt [role="switch"]').evaluate(element => element.click());
   await closeControls(page);
   await until(() => calls.mtr >= 1 && calls.lrt >= 1);

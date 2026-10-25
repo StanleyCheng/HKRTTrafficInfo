@@ -73,7 +73,7 @@ async function create({ mobile = false, reducedMotion = 'no-preference', gps = f
   await page.locator('.vehicle-marker').waitFor({ timeout: 30000 });
   await page.waitForFunction(() => window.__map?._loaded);
   await openLayers(page);
-  for (const kind of ['lrt', 'ferry']) await page.locator(`.layer-card.${kind} [role="switch"]`).click();
+  for (const kind of ['lrt', 'ferry']) { await openLayers(page, kind); await page.locator(`.layer-card.${kind} [role="switch"]`).click(); }
   await closeControls(page);
   await page.waitForFunction(count => document.querySelectorAll('.vehicle-marker').length === count, gps ? 4 : 3);
   await page.evaluate(() => { window.__map.setView([22.286, 114.159], 16, { animate: false }); });

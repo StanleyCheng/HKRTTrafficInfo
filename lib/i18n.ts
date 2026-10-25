@@ -1,4 +1,9 @@
-import type { Language, OriginalLayerKind, ParkingVehicleType } from './traffic';
+import type { Language, LayerCategory, OriginalLayerKind, ParkingVehicleType } from './traffic';
+
+export const layerCategoryMessages = {
+  en: { category: 'Layer category', roads: 'Road', conditions: 'Conditions & access', bus: 'Buses & minibuses', rail: 'Trains & Light Rail', ferry: 'Ferries', tram: 'Trams', taxi: 'Taxis' },
+  zh: { category: '圖層分類', roads: '道路', conditions: '路況、天氣及無障礙', bus: '巴士及小巴', rail: '港鐵及輕鐵', ferry: '渡輪', tram: '電車', taxi: '的士' },
+} satisfies Record<Language, Record<LayerCategory | 'category', string>>;
 
 type AppMessages = {
   languageControl: string;

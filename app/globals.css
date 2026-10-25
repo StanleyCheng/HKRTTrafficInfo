@@ -301,6 +301,11 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .transport-switch input:focus-visible + .switch { outline: 2px solid var(--primary); outline-offset: 4px; }
 .transport-select { display: grid; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 600; }
 .transport-select select { width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--transport-line); border-radius: 7px; color: var(--foreground); background: var(--transport-surface); font: inherit; font-size: 15px; }
+.layer-category-picker { flex-shrink: 0; padding: 12px 16px; border-bottom: 1px solid var(--border); --transport-surface: #f1f7f5; --transport-line: #c8dcd6; }
+.layers-popover .layer-list { margin-top: -12px; }
+.layers-popover .layer-count { max-width: 6ch; overflow-wrap: anywhere; font-size: 13px; }
+.transport-layers { margin-top: 16px; }
+.transport-layers .transport-visibility { margin-top: 0; }
 .transport-scope { margin: 10px 0 12px; font-size: 11px; color: var(--muted); line-height: 1.6; }
 .transport-route-actions { display: flex; gap: 8px; margin-bottom: 12px; }
 .transport-route-actions button { flex: 1; min-height: 40px; border: 1px solid var(--transport-line); border-radius: 6px; background: var(--background); color: var(--transport-ink); font: inherit; font-size: 12px; }
@@ -325,8 +330,6 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .transport-route-zoom:disabled { opacity: .35; cursor: default; }
 .transport-layers button:focus-visible, .transport-select select:focus-visible, .transport-route-choice input:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .transport-route-empty { padding: 20px 0; color: var(--muted); font-size: 13px; text-align: center; }
-.other-map-layers { margin-top: 18px; border-top: 1px solid var(--border); }
-.other-map-layers > summary { min-height: 44px; padding: 14px 0; font-size: 13px; font-weight: 600; color: var(--transport-ink, var(--primary)); cursor: pointer; }
 .nearby-popover { width: min(390px, calc(100vw - 32px)); max-width: var(--radix-popover-content-available-width); max-height: min(600px, var(--radix-popover-content-available-height)); }
 .nearby-context { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .nearby-context > span { display: flex; align-items: center; gap: 6px; font-weight: 650; }

@@ -1,10 +1,15 @@
-export async function openLayers(page) {
+const layerCategory = {
+  flow: 'roads', incident: 'roads', crossing: 'roads', works: 'roads', toll: 'roads', redlight: 'roads', speed: 'roads', snapshot: 'roads', parking: 'roads',
+  boundary: 'conditions', rainfall: 'conditions', 'weather-warning': 'conditions', access: 'conditions',
+  kmb: 'bus', citybus: 'bus', gmb: 'bus', nlb: 'bus', 'mtr-bus': 'bus', mtr: 'rail', lrt: 'rail', ferry: 'ferry', tram: 'tram', taxi: 'taxi',
+};
+
+export async function openLayers(page, categoryOrKind) {
   if (!await page.locator('.layers-popover').count()) {
     await page.locator('.map-toolbar').getByRole('button', { name: /^(Map layers|地圖圖層)(?:$| ·)/ }).evaluate(button => button.click());
     await page.locator('.layers-popover').waitFor();
   }
-  const other = page.locator('.other-map-layers');
-  if (await other.count() && await other.getAttribute('open') === null) await other.locator('summary').evaluate(button => button.click());
+  if (categoryOrKind) await page.locator('#layer-category').selectOption(layerCategory[categoryOrKind] || categoryOrKind);
 }
 
 export async function openSearch(page) {
@@ -29,7 +34,7 @@ export async function reloadAll(page) {
 
 
 export async function toggleMapDisplay(page, key) {
-  await openLayers(page);
+  await openLayers(page, 'bus');
   await page.locator('.transport-layers').getByRole('switch', { name: key === 'stops' ? /^(Bus stops|巴士站)$/ : /^(Route stop labels|路線車站標籤)$/ }).click();
   await closeControls(page);
 }

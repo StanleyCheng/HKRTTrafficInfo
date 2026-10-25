@@ -36,11 +36,12 @@ await context.addInitScript(({ observed }) => {
 const page = await context.newPage();
 const openFerries = async () => {
   await page.waitForFunction(() => window.__map?._loaded);
-  await openLayers(page);
+  await openLayers(page, 'rail');
   for (const kind of ['mtr', 'lrt']) {
     const rail = page.locator(`.layer-card.${kind} [role="switch"]`);
     if (await rail.count() && await rail.getAttribute('aria-checked') === 'true') await rail.evaluate(button => button.click());
   }
+  await openLayers(page, 'ferry');
   const toggle = page.locator('.layer-card.ferry [role="switch"]');
   if (await toggle.getAttribute('aria-checked') !== 'true') await toggle.click();
   await closeControls(page);

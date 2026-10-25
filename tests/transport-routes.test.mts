@@ -6,7 +6,7 @@ import { parseSession } from '../lib/session-state.ts'
 import { GET } from '../app/api/bus-route-paths/route.ts'
 import { loadBusRoutePaths } from '../lib/bus-route.ts'
 import type { MtrResponse } from '../lib/types.ts'
-import type { CameraData } from '../lib/traffic.ts'
+import { kinds, layerCategoryKinds, layerCategories, layerGroups, type CameraData } from '../lib/traffic.ts'
 
 test('route catalogue retains all rail lines, individual Light Rail services, ferry pairs and ordered tram/bus paths', () => {
   const routes = transportRoutes({})
@@ -55,8 +55,23 @@ test('saved route preferences survive reload and reject malformed records; old r
   const state = parseSession({ version: 1, openControl: 'rail', transportMode: 'ferry', routeQuery: 'Central', routeVisibility: { 'all:bus': false, 'rail:mtr:TWL': true, unknown: true, 'bus:kmb:1': 'yes' } })
   assert.equal(state.openControl, 'layers')
   assert.equal(state.transportMode, 'ferry')
+  assert.equal(state.layerCategory, 'ferry')
   assert.equal(state.routeQuery, 'Central')
   assert.deepEqual(state.routeVisibility, { 'all:bus': false, 'rail:mtr:TWL': true })
+})
+
+test('layer categories cover every dock layer exactly once and restore validated browsing independently of routes', () => {
+  const categorized = layerCategories.flatMap(category => layerCategoryKinds[category])
+  assert.deepEqual([...categorized].sort(), [...kinds].sort())
+  assert.equal(new Set(categorized).size, categorized.length)
+  assert.deepEqual(layerGroups.flatMap(group => group.kinds).sort(), [...categorized].sort())
+  const visibility = { 'all:rail': false, 'rail:mtr:TWL': true }
+  const restored = parseSession({ version: 1, layerCategory: 'roads', transportMode: 'rail', routeVisibility: visibility })
+  assert.equal(restored.layerCategory, 'roads')
+  assert.deepEqual(restored.routeVisibility, visibility)
+  for (const category of layerCategories) assert.equal(parseSession({ version: 1, layerCategory: category }).layerCategory, category)
+  for (const invalid of ['__proto__', 'unknown', {}, null]) assert.equal(parseSession({ version: 1, layerCategory: invalid }).layerCategory, 'roads')
+  assert.equal(parseSession({ version: 1, transportMode: 'unknown' }).layerCategory, 'roads')
 })
 
 test('bus geometry endpoint rejects malformed route requests before any upstream call', async () => {

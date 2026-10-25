@@ -6,7 +6,19 @@ The **3D** button in the top menu switches to a native MapLibre GL JS renderer w
 
 The 3D view shares traffic roads, rail/ferry routes, stop and camera details, snapshots, search, GPS following and estimated vehicle movements with the monitor. It uses the existing self-hosted MapLibre workers and requires no new API key. Buildings reflect OpenStreetMap coverage and published heights; this version does not include terrain elevation or the Lands Department's detailed 3D Tiles, which require separate data integration and an official API key. Devices without a working WebGL context can return to 2D from the error message.
 
-The right-side **Map layers** icon opens one panel for bus-stop visibility, route-stop labels, and a transport dropdown for buses/minibuses, trains/Light Rail, ferries and trams. Each transport has Show all, Hide all, bilingual search, route checkboxes and a zoom button. Several routes can be displayed together. The former separate rail, bus-stop and route-label buttons are consolidated here; other traffic layers remain in the expandable **Other map layers** section and in the existing bottom dock. Choices survive reloads and 2D/3D switches.
+The right-side **Map layers** icon opens a category dropdown covering all 23 layers. Choose a category to browse its independent sub-layer switches without changing the map's current selections. The dropdown stays visible while the list scrolls. Both desktop and mobile bottom docks remain available and share the same visibility state.
+
+| Category | Sub-layers |
+| --- | --- |
+| Road | Live road speed, incidents, harbour journey times, road works, toll points, red-light cameras, speed cameras, snapshots, parking |
+| Conditions & access | Boundary crossings, rainfall, weather warnings, accessible facilities/connections |
+| Buses & minibuses | KMB, Citybus, GMB, NLB, MTR Bus |
+| Trains & Light Rail | MTR, Light Rail |
+| Ferries | Ferry piers, routes and available vessel positions |
+| Trams | Tram stops and routes |
+| Taxis | Taxi stands |
+
+Transport categories retain Show all, Hide all, bilingual search, multiple route selection and route zoom. Bus-stop visibility is under Buses & minibuses; route-stop labels are available in each transport category. Road retains detector visibility, incident messages, feed status and retry actions. Category, layer and route choices survive reloads and 2D/3D switches, including migration of saved transport categories.
 
 Rail, ferry, tram and MTR Bus choices use the bundled network. Other bus choices come from stops loaded around the current map area, subject to each feed's existing zoom/coverage gates. Bus geometry loads with two concurrent requests through `/api/bus-route-paths`. A separate two-worker queue requests selected-route observations through `/api/route-vehicles`, reusing the existing operator caches and ETA inference. Fresh, direction-matched ETAs already loaded around the map can display moving icons while the full route response is pending. Several selected routes display independently in 2D and 3D; unexpired estimates survive brief failures, and healthy empty data clears them. Route rows show loading, unavailable or no-current-estimate states and offer retry. MTR Bus estimates follow approximate stop connections; trams explicitly have no published GPS or ETA feed. Selecting rail or ferry routes also refreshes their feed immediately, with published coverage and rate limits still applying.
 

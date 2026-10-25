@@ -84,7 +84,7 @@ async function create({ mobile = false, reducedMotion = 'no-preference' } = {}) 
   await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => window.__map?._loaded);
   await page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
-  await openLayers(page);
+  await openLayers(page, 'bus');
   for (const kind of ['kmb', 'citybus', 'gmb', 'nlb']) await page.locator(`.layer-card.${kind} [role="switch"]`).click();
   await closeControls(page);
   await page.locator('.camera-marker[title$="kmb fixture stop"]').waitFor();
@@ -291,7 +291,7 @@ try {
     assert.ok(new Set(await samples(f.page)).size >= 10);
     assert.equal(await f.page.evaluate(() => window.__map.getZoom()), 16, 'Refresh must preserve the user camera');
     f.controls.mode = 'stale'; await refresh(f.page);
-    await openLayers(f.page);
+    await openLayers(f.page, 'bus');
     await f.page.getByText('Retained data · refresh failed or overdue', { exact: true }).waitFor();
     assert.equal(await f.page.locator('.bus-route-marker').count(), 2, 'A transient refresh failure keeps unexpired observations');
     assert.equal(await f.page.evaluate(() => window.__originalBus === document.querySelector('.bus-route-marker')), true);
@@ -300,7 +300,7 @@ try {
     await f.page.waitForFunction(() => !document.querySelector('.bus-route-marker'));
     assert.equal(await f.page.locator('.bus-route-polyline').count(), 1, 'Expired estimates disappear but the route stays visible');
     await assertRouteLabels(f.page, 'kmb', 'en', false);
-    await openLayers(f.page);
+    await openLayers(f.page, 'bus');
     await f.page.getByRole('button', { name: 'Close route', exact: true }).click();
     await f.page.locator('.bus-route-polyline').waitFor({ state: 'detached' });
     await f.page.waitForFunction(() => document.querySelectorAll('.bus-route-stop-label').length === 0);
@@ -327,7 +327,7 @@ try {
     assert.ok(new Set(await samples(f.page)).size >= 10);
     await toggleMapDisplay(f.page, 'labels');
     await assertRouteLabels(f.page, 'kmb');
-    await openLayers(f.page);
+    await openLayers(f.page, 'bus');
     await f.page.getByRole('button', { name: 'Close route', exact: true }).click();
     assert.equal(await f.page.getByRole('switch', { name: 'Route stop labels', exact: true }).isChecked(), true);
     assert.deepEqual(await f.page.evaluate(() => window.__errors), []);
@@ -336,7 +336,7 @@ try {
   await test('Missing position and unavailable road geometry remain explicit without invented movement', async () => {
     const f = await create(); f.controls.mode = 'approximate'; await select(f, variants[2]);
     assert.equal(await f.page.locator('.bus-route-marker').count(), 0);
-    await openLayers(f.page);
+    await openLayers(f.page, 'bus');
     await f.page.getByText('Route connects published stops; road geometry is unavailable.', { exact: true }).waitFor();
     await f.page.getByText('No current position estimate available.', { exact: true }).waitFor();
     await f.context.close();
@@ -349,7 +349,7 @@ try {
     await f.page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); document.dispatchEvent(new Event('visibilitychange')); });
     assert.equal(new Set(await samples(f.page)).size, 1);
     await f.page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' }); document.dispatchEvent(new Event('visibilitychange')); });
-    await openLayers(f.page);
+    await openLayers(f.page, 'bus');
     await f.page.locator('.layer-card.kmb [role="switch"]').click();
     await f.page.waitForFunction(() => !document.querySelector('.bus-route-marker'));
     await f.page.locator('.bus-route-polyline').waitFor({ state: 'detached' });
@@ -359,7 +359,7 @@ try {
     await f.page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
     await f.page.locator('.camera-marker[title$="kmb fixture stop"] .marker-displacement').click();
     await f.page.locator('.bus-route-button').first().click();
-    await openLayers(f.page);
+    await openLayers(f.page, 'bus');
     await f.page.getByRole('button', { name: 'Close route', exact: true }).click();
     await f.page.waitForTimeout(900);
     assert.equal(await f.page.locator('.bus-route-polyline, .bus-route-marker, .bus-route-stop-label').count(), 0, 'Cancelled selection cannot revive route or labels after response');
@@ -423,7 +423,7 @@ try {
     await f.page.waitForFunction(() => document.querySelectorAll('.bus-stop-marker').length > 0);
     assert.equal(await f.page.locator('.bus-route-polyline').count(), 1, 'Restoring the stops leaves the route line alone');
     await assertRouteLabels(f.page, 'kmb');
-    await openLayers(f.page);
+    await openLayers(f.page, 'bus');
     for (const kind of ['kmb', 'citybus', 'gmb', 'nlb']) await f.page.locator(`.layer-card.${kind} [role="switch"]`).click();
     assert.equal(await f.page.getByRole('switch', { name: 'Bus stops', exact: true }).count(), 1, 'The consolidated switch remains available');
     assert.equal(await f.page.locator('.bus-stop-marker').count(), 0, 'No enabled bus layer leaves no stop markers');

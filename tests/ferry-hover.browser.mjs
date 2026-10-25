@@ -32,7 +32,7 @@ try {
   await fs.mkdir(evidence, { recursive: true });
   await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => window.__map?._loaded);
-  await openLayers(page);
+  await openLayers(page, 'ferry');
   await page.locator('.layer-card.ferry [role="switch"]').click();
   await closeControls(page);
   const marker = page.locator('[data-marker-id="ferry-fixture"]'), card = page.locator('.ferry-hover');

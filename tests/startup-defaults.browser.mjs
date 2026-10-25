@@ -80,7 +80,7 @@ try {
   });
   await test('MTR is enabled on first visit and renders moving train positions', async () => {
     const { page, context, calls } = await create();
-    await openLayers(page);
+    await openLayers(page, 'rail');
     const mtr = page.locator('.layer-card.mtr [role="switch"]');
     await mtr.waitFor({ state: 'attached' });
     assert.equal(await mtr.getAttribute('aria-checked'), 'true', 'MTR must be enabled for a first visit');
@@ -100,7 +100,7 @@ try {
   });
   await test('MTR loads initially and a user choice to disable survives rerenders without refetching', async () => {
     const { page, context, calls } = await create();
-    await openLayers(page);
+    await openLayers(page, 'rail');
     const mtr = page.locator('.layer-card.mtr [role="switch"]');
     await page.locator('.vehicle-marker').waitFor({ timeout: 10000 });
     await page.waitForTimeout(250);
@@ -115,7 +115,7 @@ try {
     await page.getByRole('button', { name: 'Chinese', exact: true }).click();
     await page.evaluate(() => { window.__map.setView([22.285, 114.16], 15, { animate: false }); });
     await page.waitForTimeout(16000);
-    await openLayers(page);
+    await openLayers(page, 'rail');
     assert.equal(await mtr.getAttribute('aria-checked'), 'false', 'User disabling MTR must survive language and viewport rerenders');
     assert.equal(calls(), afterDisable, 'Language and viewport changes must not reload MTR');
     assert.equal(await page.evaluate(() => window.__gpsRequests.length), 1, 'Layer, language and viewport rerenders must not request GPS again');
@@ -143,7 +143,7 @@ try {
   }
   if (staticMode) await test('Static export keeps unavailable MTR disabled without locking refresh', async () => {
     const { page, context, calls } = await create({ settledFeedFailures: true });
-    await openLayers(page);
+    await openLayers(page, 'rail');
     const mtr = page.locator('.layer-card.mtr [role="switch"]');
     await mtr.waitFor({ state: 'attached' });
     assert.equal(await mtr.isDisabled(), true, 'Static export must keep its hosted-only MTR switch unavailable');

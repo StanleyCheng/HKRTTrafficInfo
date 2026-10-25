@@ -57,7 +57,7 @@ try {
     try {
       await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.waitForFunction(mode => mode === '2d' ? window.__map?._loaded : window.__nativeMap?.getLayer('hk-transport-lines') && document.querySelector('.native-map-area .zoom-buttons button:not(:disabled)'), mode);
-      const open = async () => { if (!await page.locator('.layers-popover').count()) await page.locator('.map-toolbar button').first().click(); await page.locator('.transport-layers').waitFor(); };
+      const open = async () => { if (!await page.locator('.layers-popover').count()) await page.locator('.map-toolbar button').first().click(); await page.locator('#layer-category').selectOption('bus'); await page.locator('.transport-layers').waitFor(); };
       const close = async () => { if (await page.locator('.layers-popover').count()) await page.locator('.layers-popover .close-button').click(); };
       const markers = code => page.locator(`.vehicle-marker[data-marker-id^="selected-vehicle:bus:kmb:${code}:"]`);
       const check = code => page.getByRole('checkbox', { name: new RegExp(`^(Show|顯示) ${code} `) });

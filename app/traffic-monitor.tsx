@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import Image from 'next/image';
 import { Box, Clock3, CloudRain, Gauge, Info, LoaderCircle, MapPin, Navigation, Search, ShieldCheck, Layers3, SquareParking, TrafficCone, TriangleAlert, Video, X, BusFront, TramFront, Accessibility, CarTaxiFront, Radar } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { messages, integrationMessages } from '@/lib/i18n';
+import { messages, integrationMessages, layerCategoryMessages } from '@/lib/i18n';
 import { getCameraData } from '@/lib/traffic-client';
-import { Camera, CameraData, FlowSegment, Language, LayerKind, IntegrationKind, OriginalLayerKind, featureService, hkTime, isLiveTrafficDataFresh, isFeedDataStale, isCameraDataStale, kinds, originalKinds, integrationKinds, layerGroups, layerAvailable, hostedUrl, layerText, layers, snapshotInventory, snapshotInventoryEn, speedLevelColors } from '@/lib/traffic';
+import { Camera, CameraData, FlowSegment, Language, LayerKind, IntegrationKind, OriginalLayerKind, featureService, hkTime, isLiveTrafficDataFresh, isFeedDataStale, isCameraDataStale, kinds, originalKinds, integrationKinds, layerGroups, layerCategories, layerCategoryKinds, layerAvailable, hostedUrl, layerText, layers, snapshotInventory, snapshotInventoryEn, speedLevelColors } from '@/lib/traffic';
 import { cameraFromFlowSegment, displayFlowSegments, type TrafficSearchItem } from '@/lib/traffic-view';
 import TrafficMap, { type Basemap, type TrafficMapProps } from './traffic-map';
 import ItemDetails from './item-details';
@@ -23,7 +23,7 @@ import TransportLayers from './transport-layers';
 import { useRouteVehicles } from './use-route-vehicles';
 import { selectedVehicleCameras, type RouteVehicleFeeds, type RouteVehicleState } from '@/lib/route-vehicles';
 import { useRoutePaths } from './use-route-paths';
-import { transportRoutes, filterTransportFeed, routeVisible, setAllRoutes, busPaths, transportKinds, type TransportMode, type TransportRoute, type RouteFocus } from '@/lib/transport-routes';
+import { transportRoutes, filterTransportFeed, routeVisible, setAllRoutes, busPaths, transportKinds, transportModes, type TransportMode, type TransportRoute, type RouteFocus } from '@/lib/transport-routes';
 import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
 import { getBusRoute } from '@/lib/bus-route-client';
 import { retainBusRoute } from '@/lib/bus-route-state';
@@ -280,7 +280,9 @@ export default function TrafficMonitor() {
   const extra = integrationMessages[language];
   const numberLocale = language === 'en' ? 'en-HK' : 'zh-HK';
   const railLines = useSyncExternalStore(railLinesStore.subscribe, railLinesStore.getSnapshot, railLinesStore.getServerSnapshot);
-  const [, setTransportMode] = useSessionField('transportMode');
+  const [layerCategory] = useSessionField('layerCategory');
+  const categoryCopy = layerCategoryMessages[language];
+  const transportMode = transportModes.find(mode => mode === layerCategory);
   const [storedRouteVisibility, setRouteVisibility] = useSessionField('routeVisibility');
   const [chosenBusRoutes, setChosenBusRoutes] = useSessionField('chosenBusRoutes');
   const routeVisibility = useMemo(() => {
@@ -589,7 +591,6 @@ export default function TrafficMonitor() {
     ...segments.map(segment => ({ camera: cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated), segment })),
     ...kinds.filter(kind => kind !== 'flow' && layerAvailable(kind) && !viewportNote(kind, viewport)).flatMap(kind => (viewStates[kind].data?.cameras ?? []).map(camera => ({ camera }))),
   ], [segments, states, viewStates, viewport]);
-  const total = kinds.reduce((count, kind) => count + (states[kind].data?.count ?? 0), 0);
   const loading = kinds.some(kind => (originalKinds.includes(kind as OriginalLayerKind) || mapEnabled[kind]) && states[kind].loading);
   const appBusy = pendingActivity > 0 || loading;
   const errors = kinds.some(kind => mapEnabled[kind] && states[kind].error);
@@ -598,7 +599,6 @@ export default function TrafficMonitor() {
   // Gated bus feeds and layers that never place cameras (weather warnings)
   // leave the map empty by design, so the centre notice must stay away.
   const hasDrawableLayers = kinds.some(kind => mapEnabled[kind] && layerAvailable(kind) && (kind === 'flow' || (kind !== 'weather-warning' && !viewportNote(kind, viewport))));
-  const complete = kinds.filter(kind => enabled[kind]).every(kind => states[kind].data?.complete) && !errors;
   const activeKinds = kinds.filter(kind => mapEnabled[kind]);
   const activeErrors = activeKinds.some(kind => states[kind].error);
   const activeLoading = activeKinds.some(kind => states[kind].loading);
@@ -756,21 +756,14 @@ export default function TrafficMonitor() {
           <PopoverTrigger asChild><button type="button" className={`toolbar-button ${routeError ? 'error' : ''}`} aria-label={routeControlLabel} title={routeControlLabel}>{routeLoading ? <LoaderCircle size={20} className="spin"/> : routeError ? <TriangleAlert size={20}/> : <Layers3 size={20}/>}</button></PopoverTrigger>
           <PopoverContent className="map-control-popover layers-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="layers-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
             <div className="control-popover-head"><h2 id="layers-popover-title">{copy.mapLayers}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
-            <div className="control-popover-body">
-              <TransportLayers language={language} routes={routeCatalogue} visibility={routeVisibility} enabled={enabled} loaded={routePaths} positions={panelPositions} vehicleFeeds={panelVehicleFeeds} now={now} onRetryPositions={() => { retryPositions(); if (activeBusSelection) setBusRouteRetry(value => value + 1); }} onRetry={retryRoutePaths}
-                onMode={mode => { setTransportMode(mode); sessionStore.update({ routeQuery: '' }); enableTransport(mode); }}
-                onAll={(mode, on) => { setRouteVisibility(setAllRoutes(routeVisibility, mode, on)); if (mode === 'bus') setChosenBusRoutes([]); if (on) enableTransport(mode); closeDetails(); }}
-                onToggle={(route, on) => { rememberBusRoute(route, on); setRouteVisibility({ ...routeVisibility, [route.id]: on }); if (on) enableRoute(route); closeDetails(); }}
-                onZoom={route => {
-                  const state = routePaths[route.id];
-                  const points = (state?.status === 'ready' ? state.paths : route.paths).flatMap(path => path.points);
-                  if (points.length) { rememberBusRoute(route, true); enableRoute(route); setRouteVisibility({ ...routeVisibility, [route.id]: true }); setRouteFocus({ points }); sessionStore.update({ followLocation: false }); setOpenControl(null); closeDetails(); }
-                }}/>
-              {routeStatus}
-              <details className="other-map-layers"><summary>{language === 'en' ? 'Other map layers' : '其他地圖圖層'}</summary>
-          <div className="summary" aria-live="polite"><strong>{total ? total.toLocaleString(numberLocale) : loading ? '—' : '0'}</strong><span>{copy.publishedLocations}</span>{complete && <small>{copy.completeInventory}</small>}</div>
-          <div className="section-label"><h3>{copy.mapLayers}</h3><span>{copy.showingLocations(cameras.length.toLocaleString(numberLocale))}</span></div>
-          <div className="layer-list">{kinds.map(kind => {
+            <label className="transport-select layer-category-picker" htmlFor="layer-category">{categoryCopy.category}<select id="layer-category" value={layerCategory} onChange={event => {
+              const category = layerCategories.find(category => category === event.target.value);
+              if (!category) return;
+              const mode = transportModes.find(mode => mode === category);
+              sessionStore.update({ layerCategory: category, routeQuery: '', ...(mode ? { transportMode: mode } : {}) });
+            }}>{layerCategories.map(category => <option key={category} value={category}>{categoryCopy[category]}</option>)}</select></label>
+            <div className="control-popover-body" key={layerCategory}>
+          <div className="layer-list" role="group" aria-label={categoryCopy[layerCategory]}>{layerCategoryKinds[layerCategory].map(kind => {
             const text = layerText(kind, language);
             const state = states[kind];
             const Icon = icons[kind];
@@ -811,8 +804,16 @@ export default function TrafficMonitor() {
               )}
             </div>;
           })}</div>
-          <p className="layer-note">{copy.layerNote}</p>
-              </details>
+              {transportMode && <TransportLayers language={language} mode={transportMode} routes={routeCatalogue} visibility={routeVisibility} enabled={enabled} loaded={routePaths} positions={panelPositions} vehicleFeeds={panelVehicleFeeds} now={now} onRetryPositions={() => { retryPositions(); if (activeBusSelection) setBusRouteRetry(value => value + 1); }} onRetry={retryRoutePaths}
+                onAll={(mode, on) => { setRouteVisibility(setAllRoutes(routeVisibility, mode, on)); if (mode === 'bus') setChosenBusRoutes([]); if (on) enableTransport(mode); closeDetails(); }}
+                onToggle={(route, on) => { rememberBusRoute(route, on); setRouteVisibility({ ...routeVisibility, [route.id]: on }); if (on) enableRoute(route); closeDetails(); }}
+                onZoom={route => {
+                  const state = routePaths[route.id];
+                  const points = (state?.status === 'ready' ? state.paths : route.paths).flatMap(path => path.points);
+                  if (points.length) { rememberBusRoute(route, true); enableRoute(route); setRouteVisibility({ ...routeVisibility, [route.id]: true }); setRouteFocus({ points }); sessionStore.update({ followLocation: false }); setOpenControl(null); closeDetails(); }
+                }}/>}
+              {transportMode === 'bus' && routeStatus}
+          {layerCategory === 'roads' && <p className="layer-note">{copy.layerNote}</p>}
             </div>
           </PopoverContent>
         </Popover>

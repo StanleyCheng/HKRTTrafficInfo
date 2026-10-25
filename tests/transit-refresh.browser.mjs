@@ -75,7 +75,7 @@ async function create({ incomplete = false, gated = false, hold = false } = {}) 
   await page.waitForFunction(() => window.__map?._loaded);
   if (!gated) await page.evaluate(() => { window.__map.setView([22.282, 113.951], 17, { animate: false }); });
   await openLayers(page);
-  for (const kind of kinds.filter(kind => kind !== 'mtr')) await page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click());
+  for (const kind of kinds.filter(kind => kind !== 'mtr')) { await openLayers(page, kind); await page.locator(`.layer-card.${kind} [role="switch"]`).evaluate(element => element.click()); }
   await until(() => kinds.filter(kind => !gated || !buses.includes(kind)).every(kind => calls[kind].length > 0));
   if (!hold) {
     await until(async () => (await page.locator('[data-marker-id="ferry-fixture"]').count()) === 1 && (gated || (await page.locator('[data-marker-id="nlb-fixture"]').count()) === 1));
@@ -210,7 +210,7 @@ try {
     for (const kind of kinds) state.mode[kind] = 'fail';
     await refresh(state); await changed(state, before);
     await openLayers(state.page);
-    await until(async () => (await state.page.locator(kinds.map(kind => `.layer-card.${kind} [role="alert"]`).join(',')).count()) === 7);
+    for (const kind of kinds) { await openLayers(state.page, kind); await state.page.locator(`.layer-card.${kind} [role="alert"]`).waitFor(); }
     assert.deepEqual(await labels(state), visible, 'Failed refresh keeps the last known data visible');
     await tick(state, 65000);
     // Backoff begins when failure completes. A response just after a poll
@@ -218,7 +218,7 @@ try {
     for (const kind of kinds) assert.ok(state.calls[kind].length >= 3, `${kind} auto-retries after failure within 60 seconds (${state.calls[kind].length})`);
     for (const kind of kinds) state.mode[kind] = 'complete';
     await tick(state, 65000);
-    await until(async () => (await state.page.locator(kinds.map(kind => `.layer-card.${kind} [role="alert"]`).join(',')).count()) === 0, 'The polling cadence clears feed errors without manual Retry');
+    for (const kind of kinds) { await openLayers(state.page, kind); await state.page.locator(`.layer-card.${kind} [role="alert"]`).waitFor({ state: 'detached' }); }
     await waitLabels(state, visible);
     before = counts(state); visible = await labels(state);
     await closeControls(state.page);
@@ -250,7 +250,7 @@ try {
     assert.notEqual(await position(), before, 'Cadence refreshes update the route vehicle estimate');
     state.mode['bus-route'] = 'api-fail';
     await tick(state, 65000);
-    await openLayers(state.page);
+    await openLayers(state.page, 'bus');
     await until(async () => (await state.page.locator('.bus-route-status .warning-text').count()) > 0);
     assert.equal(await state.page.locator('.bus-route-polyline').count(), 1, 'An HTTP-200 API failure retains the last route geometry');
     assert.equal(await state.page.locator('.bus-route-marker').count(), 1, 'A failed refresh retains an estimate within its original expiry');

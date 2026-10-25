@@ -1,7 +1,7 @@
 import { validBusSelection } from './bus-selection.ts'
 import type { BusRouteSelection, BusRouteStop } from './bus-route.ts'
 import type { IntelTab } from './intel.ts'
-import { kinds, type Camera } from './traffic.ts'
+import { kinds, layerCategories, type Camera, type LayerCategory } from './traffic.ts'
 import type { TransportMode, RouteVisibility, SavedBusRoute } from './transport-routes.ts'
 
 export type MapSession = {
@@ -17,6 +17,7 @@ export type MapSession = {
   showBusStops: boolean
   routeLabels: boolean
   transportMode: TransportMode
+  layerCategory: LayerCategory
   routeVisibility: RouteVisibility
   routeQuery: string
   chosenBusRoutes: SavedBusRoute[]
@@ -33,7 +34,7 @@ export type MapSession = {
   searchPage: number
 }
 export const sessionStorageKey = 'hk-traffic-session-v1'
-export const defaultSession: MapSession = { version: 1, view: null, mapMode: '2d', camera3D: { pitch: 55, bearing: -20 }, busSelection: null, selectedPlace: null, openControl: null, dockGroup: 'roads', showDetectors: false, showBusStops: true, routeLabels: true, transportMode: 'bus', routeVisibility: {}, routeQuery: '', chosenBusRoutes: [], revealedRoute: null, nearbyRadius: 1000, showNearbyOnMap: false, followLocation: true, routeStop: null, intelOpen: false, intelTab: 'ranked', statusExpanded: false, searchQuery: '', searchScope: 'roads', searchPage: 0 }
+export const defaultSession: MapSession = { version: 1, view: null, mapMode: '2d', camera3D: { pitch: 55, bearing: -20 }, busSelection: null, selectedPlace: null, openControl: null, dockGroup: 'roads', showDetectors: false, showBusStops: true, routeLabels: true, transportMode: 'bus', layerCategory: 'roads', routeVisibility: {}, routeQuery: '', chosenBusRoutes: [], revealedRoute: null, nearbyRadius: 1000, showNearbyOnMap: false, followLocation: true, routeStop: null, intelOpen: false, intelTab: 'ranked', statusExpanded: false, searchQuery: '', searchScope: 'roads', searchPage: 0 }
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const numberBetween = (value: unknown, min: number, max: number): value is number => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 const string = (value: unknown, limit = 200): value is string => typeof value === 'string' && value.length <= limit
@@ -61,6 +62,8 @@ export function parseSession(value: unknown): MapSession {
   if (value.openControl === 'search' || value.openControl === 'layers' || value.openControl === 'nearby') session.openControl = value.openControl
   if (value.openControl === 'rail') session.openControl = 'layers'
   if (value.transportMode === 'bus' || value.transportMode === 'rail' || value.transportMode === 'ferry' || value.transportMode === 'tram') session.transportMode = value.transportMode
+  const legacyTransport = ['bus', 'rail', 'ferry', 'tram'].find(mode => mode === value.transportMode)
+  session.layerCategory = layerCategories.find(category => category === value.layerCategory) ?? (value.layerCategory === undefined && legacyTransport ? session.transportMode : defaultSession.layerCategory)
   if (string(value.routeQuery, 200)) session.routeQuery = value.routeQuery
   if (Array.isArray(value.chosenBusRoutes)) session.chosenBusRoutes = value.chosenBusRoutes.slice(0, 200).flatMap((route: unknown): SavedBusRoute[] => {
     if (!record(route) || route.operator !== 'kmb' && route.operator !== 'citybus' && route.operator !== 'gmb' && route.operator !== 'nlb' || !string(route.route, 12) || !/^[A-Za-z0-9-]+$/.test(route.route) || !string(route.stopId, 20) || !/^[A-Za-z0-9]+$/.test(route.stopId) || !string(route.name) || !string(route.nameEn)) return []
