@@ -5,7 +5,7 @@ export type CommuterKind = 'mtr-bus' | 'tram' | 'access' | 'taxi';
 export type IntegrationKind = 'crossing' | 'works' | 'toll' | 'boundary' | 'weather-warning' | 'mtr' | 'lrt' | 'kmb' | 'citybus' | 'gmb' | 'nlb' | 'ferry' | CommuterKind;
 export type LayerKind = OriginalLayerKind | IntegrationKind;
 export type DetailRow = { label: string; labelEn: string; value: string; valueEn?: string };
-export type Arrival = { route: string; destination: string; destinationEn: string; minutes: number | null; eta?: string; firstFerry?: string; lastFerry?: string; observedAt?: string; timeType?: 'A' | 'D'; platform?: string; scheduled?: boolean; remark?: string; remarkEn?: string; tracking?: BusRouteSelection };
+export type Arrival = { route: string; destination: string; destinationEn: string; minutes: number | null; eta?: string; firstFerry?: string; lastFerry?: string; observedAt?: string; timeType?: 'A' | 'D'; platform?: string; scheduled?: boolean; remark?: string; remarkEn?: string; tracking?: BusRouteSelection; mtrLineRef?: string };
 export type MapPath = { id: string; color: string; points: [number, number][]; line?: string };
 export type Language = 'en' | 'zh';
 export type SpeedLevel = 'free' | 'moderate' | 'slow' | 'unknown';
@@ -34,7 +34,7 @@ export type Camera = {
   // metre offsets. Refresh corrections travel with this distance instead of chording across a
   // bend, and rail and ferry vehicles report it the same way.
   routePosition?: { key: string; distance: number; coordinates: [number, number][]; distances: number[] };
-  rows?: DetailRow[]; arrivals?: Arrival[]; routes?: string[]; badge?: string; estimated?: boolean; positionType?: 'station' | 'vehicle' | 'pier';
+  rows?: DetailRow[]; arrivals?: Arrival[]; routes?: string[]; badge?: string; estimated?: boolean; positionType?: 'station' | 'vehicle' | 'pier'; pedestrianType?: 'stairs';
   // Where a moving position comes from. `estimated` says whether the marker is projected forward
   // from its last fix, so a GPS boat that is being interpolated is still sourced from operator GPS.
   positionSource?: 'gps' | 'timetable';

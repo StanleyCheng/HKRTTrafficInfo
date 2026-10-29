@@ -47,6 +47,10 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .live-loading-dot { display: block; width: 8px; height: 8px; border-radius: 50%; background: #168647; animation: live-dot-blink 1s ease-in-out infinite; }
 .background-activity { position: absolute; z-index: 950; top: calc(var(--bar-offset) + 4px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; gap: 8px; max-width: calc(100% - 128px); padding: 9px 12px; border-radius: 8px; background: var(--header-surface); color: var(--header-ink); box-shadow: var(--elevation-panel); font-size: 12px; line-height: 1.5; pointer-events: none; }
 .background-activity span { min-width: 0; overflow-wrap: anywhere; }
+.route-geometry-notice { position: absolute; z-index: 949; top: calc(var(--bar-offset) + 48px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; width: max-content; max-width: calc(100% - 128px); padding: 9px 12px; border-radius: 8px; background: var(--header-surface); color: var(--header-ink); box-shadow: var(--elevation-panel); font-size: 12px; line-height: 1.5; }
+.route-geometry-notice span { min-width: 0; overflow-wrap: anywhere; }
+.route-geometry-notice button { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 4px; background: transparent; color: inherit; cursor: pointer; }
+.route-geometry-notice button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .official-tag { color: var(--header-accent); background: var(--header-control); padding: 8px 12px; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
 .language-toggle { display: flex; align-items: center; padding: 3px; background: var(--header-control); border-radius: 9px; }
 .language-toggle button { min-width: 38px; min-height: 38px; border: 0; border-radius: 6px; background: transparent; color: #34594a; font-size: 12px; font-weight: 700; }
@@ -344,9 +348,13 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .nearby-map-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
 .nearby-categories { border: 0; padding: 0 0 12px; margin: 0; min-width: 0; }
 .nearby-categories legend { padding: 0; margin-bottom: 5px; font-size: 13px; font-weight: 650; }
-.nearby-categories > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
-.nearby-categories label { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 13px; cursor: pointer; }
+.nearby-categories > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 4px; }
+.nearby-categories label { display: flex; align-items: center; gap: 4px; min-width: 0; min-height: 44px; font-size: 12px; line-height: 1.2; cursor: pointer; }
+.nearby-categories label span { min-width: 0; overflow-wrap: anywhere; }
 .nearby-categories input { width: 18px; height: 18px; flex: none; accent-color: var(--primary); }
+@media (max-width: 350px) {
+  .nearby-categories label { flex-direction: column; justify-content: center; gap: 3px; min-height: 56px; text-align: center; }
+}
 .nearby-group { border-top: 1px solid var(--border); padding: 13px 0 6px; }
 .nearby-group h3 { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 750; margin: 0 0 8px; }
 .nearby-group h3 > span { font-size: 12px; font-weight: 500; color: var(--muted); }

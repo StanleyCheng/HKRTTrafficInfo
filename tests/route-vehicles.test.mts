@@ -48,15 +48,19 @@ test('several selected routes have independent identities and expiry without inv
   assert.deepEqual(selectedVehicleCameras({ empty: { kind: 'bus', data: { ...first, vehicles: [], reverse: [] } } }, now), [])
 })
 
-test('MTR Bus route schedules produce labelled estimates on ordered stop connections and expire at the source lifetime', () => {
+test('MTR Bus schedules use matching road routes and direction identities, then expire', () => {
   const rows = mtrBusStops.filter(stop => stop.route === 'K12' && stop.direction === 'O').sort((a, b) => a.seq - b.seq)
   const last = rows.at(-1)!
-  const data: CameraData = { ...feed, cameras: [{ id: `mtr-bus-${last.id}`, sourceId: last.id, kind: 'mtr-bus', name: last.tc, nameEn: last.en, lat: last.lat, lng: last.lng, dataUpdated: new Date(now).toISOString(), arrivals: [{ route: 'K12', destination: last.tc, destinationEn: last.en, eta: new Date(now + 60000).toISOString(), minutes: 1, observedAt: new Date(now).toISOString(), scheduled: true }] }] }
+  const data: CameraData = { ...feed, cameras: [{ id: `mtr-bus-${last.id}`, sourceId: last.id, kind: 'mtr-bus', name: last.tc, nameEn: last.en, lat: last.lat, lng: last.lng, dataUpdated: new Date(now).toISOString(), arrivals: [{ route: 'K12', mtrLineRef: 'K12_EG', destination: last.tc, destinationEn: last.en, eta: new Date(now + 60000).toISOString(), minutes: 1, observedAt: new Date(now).toISOString(), scheduled: true }] }] }
   const markers = mtrBusVehicleCameras(data, 'K12', now)
   assert.ok(markers.length > 0)
   assert.ok(markers.every(camera => camera.kind === 'mtr-bus' && camera.estimated && camera.routePosition))
   assert.match(markers[0].information!.en, /not vehicle GPS/)
   assert.equal(markers[0].arrivals?.[0].scheduled, true)
+  const otherDirection = { ...data, cameras: data.cameras.map(camera => ({ ...camera, arrivals: camera.arrivals?.map(call => ({ ...call, mtrLineRef: 'K12_TPMS' })) })) }
+  assert.equal(mtrBusVehicleCameras(otherDirection, 'K12', now).length, 0, 'A different direction must not produce a position on this route')
+  const missingDirection = { ...data, cameras: data.cameras.map(camera => ({ ...camera, arrivals: camera.arrivals?.map(call => ({ ...call, mtrLineRef: undefined })) })) }
+  assert.equal(mtrBusVehicleCameras(missingDirection, 'K12', now).length, 0, 'Unknown direction is not projected')
   assert.equal(mtrBusVehicleCameras(data, 'K12', now + 180000).length, 0)
 })
 

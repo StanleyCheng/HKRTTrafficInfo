@@ -13,7 +13,7 @@ test('route catalogue retains all rail lines, individual Light Rail services, fe
   for (const [kind, count] of [['mtr', 10], ['lrt', 12], ['ferry', 16], ['tram', 6], ['mtr-bus', 26]] as const) {
     const options = routes.filter(route => route.kind === kind)
     assert.equal(options.length, count)
-    assert.ok(options.every(route => route.name && route.nameEn && route.paths.some(path => path.points.length > 1)))
+    assert.ok(options.every(route => route.name && route.nameEn && (kind === 'mtr-bus' ? route.roadCoverage && (route.roadCoverage === 'unavailable' ? route.paths.length === 0 : route.paths.some(path => path.points.length > 1)) : route.paths.some(path => path.points.length > 1))))
   }
   assert.equal(new Set(routes.map(route => route.id)).size, routes.length)
 })

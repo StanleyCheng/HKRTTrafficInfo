@@ -15,6 +15,11 @@ export const mtrBusStops = buses.stops.map(stop => ({
   tc: stop.STATION_NAME_CHI, en: stop.STATION_NAME_ENG,
 })).filter(stop => Number.isFinite(stop.lat) && Number.isFinite(stop.lng))
 
+export function mtrBusLineRef(reference: string, direction: string): string | undefined {
+  const route = buses.routes.find(item => item.REFERENCE_ID === reference)
+  return (direction === 'O' ? route?.LINE_UP : direction === 'I' ? route?.LINE_DOWN : undefined) || undefined
+}
+
 export function mtrBusDestination(lineRef: string): { tc: string; en: string } | null {
   const route = buses.routes.find(route => route.LINE_UP === lineRef || route.LINE_DOWN === lineRef)
   if (!route) return null

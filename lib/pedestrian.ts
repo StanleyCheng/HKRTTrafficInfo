@@ -31,6 +31,7 @@ export function parsePedestrian(payload: unknown): { paths: MapPath[]; cameras: 
         const [lat, lng] = points[Math.floor(points.length / 2)]
         cameras.push({ id: `access-walk-${p.OBJECTID}-${i}`, sourceId: String(p.OBJECTID), kind: 'access', lat, lng,
           name: `${name[0]}${text(p.StreetNameTC) ? ` · ${text(p.StreetNameTC)}` : ''}`, nameEn: `${name[1]}${text(p.StreetNameEN) ? ` · ${text(p.StreetNameEN)}` : ''}`, color,
+          ...([12, 20].includes(Number(p.FeatureType)) ? { pedestrianType: 'stairs' as const } : {}),
           rows: [{ label: '已公布輪椅通道', labelEn: 'Published wheelchair access', value: accessible ? '可通行' : blocked ? '設有障礙或未能通行' : '未分類', valueEn: accessible ? 'Accessible' : blocked ? 'Barrier or inaccessible' : 'Unclassified' }],
           information: { en: 'Published infrastructure, without live operating status. Teal paths indicate published wheelchair access without a recorded barrier; amber indicates a barrier or no wheelchair access; grey is unclassified. This is not a complete accessible route.', zh: '已公布設施，並非實時運作狀態。青色路段表示已公布可供輪椅通行且無記錄障礙；琥珀色表示有障礙或輪椅未能通行；灰色表示未分類。此資料並非完整無障礙路線。' },
         })

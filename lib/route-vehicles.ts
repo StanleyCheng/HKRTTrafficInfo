@@ -3,7 +3,8 @@ import type { Camera, CameraData } from './traffic.ts'
 import { layers } from './traffic.ts'
 import { inferBusVehicles } from './bus-estimate.ts'
 import { busVehicleDistanceAtTime, routeDistances, routePointAtDistance } from './bus-route-motion.ts'
-import { mtrBusStops } from './commuter-catalogue.ts'
+import { mtrBusDirections } from './mtr-bus-geometry.ts'
+import { mtrBusLineRef } from './commuter-catalogue.ts'
 import { busCompany } from './bus-company.ts'
 
 export type RouteVehicleSnapshot = { kind: 'bus'; data: BusRouteResponse } | { kind: 'mtr-bus'; data: CameraData }
@@ -81,23 +82,18 @@ export function mtrBusVehicleCameras(data: CameraData, code: string, now: number
   if (!codes) { codes = new Map(); mtrEstimates.set(data, codes) }
   let estimates = codes.get(code)
   if (!estimates) {
-    const groups = new Map<string, typeof mtrBusStops>()
-    for (const stop of mtrBusStops.filter(stop => stop.route === code)) {
-      const key = `${stop.reference}:${stop.direction}`
-      groups.set(key, [...(groups.get(key) ?? []), stop])
-    }
-    estimates = [...groups].map(([key, rows]) => {
-      rows.sort((a, b) => a.seq - b.seq)
-      const coordinates: [number, number][] = rows.map(stop => [stop.lng, stop.lat]), distances = routeDistances(coordinates)
-      const stops: BusRouteStop[] = rows.map((stop, i) => ({ id: stop.id, seq: i + 1, nameTc: stop.tc, nameEn: stop.en, lat: stop.lat, lng: stop.lng, distance: distances[i] }))
+    estimates = mtrBusDirections().filter(direction => direction.code === code && direction.road).map(({ key, stops: rows, road }) => {
+      const coordinates = road!.coordinates, distances = routeDistances(coordinates)
+      const lineRef = mtrBusLineRef(rows[0].reference, rows[0].direction)
+      const stops: BusRouteStop[] = rows.map((stop, i) => ({ id: stop.id, seq: i + 1, nameTc: stop.tc, nameEn: stop.en, lat: stop.lat, lng: stop.lng, distance: road!.stopDistances[i] }))
       const etas = stops.flatMap(stop => {
         const camera = data.cameras.find(camera => camera.sourceId === stop.id)
-        return (camera?.arrivals ?? []).filter(call => call.route === code).map((call, i) => ({ seq: stop.seq, rank: i + 1, at: Date.parse(call.eta ?? ''), observed: Date.parse(call.observedAt ?? camera?.dataUpdated ?? data.observedAt ?? ''), scheduled: Boolean(call.scheduled) }))
+        return (camera?.arrivals ?? []).filter(call => call.route === code && lineRef && call.mtrLineRef === lineRef).map((call, i) => ({ seq: stop.seq, rank: i + 1, at: Date.parse(call.eta ?? ''), observed: Date.parse(call.observedAt ?? camera?.dataUpdated ?? data.observedAt ?? ''), scheduled: Boolean(call.scheduled) }))
       })
       return { route: { key: `mtr-bus:${key}`, route: code, stops, coordinates }, distances, vehicles: inferBusVehicles(stops, etas, now, `mtr-bus:${key}`) }
     })
     codes.set(code, estimates)
   }
   return estimates.flatMap(estimate => camerasOnRoute(estimate.route, 'mtr-bus', estimate.vehicles, data.observedAt ?? null, `bus:mtr-bus:${code}`, now, estimate.distances)).map(camera => ({ ...camera, color: layers['mtr-bus'].color,
-    information: { en: 'ETA-based position estimate on approximate stop connections. This is not vehicle GPS. The icon is representative.', zh: '按到站時間及約略車站連線估算位置，並非車輛 GPS。圖示僅代表車種。' } }))
+    information: { en: 'ETA-based position estimate on a matched OpenStreetMap route. This is not vehicle GPS. The icon is representative.', zh: '按到站時間及配對的 OpenStreetMap 路線估算位置，並非車輛 GPS。圖示僅代表車種。' } }))
 }

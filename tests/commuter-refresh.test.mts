@@ -6,6 +6,7 @@ import { parseWarnsum } from '../lib/warnings.ts'
 import { commuterCatalogue, mtrBusDestination, tramPaths } from '../lib/commuter-catalogue.ts'
 import { parseMtrBusSchedule } from '../lib/mtr-bus-feed.ts'
 import { parsePedestrian } from '../lib/pedestrian.ts'
+import { nearbyCategory, nearbyCategoryKinds } from '../lib/nearby.ts'
 import { defaultSession, parseSession, savedPlace } from '../lib/session-state.ts'
 import { viewCachedGet, selectionCachedGet } from '../lib/view-cache.ts'
 import type { Camera } from '../lib/traffic.ts'
@@ -48,6 +49,7 @@ test('MTR bus schedules reject alert-shaped errors and frozen clocks while prese
   assert.equal(result.alert, false)
   assert.equal(result.boards[0]!.arrivals[0]!.minutes, 2)
   assert.equal(result.boards[0]!.arrivals[0]!.scheduled, true)
+  assert.equal(result.boards[0]!.arrivals[0]!.mtrLineRef, 'K12_TPMS')
   assert.equal(parseMtrBusSchedule({ ...payload, status: '0' }, 'K12', now).alert, true)
   assert.throws(() => parseMtrBusSchedule(payload, 'K12', now + 180_001))
   assert.throws(() => parseMtrBusSchedule({ status: '0', error: 'Down' }, 'K12', now))
@@ -58,6 +60,12 @@ test('pedestrian access and barrier flags are distinct; infrastructure does not 
   assert.deepEqual(result.paths.map(path => path.color), ['#137f87', '#b76c28', '#8a9aa5'])
   assert.ok(result.cameras.every(camera => camera.information?.en.includes('without live operating status')))
   assert.throws(() => parsePedestrian({ error: 'Down' }))
+})
+test('stairs and other access facilities are separate nearby categories sharing a feed', () => {
+  const features = [10, 12, 13, 20, 21].map((type, i) => ({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[114.16, 22.28], [114.161, 22.281]] }, properties: { OBJECTID: i, Enabled: 1, FeatureType: type, WheelchairAccess: 1, WheelchairBarrier: 2 } }))
+  const result = parsePedestrian({ type: 'FeatureCollection', features })
+  assert.deepEqual(result.cameras.map(nearbyCategory), ['access', 'stairs', 'access', 'stairs', 'access'])
+  assert.deepEqual(nearbyCategoryKinds(['access', 'stairs']), ['access'])
 })
 test('saved sessions validate old or corrupt values and strip all live data before restoration', () => {
   assert.equal(parseSession({ version: 99 }), defaultSession)
@@ -70,8 +78,11 @@ test('saved sessions validate old or corrupt values and strip all live data befo
   assert.equal(session.showNearbyOnMap, true)
   assert.equal(parseSession({ version: 1 }).showNearbyOnMap, false)
   assert.equal(parseSession({ version: 1, showNearbyOnMap: 'true' }).showNearbyOnMap, false)
-  assert.deepEqual(parseSession({ version: 1 }).nearbyCategories, ['rail', 'bus', 'tram', 'ferry', 'access', 'taxi'])
-  assert.deepEqual(parseSession({ version: 1, nearbyCategories: ['bus', 'access', 'invalid', 'bus'] }).nearbyCategories, ['bus', 'access'])
+  assert.deepEqual(parseSession({ version: 1 }).nearbyCategories, ['rail', 'bus', 'tram', 'ferry', 'access', 'stairs', 'taxi'])
+  assert.deepEqual(parseSession({ version: 1, nearbyCategories: ['bus', 'access', 'invalid', 'bus'] }).nearbyCategories, ['bus', 'access', 'stairs'])
+  assert.deepEqual(parseSession({ version: 1, nearbyCategories: ['bus'] }).nearbyCategories, ['bus'])
+  assert.deepEqual(parseSession({ version: 1, nearbyCategoryVersion: 2, nearbyCategories: ['bus', 'access'] }).nearbyCategories, ['bus', 'access'])
+  assert.deepEqual(parseSession({ version: 1, nearbyCategoryVersion: 2, nearbyCategories: ['stairs'] }).nearbyCategories, ['stairs'])
   assert.deepEqual(parseSession({ version: 1, nearbyCategories: [] }).nearbyCategories, [])
   assert.equal(session.showBusStops, false)
   assert.equal(parseSession({ version: 1 }).showFerryPiers, true)

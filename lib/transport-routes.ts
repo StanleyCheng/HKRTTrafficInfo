@@ -6,6 +6,7 @@ import { ferryPaths } from './ferry-fairway.ts'
 import { ferryPiers } from './ferry-network.ts'
 import trams from '../data/tram-network.json' with { type: 'json' }
 import { mtrBusStops } from './commuter-catalogue.ts'
+import { mtrBusDirections } from './mtr-bus-geometry.ts'
 import type { BusRouteData, BusRouteSelection } from './bus-route.ts'
 import type { FerryResponse, FerryVessel, LrtResponse, MtrResponse } from './types.ts'
 
@@ -19,7 +20,7 @@ export type BusPathRequest = { operator: BusRouteSelection['operator']; route: s
 export type SavedBusRoute = Omit<BusPathRequest, 'tracking'> & { name: string; nameEn: string }
 export type TransportRoute = {
   id: string; mode: TransportMode; kind: LayerKind; code: string; name: string; nameEn: string
-  paths: MapPath[]; stopIds: string[]; bus?: BusPathRequest
+  paths: MapPath[]; stopIds: string[]; bus?: BusPathRequest; roadCoverage?: 'complete' | 'partial' | 'unavailable'
 }
 export type RouteFocus = { points: [number, number][] } // [lat, lng], as with MapPath
 export const routeVisible = (route: Pick<TransportRoute, 'id' | 'mode'>, visibility: RouteVisibility) => visibility[route.id] ?? (route.id.startsWith('rail:lrt:') ? visibility['rail:lrt'] : undefined) ?? visibility[`all:${route.mode}`] ?? true
@@ -66,13 +67,11 @@ function networkRoutes(): TransportRoute[] {
   }
   for (const code of new Set(mtrBusStops.map(stop => stop.route))) {
     const stops = mtrBusStops.filter(stop => stop.route === code)
-    const groups = new Map<string, typeof stops>()
-    for (const stop of stops) {
-      const key = `${stop.reference}:${stop.direction}`
-      groups.set(key, [...(groups.get(key) ?? []), stop])
-    }
-    const paths: MapPath[] = [...groups].map(([key, direction]) => ({ id: `bus-mtr-${key}`, color: layers['mtr-bus'].color, points: direction.sort((a, b) => a.seq - b.seq).map(stop => [stop.lat, stop.lng]) }))
-    routes.push({ id: `bus:mtr-bus:${code}`, mode: 'bus', kind: 'mtr-bus', code, name: '港鐵巴士', nameEn: 'MTR Bus', stopIds: stops.map(stop => stop.id), paths })
+    const directions = mtrBusDirections().filter(direction => direction.code === code)
+    const matched = directions.filter(direction => direction.road)
+    const paths: MapPath[] = matched.map(direction => ({ id: `bus-mtr-${direction.key}`, color: layers['mtr-bus'].color, points: direction.road!.coordinates.map(([lng, lat]) => [lat, lng]) }))
+    const roadCoverage = matched.length === 0 ? 'unavailable' : matched.length === directions.length ? 'complete' : 'partial'
+    routes.push({ id: `bus:mtr-bus:${code}`, mode: 'bus', kind: 'mtr-bus', code, name: '港鐵巴士', nameEn: 'MTR Bus', stopIds: stops.map(stop => stop.id), paths, roadCoverage })
   }
   return network = routes
 }

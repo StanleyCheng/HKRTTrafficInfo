@@ -27,7 +27,7 @@ export function parseMtrBusSchedule(payload: unknown, route: string, now: number
       const destination = mtrBusDestination(bus.lineRef)
       const eta = at + Math.max(0, seconds) * 1000
       if (eta < now - 60_000) continue
-      arrivals.push({ route, destination: destination?.tc ?? '', destinationEn: destination?.en ?? '', eta: new Date(eta).toISOString(), observedAt: new Date(at).toISOString(), minutes: Math.max(0, Math.ceil((eta - now) / 60_000)), scheduled: bus.isScheduled === '1' })
+      arrivals.push({ route, mtrLineRef: bus.lineRef, destination: destination?.tc ?? '', destinationEn: destination?.en ?? '', eta: new Date(eta).toISOString(), observedAt: new Date(at).toISOString(), minutes: Math.max(0, Math.ceil((eta - now) / 60_000)), scheduled: bus.isScheduled === '1' })
     }
     return { id: stop.busStopId, arrivals: arrivals.sort((a, b) => Date.parse(a.eta!) - Date.parse(b.eta!)) }
   })

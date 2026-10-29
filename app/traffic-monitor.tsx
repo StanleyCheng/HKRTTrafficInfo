@@ -12,7 +12,7 @@ import ItemDetails from './item-details';
 import NearbyPanel from './nearby-panel';
 import { useSessionField } from './use-session-field';
 import { savedPlace, sessionStore } from '@/lib/session-state';
-import { nearbyCategoryKinds, nearbyPlaces } from '@/lib/nearby';
+import { nearbyCategory, nearbyCategoryKinds, nearbyPlaces } from '@/lib/nearby';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import TrafficSearch from './traffic-search';
 import TrafficStatus from './traffic-status';
@@ -24,7 +24,7 @@ import { selectedVehicleCameras, type RouteVehicleFeeds, type RouteVehicleState 
 import { useRoutePaths } from './use-route-paths';
 import { transportRoutes, filterTransportFeed, routeVisible, setAllRoutes, busPaths, transportKinds, transportModes, type TransportMode, type TransportRoute, type RouteFocus } from '@/lib/transport-routes';
 import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
-import { getBusRoute } from '@/lib/bus-route-client';
+import { getBusRoute, getBusRoutePaths } from '@/lib/bus-route-client';
 import { retainBusRoute } from '@/lib/bus-route-state';
 import { busVehicleDistanceAtTime } from '@/lib/bus-route-motion';
 import { ETA_FRESH_MS } from '@/lib/place-arrivals';
@@ -290,6 +290,7 @@ export default function TrafficMonitor() {
     return { ...legacy, ...storedRouteVisibility };
   }, [railLines, storedRouteVisibility]);
   const [routeFocus, setRouteFocus] = useState<RouteFocus | null>(null);
+  const [routeNotice, setRouteNotice] = useState<{ code: string; kind: 'partial' | 'approximate' } | null>(null);
   const finishRouteFocus = useCallback(() => setRouteFocus(null), []);
   // Restored layer choices persist across launches; unavailable layers stay off.
   const enabledSelection = useSyncExternalStore(layerSelectionStore.subscribe, layerSelectionStore.getSnapshot, layerSelectionStore.getServerSnapshot);
@@ -495,7 +496,7 @@ export default function TrafficMonitor() {
   const activeBusSelection = busSelection && enabled[busSelection.operator] && routeVisible({ id: `bus:${busSelection.operator}:${busSelection.route}`, mode: 'bus' }, routeVisibility) ? busSelection : null;
   const routeFeeds = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, displayStates[kind].data])), [displayStates]);
   const routeCatalogue = useMemo(() => transportRoutes(routeFeeds, chosenBusRoutes), [routeFeeds, chosenBusRoutes]);
-  const { loaded: routePaths, retry: retryRoutePaths } = useRoutePaths(routeCatalogue, enabled, routeVisibility, beginActivity);
+  const { loaded: routePaths, retry: retryRoutePaths, prime: primeRoutePaths } = useRoutePaths(routeCatalogue, enabled, routeVisibility, beginActivity);
   const { states: positionStates, snapshots: selectedVehicleFeeds, retry: retryPositions } = useRouteVehicles(routeCatalogue, enabled, routeVisibility, routePaths, routeFeeds, beginActivity, activeBusSelection, now);
   const viewStates = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, { ...displayStates[kind], data: filterTransportFeed(kind, displayStates[kind].data, routeCatalogue, routeVisibility) }])) as Record<LayerKind, LayerState>, [displayStates, routeCatalogue, routeVisibility]);
   const transitFeeds = useMemo(() => ({ mtr: enabled.mtr ? viewStates.mtr.data : undefined, lrt: enabled.lrt ? viewStates.lrt.data : undefined, ferry: enabled.ferry ? viewStates.ferry.data : undefined }), [enabled, viewStates]);
@@ -523,13 +524,15 @@ export default function TrafficMonitor() {
       const seen = new Set(visible.map(camera => camera.id));
       const feeds = selectedNearbyKinds.filter(kind => layerAvailable(kind) && !viewportNote(kind, viewport)).map(kind => viewStates[kind].data);
       for (const { camera } of nearbyPlaces(feeds, viewport, nearbyRadius, now)) {
+        const category = nearbyCategory(camera);
+        if (!category || !nearbyCategories.includes(category)) continue;
         if (seen.has(camera.id)) continue;
         seen.add(camera.id);
         visible.push(isFeedDataStale(camera.kind, displayStates[camera.kind].data, now) || isCameraDataStale(camera, now) ? { ...camera, color: speedLevelColors.unknown } : camera);
       }
     }
     return visible;
-  }, [states, viewStates, displayStates, enabled, showDetectors, flowFresh, viewport, now, showNearbyOnMap, nearbyRadius, selectedNearbyKinds]);
+  }, [states, viewStates, displayStates, enabled, showDetectors, flowFresh, viewport, now, showNearbyOnMap, nearbyRadius, nearbyCategories, selectedNearbyKinds]);
   const selected = useMemo(() => {
     if (selectedSnapshot?.positionType === 'vehicle') {
       if (selectedSnapshot.id.startsWith('selected-vehicle:')) return selectedVehicleCameras(selectedVehicleFeeds, now).find(camera => camera.id === selectedSnapshot.id) ?? null;
@@ -639,6 +642,7 @@ export default function TrafficMonitor() {
   }, [choose, states.flow.data?.segmentsUpdated]);
 
   const showBusRoute = useCallback((camera: Camera, tracking: BusRouteSelection) => {
+    setRouteNotice(null);
     pendingDetailsFocus.current = false;
     layerSelectionStore.write({ ...enabled, [camera.kind]: true });
     setRouteVisibility(previous => ({ ...previous, [`bus:${tracking.operator}:${tracking.route}`]: true }));
@@ -688,7 +692,39 @@ export default function TrafficMonitor() {
   function renderItemDetails(camera: Camera, options?: { status: 'loading' | 'error' | 'ready'; onRetry?: () => void; onClose?: () => void }) {
     const relatedRoute = Boolean(activeBusSelection && camera.kind === activeBusSelection.operator && (camera.sourceId === activeBusSelection.stopId || busRoute?.route?.stops.some(stop => stop.id === camera.sourceId)));
     const stale = isCameraDataStale(camera, now) || (!options && (states[camera.kind].error || isFeedDataStale(camera.kind, states[camera.kind].data, now)));
-    return <ItemDetails camera={camera} language={language} now={now} stale={stale} onActivity={beginActivity} activeBusSelection={activeBusSelection} routeStatus={relatedRoute ? routeStatus : undefined} status={options?.status} onRetry={options?.onRetry} onShowRoute={tracking => { showBusRoute(camera, tracking); options?.onClose?.(); }}/>;
+    return <ItemDetails camera={camera} language={language} now={now} stale={stale} onActivity={beginActivity} activeBusSelection={activeBusSelection} routeStatus={relatedRoute ? routeStatus : undefined} status={options?.status} onRetry={options?.onRetry} onShowRoute={async (code, tracking, signal) => {
+      if (tracking) { showBusRoute(camera, tracking); options?.onClose?.(); return 'complete'; }
+      const kind = camera.kind;
+      if (kind !== 'mtr-bus' && kind !== 'kmb' && kind !== 'citybus' && kind !== 'gmb' && kind !== 'nlb') return 'unavailable';
+      const id = `bus:${kind}:${code}`;
+      let points: [number, number][] = [];
+      let result: 'complete' | 'partial' | 'approximate' = 'complete';
+      if (kind === 'mtr-bus') {
+        const route = routeCatalogue.find(item => item.id === id);
+        points = route?.paths.flatMap(path => path.points) ?? [];
+        if (route?.roadCoverage === 'partial') result = 'partial';
+      } else {
+        const request = { operator: kind, route: code, stopId: camera.sourceId };
+        const loaded = routePaths[id];
+        const routes = loaded?.status === 'ready' ? loaded.routes : await getBusRoutePaths(request, signal);
+        if (signal.aborted || !routes.length) return 'unavailable';
+        if (routes.some(route => route.geometry === 'stops')) result = 'approximate';
+        primeRoutePaths(id, routes);
+        setChosenBusRoutes(previous => [...previous.filter(saved => saved.operator !== kind || saved.route !== code), { ...request, name: camera.name, nameEn: camera.nameEn ?? camera.name }]);
+        points = busPaths(routes).flatMap(path => path.points);
+      }
+      if (!points.length) return 'unavailable';
+      setRouteNotice(result === 'complete' ? null : { code, kind: result });
+      layerSelectionStore.write({ ...enabled, [kind]: true });
+      setRouteVisibility(previous => ({ ...previous, [id]: true }));
+      setBusSelection(null);
+      setRouteFocus({ points });
+      sessionStore.update({ followLocation: false, routeStop: null });
+      setSelectedSnapshot(null);
+      setOpenControl(null);
+      options?.onClose?.();
+      return result;
+    }}/>;
   }
 
   function rememberBusRoute(route: TransportRoute, on: boolean) {
@@ -748,6 +784,7 @@ export default function TrafficMonitor() {
         <TrafficMap3D {...mapProps} camera3D={camera3D} onCamera3D={updateCamera3D} onExit3D={switchMapMode}/>
       </Suspense> : <TrafficMap {...mapProps}/>}
       {appBusy && <div className="background-activity" role="status" aria-live="polite" aria-atomic="true"><LoaderCircle size={16} className="spin" aria-hidden="true"/><span>{language === 'en' ? 'Updating data…' : '正在更新資料…'}</span></div>}
+      {routeNotice && <div className="route-geometry-notice" role="status"><span><strong>{routeNotice.code}</strong> · {routeNotice.kind === 'approximate' ? extra.busRouteStops : language === 'en' ? 'Road geometry is unavailable for some directions or variants; only matched paths are shown.' : '部分方向或特別班次未有道路走線資料；地圖只顯示已配對的路線。'}</span><button type="button" onClick={() => setRouteNotice(null)} aria-label={copy.closeControls}><X size={16}/></button></div>}
       <IntelPanel input={intelInput} language={language} onSelect={selectSearchItem}/>
       <TrafficStatus feeds={activeKinds.map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={refreshAllLayers}/>
       <div className="map-toolbar" role="group" aria-label={copy.openControls}>

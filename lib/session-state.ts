@@ -24,6 +24,7 @@ export type MapSession = {
   chosenBusRoutes: SavedBusRoute[]
   revealedRoute: string | null
   nearbyRadius: number
+  nearbyCategoryVersion: 2
   nearbyCategories: NearbyCategory[]
   showNearbyOnMap: boolean
   followLocation: boolean
@@ -36,7 +37,7 @@ export type MapSession = {
   searchPage: number
 }
 export const sessionStorageKey = 'hk-traffic-session-v1'
-export const defaultSession: MapSession = { version: 1, view: null, mapMode: '2d', camera3D: { pitch: 55, bearing: -20 }, busSelection: null, selectedPlace: null, openControl: null, showDetectors: false, showBusStops: true, showFerryPiers: true, routeLabels: true, transportMode: 'bus', layerCategory: 'roads', routeVisibility: {}, routeQuery: '', chosenBusRoutes: [], revealedRoute: null, nearbyRadius: 1000, nearbyCategories: nearbyGroups.map(group => group.id), showNearbyOnMap: false, followLocation: true, routeStop: null, intelOpen: false, intelTab: 'ranked', statusExpanded: false, searchQuery: '', searchScope: 'roads', searchPage: 0 }
+export const defaultSession: MapSession = { version: 1, view: null, mapMode: '2d', camera3D: { pitch: 55, bearing: -20 }, busSelection: null, selectedPlace: null, openControl: null, showDetectors: false, showBusStops: true, showFerryPiers: true, routeLabels: true, transportMode: 'bus', layerCategory: 'roads', routeVisibility: {}, routeQuery: '', chosenBusRoutes: [], revealedRoute: null, nearbyRadius: 1000, nearbyCategoryVersion: 2, nearbyCategories: nearbyGroups.map(group => group.id), showNearbyOnMap: false, followLocation: true, routeStop: null, intelOpen: false, intelTab: 'ranked', statusExpanded: false, searchQuery: '', searchScope: 'roads', searchPage: 0 }
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const numberBetween = (value: unknown, min: number, max: number): value is number => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 const string = (value: unknown, limit = 200): value is string => typeof value === 'string' && value.length <= limit
@@ -85,7 +86,11 @@ export function parseSession(value: unknown): MapSession {
   }
   if (string(value.revealedRoute, 4000)) session.revealedRoute = value.revealedRoute
   if ([500, 1000, 2000].includes(Number(value.nearbyRadius))) session.nearbyRadius = Number(value.nearbyRadius)
-  if (Array.isArray(value.nearbyCategories)) session.nearbyCategories = nearbyGroups.filter(group => (value.nearbyCategories as unknown[]).includes(group.id)).map(group => group.id)
+  if (Array.isArray(value.nearbyCategories)) {
+    const categories: unknown[] = value.nearbyCategories
+    // Before the split, Access controlled both facilities and stairs.
+    session.nearbyCategories = nearbyGroups.filter(group => categories.includes(group.id) || group.id === 'stairs' && value.nearbyCategoryVersion !== 2 && categories.includes('access')).map(group => group.id)
+  }
   return session
 }
 

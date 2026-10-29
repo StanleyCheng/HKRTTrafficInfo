@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { openLayers, closeControls, toggleMapDisplay, emptyRouteVehicles } from './browser-controls.mjs';
 import { commuterCatalogue } from '../lib/commuter-catalogue.ts';
+import { parsePedestrian } from '../lib/pedestrian.ts';
 import { metresBetween } from '../lib/nearest.ts';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.argv[2] || 'http://localhost:5173';
@@ -12,6 +13,7 @@ const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgQIAI7mY6QAAAABJRU5ErkJggg==', 'base64');
 const contexts = [];
 const selection = { operator: 'kmb', company: 'KMB', route: '1', bound: 'O', serviceType: '1', stopId: 'FIX', stopSeq: 1 };
+const pedestrianFixture = parsePedestrian({type:'FeatureCollection',features:[12,20,10].map((type,index)=>({type:'Feature',properties:{Enabled:1,OBJECTID:100+index,FeatureType:type,WheelchairAccess:1,WheelchairBarrier:2},geometry:{type:'LineString',coordinates:[[114.160+index*.0001,22.282],[114.160+index*.0001,22.2821]]}}))});
 async function create(width, language, mode = '2d', route = false, nearbyOverlay = false) {
  const context = await browser.newContext({ viewport: { width, height: width > 700 ? 1000 : 844 }, hasTouch: width < 700, reducedMotion: 'reduce' }); contexts.push(context);
  const errors = [], calls = { route: 0, arrivals: 0, bus: 0 };
@@ -33,8 +35,8 @@ async function create(width, language, mode = '2d', route = false, nearbyOverlay
   const url=new URL(route.request().url()), kind=url.pathname.split('/').at(-1), at=Date.now(), observedAt=new Date(at).toISOString();
   if(kind==='route-vehicles')return route.fulfill({json:emptyRouteVehicles(url)});
   const base={ok:true,observedAt,fetchedAt:observedAt,complete:true,stale:false};
-  if(kind==='mtr-bus') {calls.bus++; const camera=commuterCatalogue('mtr-bus').find(c=>c.sourceId==='K12-U010');return route.fulfill({json:{...base,cameras:[{...camera,dataUpdated:observedAt,arrivals:[{route:'K12',destination:'八號花園',destinationEn:'Eightland Garden',eta:new Date(at+120000).toISOString(),minutes:2,scheduled:false}]}]}})}
-  if(kind==='pedestrian')return route.fulfill({json:{...base,cameras:[],paths:[{id:'fixture-walk',color:'#137f87',points:[[22.282,114.16],[22.283,114.161]]}]}});
+  if(kind==='mtr-bus') {calls.bus++; const camera=commuterCatalogue('mtr-bus').find(c=>c.sourceId==='K12-U010');return route.fulfill({json:{...base,cameras:[{...camera,routes:['K12','K51','K17'],dataUpdated:observedAt,arrivals:['K12','K51','K17'].map(route=>({route,destination:'八號花園',destinationEn:'Eightland Garden',eta:new Date(at+120000).toISOString(),minutes:2,scheduled:false}))}]}})}
+  if(kind==='pedestrian')return route.fulfill({json:{...base,...pedestrianFixture}});
   if(kind==='ferry')return route.fulfill({json:{...base,piers:[{id:'fixture',nameTc:'測試碼頭',nameEn:'Fixture pier',lng:114.16,lat:22.282,calls:[]}],vessels:[{id:'fixture',nameTc:'測試渡輪',nameEn:'Fixture ferry',route:'天星',lng:114.161,lat:22.283,fix:'gps',eta:new Date(at+600000).toISOString(),minutes:10,departAt:at-600000,arriveAt:at+600000,pathLng:[114.16,114.17],pathLat:[22.283,22.283]}]}});
   if(kind==='bus-route'&&url.searchParams.get('stopArrivals')==='1'){calls.arrivals++;return route.fulfill({json:{...base,arrivals:[{route:'1',destination:'終點',destinationEn:'Generation '+calls.arrivals,eta:new Date(at+120000).toISOString(),minutes:2,scheduled:false}]}})}
   if(kind==='bus-route'){calls.route++;return route.fulfill({json:{...base,route:{key:'fixture-route',operator:'kmb',company:'KMB',route:'1',geometry:'road',coordinates:[[114.160,22.282],[114.165,22.288]],stops:[{id:'FIX',seq:1,nameTc:'起點',nameEn:'Origin',lng:114.160,lat:22.282,distance:0},{id:'END',seq:2,nameTc:'終點',nameEn:'Terminus',lng:114.165,lat:22.288,distance:900}]},vehicles:[],reverse:[]}})}
@@ -69,6 +71,38 @@ try {
   assert.match(await page.locator('.item-popup').innerText(),/K12/);
   assert.deepEqual(f.errors,[]);
   console.log(`PASS ${width}px ${language}: four layers, Nearby, current departures, radius and panel restoration`);
+ }
+ for(const mode of ['2d','3d']) for(const [width,language] of [[1440,'en'],[390,'zh']]) {
+  const f=await create(width,language,mode),{page}=f;
+  await page.locator('.nearby-popover .close-button').click();
+  if(mode==='2d')await page.evaluate(()=>window.__map.setView([22.4444,114.1695],16,{animate:false}));
+  else await page.evaluate(()=>window.__nativeMap.jumpTo({center:[114.1695,22.4444],zoom:15}));
+  await page.locator('.nearby-toggle').click();
+  await page.locator('.nearby-bus .nearby-place').filter({hasText:'K12'}).first().click();
+  const popup=page.locator(mode==='2d'?'.item-popup':'.native-item-popup');
+  await popup.locator('.arrival-board li').filter({hasText:'K12'}).getByRole('button').waitFor();
+  await page.screenshot({path:`${evidence}/mtr-arrivals-${mode}-${width}.png`});
+  const missing=popup.locator('.arrival-board li').filter({hasText:'K17'}).getByRole('button');
+  await missing.click();
+  assert.match(await popup.getByRole('alert').innerText(),language==='en'?/geometry is unavailable/:/未能取得路線走線/);
+  await popup.locator('.arrival-board li').filter({hasText:'K51'}).getByRole('button').click();
+  assert.match(await page.locator('.route-geometry-notice').innerText(),language==='en'?/some directions or variants/:/部分方向或特別班次/);
+  await page.screenshot({path:`${evidence}/mtr-partial-${mode}-${width}.png`});
+  if(mode==='2d')await page.evaluate(()=>window.__map.setView([22.4444,114.1695],16,{animate:false}));
+  else await page.evaluate(()=>window.__nativeMap.jumpTo({center:[114.1695,22.4444],zoom:15}));
+  await page.locator('.nearby-toggle').click();
+  await page.locator('.nearby-bus .nearby-place').filter({hasText:'K12'}).first().click();
+  const button=popup.locator('.arrival-board li').filter({hasText:'K12'}).getByRole('button');
+  await button.waitFor();
+  const before=await page.evaluate(mode=>{const map=mode==='2d'?window.__map:window.__nativeMap, centre=map.getCenter();return {zoom:map.getZoom(),lat:centre.lat,lng:centre.lng}},mode);
+  await button.click();
+  await page.waitForFunction(mode=>{
+    if(mode==='2d'){let shown=false;window.__map.eachLayer(layer=>{if(layer.options.className==='ferry-route-polyline' && layer.options.color==='#a43b55' && layer.getLatLngs().length>3)shown=true});return shown}
+    return window.__nativeMap.getSource('hk-transport')?.serialize().data.features.some(feature=>feature.properties.color==='#a43b55'&&feature.geometry.coordinates.length>3)
+  },mode);
+  await page.waitForFunction(({mode,before})=>{const map=mode==='2d'?window.__map:window.__nativeMap, centre=map.getCenter();return map.getZoom()!==before.zoom||Math.abs(centre.lat-before.lat)>.00001||Math.abs(centre.lng-before.lng)>.00001},{mode,before});
+  assert.deepEqual(f.errors,[]);
+  console.log(`PASS ${width}px ${language} ${mode}: MTR Bus arrival route action displays and fits its road geometry`);
  }
  for(const mode of ['2d','3d']) for(const [width,language] of [[1440,'en'],[390,'zh']]) {
   const f=await create(width,language,mode,false,true),{page}=f;
@@ -108,7 +142,7 @@ try {
   assert.deepEqual(f.errors,[]);
   console.log(`PASS ${width}px ${language} ${mode}: nearby overlay, radius, independent layers, deduplication, closed-panel polling and persistence`);
  }
- for(const mode of ['2d','3d']) for(const [width,language] of [[1440,'en'],[390,'zh']]) {
+ for(const mode of ['2d','3d']) for(const [width,language] of [[1440,'en'],[390,'zh'],[320,'en']]) {
   const f=await create(width,language,mode,false,true),{page}=f;
   const marker=camera=>page.locator(`.camera-marker[data-marker-id="${camera.id}"]`);
   const centre={lng:114.16,lat:22.282};
@@ -117,13 +151,34 @@ try {
   const categories=page.locator('.nearby-categories');
   const taxiFilter=categories.locator('input[value="taxi"]');
   const tramFilter=categories.locator('input[value="tram"]');
+  const accessFilter=categories.locator('input[value="access"]');
+  const stairsFilter=categories.locator('input[value="stairs"]');
+  const stairs=pedestrianFixture.cameras.filter(camera=>camera.pedestrianType==='stairs');
+  const lift=pedestrianFixture.cameras.find(camera=>camera.pedestrianType!=='stairs');
   const mapToggle=page.getByRole('switch',{name:language==='en'?'Show nearby on map':'在地圖顯示附近交通'});
   await categories.waitFor();
-  assert.equal(await categories.locator('input[type="checkbox"]').count(),6);
-  assert.match(await categories.innerText(),language==='en'?/Access \/ stairs/:/樓梯/);
+  assert.equal(await categories.locator('input[type="checkbox"]').count(),7);
+  const layout=await categories.locator('label').evaluateAll(labels=>labels.map(label=>{const box=label.getBoundingClientRect();return {top:box.top,left:box.left,right:box.right}}));
+  assert.equal(new Set(layout.map(box=>Math.round(box.top))).size,2,'Exactly two category rows');
+  assert.ok(layout.every(box=>box.left>=0&&box.right<=width),'Categories fit within the viewport');
+  assert.match(await categories.innerText(),language==='en'?/Stairs/:/樓梯/);
   await mapToggle.click();
   await marker(taxi).waitFor({state:'attached'});
   await marker(tram).waitFor({state:'attached'});
+  assert.equal(stairs.length,2);
+  for(const camera of [...stairs,lift])await marker(camera).waitFor({state:'attached'});
+  await stairsFilter.uncheck();
+  await page.locator('.nearby-stairs').waitFor({state:'detached'});
+  for(const camera of stairs)await marker(camera).waitFor({state:'detached'});
+  assert.equal(await marker(lift).count(),1,'Access lift remains visible when stairs are hidden');
+  await accessFilter.uncheck();
+  await marker(lift).waitFor({state:'detached'});
+  await stairsFilter.check();
+  for(const camera of stairs)await marker(camera).waitFor({state:'attached'});
+  assert.equal(await marker(lift).count(),0,'Stairs are visible without access facilities');
+  await stairsFilter.uncheck();
+  await accessFilter.check();
+  await marker(lift).waitFor({state:'attached'});
   await taxiFilter.uncheck();
   await page.locator('.nearby-taxi').waitFor({state:'detached'});
   await marker(taxi).waitFor({state:'detached'});
@@ -135,6 +190,10 @@ try {
   await categories.waitFor();
   assert.equal(await taxiFilter.isChecked(),false);
   assert.equal(await tramFilter.isChecked(),false);
+  assert.equal(await stairsFilter.isChecked(),false);
+  assert.equal(await accessFilter.isChecked(),true);
+  for(const camera of stairs)assert.equal(await marker(camera).count(),0);
+  await marker(lift).waitFor({state:'attached'});
   assert.equal(await page.locator('.nearby-taxi').count(),0);
   assert.equal(await marker(taxi).count(),0);
   await marker(tram).waitFor({state:'attached'});

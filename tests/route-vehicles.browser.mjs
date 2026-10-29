@@ -40,7 +40,7 @@ try {
         calls.push(code);
         if (url.searchParams.get('operator') === 'mtr-bus') {
           const last = mtrBusStops.filter(stop => stop.route === code && stop.direction === 'O').sort((a, b) => a.seq - b.seq).at(-1);
-          const cameras = commuterCatalogue('mtr-bus').filter(camera => camera.routes.includes(code)).map(camera => ({ ...camera, dataUpdated: observedAt, arrivals: camera.sourceId === last.id ? [{ route: code, destination: last.tc, destinationEn: last.en, minutes: 1, eta: new Date(at + 60000).toISOString(), observedAt, scheduled: true }] : [] }));
+          const cameras = commuterCatalogue('mtr-bus').filter(camera => camera.routes.includes(code)).map(camera => ({ ...camera, dataUpdated: observedAt, arrivals: camera.sourceId === last.id ? [{ route: code, mtrLineRef: 'K12_EG', destination: last.tc, destinationEn: last.en, minutes: 1, eta: new Date(at + 60000).toISOString(), observedAt, scheduled: true }] : [] }));
           return route.fulfill({ json: { ...base, snapshot: { kind: 'mtr-bus', data: { cameras, count: cameras.length, expectedCount: cameras.length, fetchedAt: observedAt, observedAt, stale: false, sourceLastModified: null, source: 'fixture', complete: true } } } });
         }
         if (!gates.has(code)) { let release; const pending = new Promise(resolve => { release = resolve; }); gates.set(code, { pending, release }); }

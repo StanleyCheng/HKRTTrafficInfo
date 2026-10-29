@@ -33,5 +33,5 @@ export function useRoutePaths(routes: TransportRoute[], enabled: Record<LayerKin
     // Loaded results are a cache, not an input that restarts outstanding requests.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [work, retry, onActivity])
-  return { loaded, retry: () => setRetry(value => value + 1) }
+  return { loaded, retry: () => setRetry(value => value + 1), prime: (id: string, routes: BusRouteData[]) => setLoaded(previous => ({ ...previous, [id]: { status: 'ready', paths: busPaths(routes), routes, approximate: routes.some(direction => direction.geometry === 'stops') } })) }
 }
