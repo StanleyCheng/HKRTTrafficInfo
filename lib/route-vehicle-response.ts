@@ -9,7 +9,7 @@ const text = (value: unknown): value is string => typeof value === 'string'
 const point = (value: unknown): value is [number, number] => Array.isArray(value) && value.length === 2 && value.every(finite)
 const stop = (value: unknown): value is BusRouteStop => record(value) && text(value.id) && Number.isInteger(value.seq) && finite(value.lat) && finite(value.lng) && finite(value.distance) && text(value.nameTc) && text(value.nameEn)
 export function isBusRouteData(value: unknown): value is BusRouteData {
-  if (!record(value) || !['kmb', 'citybus', 'gmb', 'nlb'].includes(String(value.operator)) || !text(value.key) || !text(value.route) || value.geometry !== 'road' && value.geometry !== 'stops' || !Array.isArray(value.coordinates) || value.coordinates.length < 2 || !value.coordinates.every(point) || !Array.isArray(value.stops) || !value.stops.every(stop)) return false
+  if (!record(value) || !['kmb', 'citybus', 'gmb', 'nlb'].includes(String(value.operator)) || !text(value.key) || !text(value.route) || value.geometry !== 'road' && value.geometry !== 'stops' || value.geometrySource !== undefined && (value.geometrySource !== 'osm' || value.operator !== 'citybus' || value.geometry !== 'road') || !Array.isArray(value.coordinates) || value.coordinates.length < 2 || !value.coordinates.every(point) || !Array.isArray(value.stops) || !value.stops.every(stop)) return false
   if (value.company !== undefined && !text(value.company)) return false
   if (value.selection !== undefined) {
     if (!record(value.selection)) return false

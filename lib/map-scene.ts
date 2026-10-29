@@ -2,6 +2,7 @@ import type { FeatureCollection, LineString } from 'geojson';
 import type { FillExtrusionLayerSpecification } from 'maplibre-gl';
 import { speedLevelColors, layers, type FlowSegment, type MapPath } from './traffic.ts';
 import type { BusRouteResponse } from './bus-route.ts';
+import { hasBusRoadDisplay } from './bus-route-display.ts';
 
 // Leaflet's 256px world and MapLibre's 512px world differ by one zoom level.
 // Keep the shared feed viewport in Leaflet units, including bus-feed zoom gates.
@@ -34,7 +35,7 @@ export function transportLines(paths: MapPath[] = [], busRoute?: BusRouteRespons
     geometry: { type: 'LineString', coordinates: path.points.map(([lat, lng]) => [lng, lat]) },
   }));
   const directions = busRoute?.route ? [busRoute.route, ...(busRoute.reverse ?? []).map(direction => direction.route)] : [];
-  for (const route of directions) if (validLine(route.coordinates)) features.push({
+  for (const route of directions) if (hasBusRoadDisplay(route) && validLine(route.coordinates)) features.push({
     type: 'Feature', properties: { color: layers[route.operator].color, width: 5 },
     geometry: { type: 'LineString', coordinates: route.coordinates },
   });

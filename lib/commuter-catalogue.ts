@@ -3,6 +3,7 @@ import trams from '../data/tram-network.json' with { type: 'json' }
 import access from '../data/accessible-stations.json' with { type: 'json' }
 import taxis from '../data/taxi-stands.json' with { type: 'json' }
 import source from '../data/commuter-sources.json' with { type: 'json' }
+import { tramTrackPaths } from './tram-track-geometry.ts'
 import type { Camera, CommuterKind, MapPath } from './traffic.ts'
 
 export const commuterRetrievedAt = source.retrievedAt
@@ -41,7 +42,7 @@ export function commuterCatalogue(kind: CommuterKind): Camera[] {
     id: `tram-${stop.id}`, sourceId: stop.id, kind, name: stop.tc, nameEn: stop.en, lng: stop.lng, lat: stop.lat,
     routes: stop.routes,
     rows: trams.routes.filter(route => stop.routes.includes(route.routeId) && route.id.endsWith('-1')).map(route => ({ label: route.tc, labelEn: route.en, value: `HK$${route.fare.toFixed(1)}` })),
-    information: { en: 'Published stops and adult fares. Lines connect ordered stops and are approximate. Live departures are not provided by this layer.', zh: '已公布車站及成人車費。路線按車站次序連接，屬約略連線。此圖層不提供實時開出時間。' },
+    information: { en: 'Published stops and adult fares. Track routes use OpenStreetMap data matched to the published stop order; they may not reflect diversions. Live departures are not provided by this layer.', zh: '已公布車站及成人車費。軌道路線採用與公布車站次序配對的 OpenStreetMap 資料，未必反映改道情況。此圖層不提供實時開出時間。' },
   }))
   if (kind === 'access') return access.map(station => ({
     id: `access-${station.id}`, sourceId: station.id, kind, name: station.tc, nameEn: station.en, lng: station.lng, lat: station.lat,
@@ -57,5 +58,5 @@ export function commuterCatalogue(kind: CommuterKind): Camera[] {
 }
 
 export function tramPaths(): MapPath[] {
-  return trams.routes.map(route => ({ id: `tram-${route.id}`, color: '#278273', points: route.points.map(point => [point[0], point[1]]) }))
+  return tramTrackPaths()
 }

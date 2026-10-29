@@ -11,6 +11,7 @@ import { nlbRouteIds, nlbStop } from './nlb-network.ts'
 import { waitForRequest } from './request-wait.ts'
 import { routeDistances } from './bus-route-motion.ts'
 import { busRoadGeometry } from './bus-route-geometry.ts'
+import { citybusOsmGeometry } from './citybus-osm-geometry.ts'
 import { inferBusVehicles } from './bus-estimate.ts'
 export { inferBusVehicles } from './bus-estimate.ts'
 import { busCompany } from './bus-company.ts'
@@ -29,7 +30,7 @@ export type BusRouteSelection = {
   stopSeq?: number
 }
 export type BusRouteStop = { id: string; seq: number; nameTc: string; nameEn: string; lng: number; lat: number; distance: number }
-export type BusRouteData = { key: string; operator: BusRouteSelection['operator']; company?: string; route: string; stops: BusRouteStop[]; coordinates: [number, number][]; geometry: 'road' | 'stops'; selection?: BusRouteSelection }
+export type BusRouteData = { key: string; operator: BusRouteSelection['operator']; company?: string; route: string; stops: BusRouteStop[]; coordinates: [number, number][]; geometry: 'road' | 'stops'; geometrySource?: 'osm'; selection?: BusRouteSelection }
 export type BusVehicle = { id: string; fromDistance: number; toDistance: number; departureAt: number; arrivalAt: number; validUntil: number; scheduled?: boolean; timeline?: { distance: number; at: number }[] }
 export type BusRouteDirection = { route: BusRouteData; vehicles: BusVehicle[]; stale?: boolean }
 export type BusRouteResponse = {
@@ -210,17 +211,23 @@ async function routeEtas(selection: BusRouteSelection, stops: BusRouteStop[], si
 
 type DirectionLoad = { route: BusRouteData; vehicles: BusVehicle[]; observed: number; failed: boolean }
 
+async function routeRoadGeometry(selection: BusRouteSelection, stops: BusRouteStop[], signal: AbortSignal) {
+  const official = await waitForRequest(busRoadGeometry(selection, stops), signal).catch(() => null)
+  if (official || selection.operator !== 'citybus' || signal.aborted) return official
+  return waitForRequest(citybusOsmGeometry(selection, stops), signal).catch(() => null)
+}
+
 async function loadDirection(selection: BusRouteSelection, now: number, requireSelectedStop: boolean, signal: AbortSignal): Promise<DirectionLoad> {
   const stops = await routeStops(selection, requireSelectedStop, signal)
   const key = [selection.operator, selection.route, selection.bound, selection.serviceType, selection.routeId, selection.routeSeq].join(':')
-  const [road, etaResult] = await Promise.all([waitForRequest(busRoadGeometry(selection, stops), signal).catch(() => null), routeEtas(selection, stops, signal).catch(() => ({ etas: [] as BusEta[], failed: true }))])
+  const [road, etaResult] = await Promise.all([routeRoadGeometry(selection, stops, signal), routeEtas(selection, stops, signal).catch(() => ({ etas: [] as BusEta[], failed: true }))])
   const coordinates: [number, number][] = road?.coordinates ?? stops.map((stop) => [stop.lng, stop.lat])
   const distances = road?.stopDistances ?? routeDistances(coordinates)
   stops.forEach((stop, index) => { stop.distance = distances[index] })
-  const route: BusRouteData = { selection, key, operator: selection.operator, company: selection.company, route: selection.route, stops, coordinates, geometry: road ? 'road' : 'stops' }
+  const route: BusRouteData = { selection, key, operator: selection.operator, company: selection.company, route: selection.route, stops, coordinates, geometry: road ? 'road' : 'stops', ...(road && 'source' in road && road.source === 'osm' ? { geometrySource: 'osm' as const } : {}) }
   return {
     route,
-    vehicles: inferBusVehicles(stops, etaResult.etas, now, key),
+    vehicles: selection.operator === 'citybus' && !road ? [] : inferBusVehicles(stops, etaResult.etas, now, key),
     observed: Math.max(0, ...etaResult.etas.map((eta) => Number.isFinite(eta.observed) ? eta.observed : 0)),
     failed: etaResult.failed,
   }
@@ -273,11 +280,11 @@ export async function loadBusRoutePaths(request: BusPathRequest): Promise<BusRou
   const results = await Promise.all(directions.map(async direction => {
     try {
       const stops = await routeStops(direction, false, signal)
-      const road = await waitForRequest(busRoadGeometry(direction, stops), signal).catch(() => null)
+      const road = await routeRoadGeometry(direction, stops, signal)
       const coordinates: [number, number][] = road?.coordinates ?? stops.map(stop => [stop.lng, stop.lat])
       const distances = road?.stopDistances ?? routeDistances(coordinates)
       stops.forEach((stop, index) => { stop.distance = distances[index] })
-      return { selection: direction, company: direction.company, key: [operator, route, direction.bound, direction.serviceType, direction.routeId, direction.routeSeq].join(':'), operator, route, stops, coordinates, geometry: road ? 'road' : 'stops' } satisfies BusRouteData
+      return { selection: direction, company: direction.company, key: [operator, route, direction.bound, direction.serviceType, direction.routeId, direction.routeSeq].join(':'), operator, route, stops, coordinates, geometry: road ? 'road' : 'stops', ...(road && 'source' in road && road.source === 'osm' ? { geometrySource: 'osm' as const } : {}) } satisfies BusRouteData
     } catch { return null }
   }))
   const paths = results.filter((result): result is NonNullable<typeof result> => result !== null)

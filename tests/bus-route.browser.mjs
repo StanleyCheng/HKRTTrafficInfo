@@ -40,16 +40,17 @@ function response(selection, mode = 'live', correction = 0, reverse = false) {
       timeline: [{ distance: 0, at: now - 1000 }, { distance: 50, at: now + 1000 }, { distance: 300, at: now + 11000 }] });
   }
   const opposite = reverse && moving ? [{ route: { key: `${key}:reverse`, operator: selection.operator, company: selection.company, route: selection.route, geometry: 'road', coordinates: [...coordinates].reverse(), stops: [...routeStops].reverse().map((stop, index) => ({ ...stop, seq: index + 1 })) }, vehicles: [{ id: `${key}:r1`, fromDistance: 0, toDistance: distance[3], departureAt: now - 30000, arrivalAt: now + 150000, validUntil: now + 180000 }] }] : [];
-  return { ok: true, observedAt: new Date(now).toISOString(), stale: mode === 'stale', route: { key, operator: selection.operator, company: selection.company, route: selection.route, geometry: mode === 'approximate' ? 'stops' : 'road', coordinates, stops: routeStops }, vehicles, reverse: opposite };
+  return { ok: true, observedAt: new Date(now).toISOString(), stale: mode === 'stale', route: { key, operator: selection.operator, company: selection.company, route: selection.route, geometry: mode === 'approximate' ? 'stops' : 'road', ...(mode === 'community' ? { geometrySource: 'osm' } : {}), coordinates, stops: routeStops }, vehicles, reverse: opposite };
 }
-async function create({ mobile = false, reducedMotion = 'no-preference' } = {}) {
+async function create({ mobile = false, reducedMotion = 'no-preference', initialMode = 'live' } = {}) {
   const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, reducedMotion, hasTouch: mobile });
   contexts.push(context);
-  const requests = [], arrivalRequests = [], controls = { mode: 'live', correction: 0, delay: 0, arrivalDelay: 0, arrivalMode: 'live', reverse: false };
+  const requests = [], arrivalRequests = [], controls = { mode: initialMode, correction: 0, delay: 0, arrivalDelay: 0, arrivalMode: 'live', reverse: false };
   await context.route('**/api/**', async route => {
     const url = new URL(route.request().url());
     const kind = url.pathname.split('/')[2];
     if (kind === 'route-vehicles') return route.fulfill({ json: emptyRouteVehicles(url) });
+    if (kind === 'bus-route-paths' && ['approximate', 'community'].includes(controls.mode) && url.searchParams.get('operator') === 'citybus') return route.fulfill({ json: { ok: true, routes: [response(variants[2], controls.mode).route] } });
     if (kind === 'bus-route') {
       const selection = Object.fromEntries(url.searchParams);
       if (selection.stopArrivals === '1') {
@@ -334,11 +335,40 @@ try {
     await f.context.close();
   });
   await test('Missing position and unavailable road geometry remain explicit without invented movement', async () => {
-    const f = await create(); f.controls.mode = 'approximate'; await select(f, variants[2]);
-    assert.equal(await f.page.locator('.bus-route-marker').count(), 0);
+    for (const mode of ['2d', '3d']) {
+      const f = await create(); f.controls.mode = 'approximate';
+      if (mode === '3d') { await f.page.getByTestId('map-mode-toggle').click(); await f.page.locator('.maplibregl-canvas').waitFor(); }
+      await f.page.locator(mode === '2d' ? '.camera-marker[title$="citybus fixture stop"] .marker-displacement' : '.camera-marker[aria-label$="citybus fixture stop"] .marker-displacement').click();
+      await f.page.locator(`${mode === '2d' ? '.item-popup' : '.native-item-popup'} .bus-route-button[aria-label^="Show route 11 ·"]`).first().click();
+      await f.page.locator(mode === '2d' ? '.bus-route-stop' : '.native-marker[data-marker-id^="route-stop:"]').first().waitFor();
+      assert.equal(await f.page.locator('.bus-route-marker, .vehicle-marker[data-marker-id^="bus-vehicle:"]').count(), 0);
+      assert.equal(await f.page.locator('.bus-route-polyline').count(), 0, 'Stop-only Citybus data never draws a road line');
+      await openLayers(f.page, 'bus');
+      await f.page.getByText('Road geometry is unavailable for some directions; only matched paths are shown.', { exact: true }).waitFor();
+      await f.page.getByText('No current position estimate available.', { exact: true }).waitFor();
+      await f.context.close();
+    }
+  });
+  await test('Citybus layer picker reports missing road geometry without drawing a line', async () => {
+    for (const mode of ['2d', '3d']) {
+      const f = await create({ initialMode: 'approximate' });
+      if (mode === '3d') { await f.page.getByTestId('map-mode-toggle').click(); await f.page.locator('.maplibregl-canvas').waitFor(); }
+      await openLayers(f.page, 'bus');
+      const row = f.page.locator('.transport-route-list li').filter({ has: f.page.locator('input[aria-label^="Show 11 "]') }).first();
+      await row.getByText('Route geometry unavailable', { exact: true }).waitFor();
+      assert.equal(await row.getByRole('button', { name: 'Zoom to route 11' }).isDisabled(), true);
+      assert.equal(await f.page.locator('.bus-route-polyline, .bus-route-marker, .vehicle-marker[data-marker-id^="selected-vehicle:bus:citybus:11:"]').count(), 0);
+      await f.context.close();
+    }
+  });
+  await test('Citybus community geometry is labelled in the layer picker and focused route', async () => {
+    const f = await create({ initialMode: 'community' });
     await openLayers(f.page, 'bus');
-    await f.page.getByText('Route connects published stops; road geometry is unavailable.', { exact: true }).waitFor();
-    await f.page.getByText('No current position estimate available.', { exact: true }).waitFor();
+    const row = f.page.locator('.transport-route-list li').filter({ has: f.page.locator('input[aria-label^="Show 11 "]') }).first();
+    await row.getByText('Community-mapped OpenStreetMap geometry', { exact: true }).waitFor();
+    await select(f, variants[2]);
+    await openLayers(f.page, 'bus');
+    await f.page.getByText('Some directions use community-mapped OpenStreetMap geometry.', { exact: true }).waitFor();
     await f.context.close();
   });
   await test('Reduced motion, hidden documents, selection cleanup and layer disable', async () => {

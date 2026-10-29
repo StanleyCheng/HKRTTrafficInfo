@@ -17,6 +17,7 @@ import { STOP_LABEL_WIDTH, declutterLabels, stopLabelHeight, type StopLabelItem 
 import { markerOffsets } from '@/lib/marker-layout';
 import { vehicleIcon, vehicleIconHeadingOffset } from '@/lib/vehicle-icons';
 import { busVehicleDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '@/lib/bus-route-motion';
+import { hasBusRoadDisplay } from '@/lib/bus-route-display';
 import { getBusStopArrivals } from '@/lib/bus-route-client';
 import { createLocationMotion, locationTransitionDuration, validLocationFix, type LocationPoint } from '@/lib/location-motion';
 import { vehicleCorrection, vehicleFrame, type VehicleCorrection } from '@/lib/vehicle-motion';
@@ -289,7 +290,7 @@ export default function TrafficMap3D(props: Props) {
   useEffect(() => {
     const m = map.current, gl = library.current;
     if (!ready || !m || !gl) return;
-    const directions = busRoute?.route ? [{ route: busRoute.route, vehicles: busRoute.vehicles }, ...(busRoute.reverse ?? [])] : [];
+    const directions = busRoute?.route ? [{ route: busRoute.route, vehicles: busRoute.vehicles }, ...(busRoute.reverse ?? [])].filter(direction => hasBusRoadDisplay(direction.route)) : [];
     const geometry = new Map(directions.map(direction => [direction.route.key, routeDistances(direction.route.coordinates)]));
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
     let frame: number | undefined, timer: ReturnType<typeof setInterval> | undefined, last = 0;

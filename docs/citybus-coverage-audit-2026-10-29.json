@@ -1,0 +1,6054 @@
+{
+  "routeCount": 409,
+  "tdGeometryCount": 852,
+  "missingStopLookups": 8,
+  "counts": {
+    "unmatched": 198,
+    "official": 447,
+    "empty": 126,
+    "osm": 47
+  },
+  "results": [
+    {
+      "key": "1:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "1:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "10:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "10:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "101:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 6
+    },
+    {
+      "key": "101:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 6
+    },
+    {
+      "key": "101R:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "101R:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "101X:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "101X:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "102:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "102:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "102P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "102P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "102R:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "102R:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "103:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "103:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "104:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "104:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "104R:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "104R:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "106:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "106:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "106A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "106A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "106P:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "106P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "107:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "107:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "107P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "107P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "109:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "109:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "11:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 5
+    },
+    {
+      "key": "11:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "110:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "110:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "111:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "111:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "111P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "111P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "112:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "112:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "113:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "113:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "115:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "115:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "115P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "115P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "116:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "116:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "117:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "117:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "118:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "118:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 5
+    },
+    {
+      "key": "118P:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "118P:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "118R:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 0
+    },
+    {
+      "key": "118R:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "12:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "12:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "12A:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "12A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "12M:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "12M:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "13:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "13:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "14:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 9
+    },
+    {
+      "key": "14:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 9
+    },
+    {
+      "key": "15:outbound",
+      "old": true,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 10
+    },
+    {
+      "key": "15:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 10
+    },
+    {
+      "key": "15B:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "15B:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "15C:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "15C:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "170:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "170:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "171:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 6
+    },
+    {
+      "key": "171:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 6
+    },
+    {
+      "key": "171A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "171A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "171P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "171P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "18:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "18:inbound",
+      "old": true,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 3
+    },
+    {
+      "key": "182:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "182:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "182X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "182X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "18P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "18P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "18X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "18X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "19P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "19P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "1M:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "1M:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "1P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "1P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "2:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "2:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "20:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "20:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "20A:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 4
+    },
+    {
+      "key": "20A:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 4
+    },
+    {
+      "key": "20R:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "20R:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "20X:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 0
+    },
+    {
+      "key": "20X:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 0
+    },
+    {
+      "key": "22:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "22:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "22D:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "22D:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "22M:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 1
+    },
+    {
+      "key": "22M:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "22R:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "22R:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "22S:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 0
+    },
+    {
+      "key": "22S:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 0
+    },
+    {
+      "key": "22X:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "22X:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "23:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "23:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "23B:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "23B:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "23X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "23X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "25:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "25:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "25A:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "25A:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "26:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "26:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "260:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "260:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "27:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "27:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "2A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "2A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "2X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "2X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "302:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "302:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "302A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "302A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "307:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "307:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "307A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "307A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "307D:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "307D:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "307P:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "307P:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "30X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "30X:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "33X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "33X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "347:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 0
+    },
+    {
+      "key": "347:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 0
+    },
+    {
+      "key": "37A:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "37A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "37B:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "37B:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "37X:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "37X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "38:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 5
+    },
+    {
+      "key": "38:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "382:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "382:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "388:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 0
+    },
+    {
+      "key": "388:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "389:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 0
+    },
+    {
+      "key": "389:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "38S:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "38S:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "3A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "3A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "4:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 7
+    },
+    {
+      "key": "4:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 7
+    },
+    {
+      "key": "40:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "40:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "40M:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "40M:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "40P:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "40P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "41A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "41A:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "42:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "42:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "42C:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "42C:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "43R:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "43R:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "47P:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 1
+    },
+    {
+      "key": "47P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "48:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 5
+    },
+    {
+      "key": "48:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "49X:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "49X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "4X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "4X:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "50:outbound",
+      "old": true,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "50:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "50M:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "50M:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "50R:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "50R:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "511:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "511:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "55:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "55:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "56:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "56:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "56A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "56A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "580:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "580:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "581:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "581:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "582:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "582:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 1
+    },
+    {
+      "key": "586:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "586:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "587:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "587:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "589:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "589:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "592:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "592:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "595:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "595:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "5B:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 7
+    },
+    {
+      "key": "5B:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 7
+    },
+    {
+      "key": "5X:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "5X:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "6:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "6:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "601:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "601:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "601P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "601P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "606:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "606:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "606A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "606A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "606X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "606X:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "608:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "608:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "608P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "608P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "619:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "619:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "619P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "619P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "619X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "619X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "61R:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "61R:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "621:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "621:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "629:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "629:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "629M:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "629M:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "63:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "63:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "641:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "641:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "65:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "65:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "671:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "671:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "671X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "671X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "678:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "678:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "679:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "679:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "680:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "680:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "680B:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "680B:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "680P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "680P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "680X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "680X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "681:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "681:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "681P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "681P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "682:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "682:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "682A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "682A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "682B:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "682B:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "682P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "682P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "690:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "690:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "690P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "690P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "690S:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "690S:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "694:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "694:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "694S:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "694S:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "6A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "6A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "6X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "6X:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "7:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "7:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "70:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "70:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "701:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "701:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "701A:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 1
+    },
+    {
+      "key": "701A:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 1
+    },
+    {
+      "key": "701S:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "701S:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "702:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "702:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "702A:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "702A:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "702B:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "702B:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "702S:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "702S:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "70P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "70P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "71:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "71:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "71P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "71P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "72:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "72:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "720:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "720:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "720A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "720A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "720P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "720P:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "720X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "720X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "722:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "722:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "72A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "72A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "73:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 7
+    },
+    {
+      "key": "73:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 7
+    },
+    {
+      "key": "73P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "73P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "73S:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "73S:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "75:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "75:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "76:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "76:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "77:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "77:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "770:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "770:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "77X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "77X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "78:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "78:inbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "780:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "780:inbound",
+      "old": true,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "780P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "780P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "788:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 8
+    },
+    {
+      "key": "788:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 8
+    },
+    {
+      "key": "789:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 5
+    },
+    {
+      "key": "789:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 5
+    },
+    {
+      "key": "78C:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "78C:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "78P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "78P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "78X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "78X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "79:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "79:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "790:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "790:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "792M:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "792M:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "793:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "793:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "795:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "795:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "795X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "795X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "796P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "796P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "796R:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "796R:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "796S:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "796S:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "796X:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "796X:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "797:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "797:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "798:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "798:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "798A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "798A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "798P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "798P:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "798X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "798X:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "79P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "79P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "79X:outbound",
+      "old": true,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "79X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "8:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "8:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "81:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "81:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "81A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "81A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "82:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "82:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "82S:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "82S:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "82X:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "82X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "85:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "85:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "85A:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "85A:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "85P:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "85P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "88R:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "88R:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "88X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "88X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "8H:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "8H:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "8P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "8P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "8X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "8X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "9:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 8
+    },
+    {
+      "key": "9:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 8
+    },
+    {
+      "key": "90:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "90:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "904:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "904:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "905:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "905:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "905A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "905A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "905P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "905P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "907C:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "907C:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "90B:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "90B:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "90C:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "90C:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "91:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 5
+    },
+    {
+      "key": "91:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 5
+    },
+    {
+      "key": "914:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "914:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "914P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "914P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "914X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "914X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "91A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "91A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "93:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "93:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "930:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "930:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "930A:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "930A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "930B:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "930B:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "930X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "930X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "933:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "933:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "93A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "93A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "93C:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "93C:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "948:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "948:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "948A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "948A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "948B:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "948B:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "948E:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "948E:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "948P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "948P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "948X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "948X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "94A:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "94A:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "950:outbound",
+      "old": true,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "950:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "952:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "952:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "952C:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "952C:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "952P:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "952P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "955:outbound",
+      "old": true,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "955:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "95C:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 6
+    },
+    {
+      "key": "95C:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 6
+    },
+    {
+      "key": "95P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "95P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "962:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "962:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "962A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "962A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "962C:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "962C:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "962G:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "962G:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "962P:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "962P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "962X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "962X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "967:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "967:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "967X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "967X:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "969:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "969:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "969B:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "969B:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "969C:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "969C:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "969N:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "969N:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "969P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "969P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "969X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "969X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "97:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "97:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "970:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "970:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "970X:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "970X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 5
+    },
+    {
+      "key": "971:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "971:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "971R:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "971R:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "973:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 7
+    },
+    {
+      "key": "973:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 7
+    },
+    {
+      "key": "976S:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "976S:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "979:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "979:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "98:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "98:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "980A:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "980A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "980X:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "980X:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "981P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "981P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "982C:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "982C:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "982X:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "982X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "985:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "985:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "985A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "985A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "985B:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "985B:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "986:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "986:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "987:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "987:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "989:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "989:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "99:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "99:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "99X:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "99X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "9C:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "9C:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "A10:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "A10:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "A11:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "A11:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "A12:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "A12:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 5
+    },
+    {
+      "key": "A17:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "A17:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "A20:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "A20:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "A21:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "A21:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "A22:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "A22:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "A23:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "A23:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "A25:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "A25:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "A25S:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "A25S:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "A26:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 6
+    },
+    {
+      "key": "A26:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 6
+    },
+    {
+      "key": "A28:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "A28:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "A28X:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "A28X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "A29:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "A29:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 4
+    },
+    {
+      "key": "B13:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "B13:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "B14:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "B14:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "B15:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "B15:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "B3:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "B3:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "B3A:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "B3A:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 3
+    },
+    {
+      "key": "B3M:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "B3M:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "B3X:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "B3X:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "B5:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 4
+    },
+    {
+      "key": "B5:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 4
+    },
+    {
+      "key": "B7:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "B7:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "B7X:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "B7X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "B8:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "B8:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E11:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E11:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E11A:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "E11A:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "E11B:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "E11B:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "E11S:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "E11S:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "E18:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "E18:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "E21:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E21:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E21A:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "E21A:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "E21B:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E21B:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E21C:outbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "E21C:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "E21D:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "E21D:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "E21X:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "E21X:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "E22:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E22:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E22A:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E22A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E22C:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E22C:inbound",
+      "old": false,
+      "official": false,
+      "osm": true,
+      "state": "osm",
+      "candidateCount": 2
+    },
+    {
+      "key": "E22P:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E22P:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E22S:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E22S:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "E22X:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E22X:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E23:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E23:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E23A:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "E23A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "E28:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "E28:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "H0:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "H0:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "H1:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "H1:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "H2:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "H2:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "H20:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "H20:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "H2K:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "H2K:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "H3:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "H3:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "H4:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "H4:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "N11:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N11:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N118:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "N118:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N121:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N121:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N122:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N122:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N170:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N170:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N171:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N171:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N182:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N182:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N20:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "N20:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "N21:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N21:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N21A:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "N21A:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N23:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N23:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N26:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N26:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N29:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N29:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N307:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N307:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N50:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "N50:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "N619:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N619:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N680:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N680:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N691:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N691:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N72:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N72:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N796:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "N796:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "N8:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "N8:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 3
+    },
+    {
+      "key": "N8P:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "N8P:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "N8X:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N8X:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N90:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N90:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N930:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N930:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N952:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N952:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N962:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N962:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N969:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "N969:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "NA10:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "NA10:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "NA11:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "NA11:inbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "NA12:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "NA12:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "NA20:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "NA20:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "NA21:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "NA21:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 1
+    },
+    {
+      "key": "NA29:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "NA29:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "NB3:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "NB3:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "NT3:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "NT3:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "ONPA:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "ONPA:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "R11:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "R11:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "R22:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "R22:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "R8:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "R8:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "S1:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "S1:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "S52:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 5
+    },
+    {
+      "key": "S52:inbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 5
+    },
+    {
+      "key": "S52A:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "S52A:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "S52P:outbound",
+      "old": false,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "S52P:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "S56:outbound",
+      "old": true,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 3
+    },
+    {
+      "key": "S56:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "SP10:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "SP10:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "SP11:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "SP11:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "SP12:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "SP12:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "SP2:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "SP2:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "SP2A:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "SP2A:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "SP5B:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "SP5B:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "SP9:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "SP9:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "TCD4:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "TCD4:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "X1:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "X1:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "X15:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 2
+    },
+    {
+      "key": "X15:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 2
+    },
+    {
+      "key": "X55:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "X55:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "X797:outbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "X797:inbound",
+      "old": false,
+      "official": false,
+      "osm": false,
+      "state": "unmatched",
+      "candidateCount": 0
+    },
+    {
+      "key": "X8:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "X8:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "X9:outbound",
+      "state": "empty"
+    },
+    {
+      "key": "X9:inbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "X962:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "X962:inbound",
+      "state": "empty"
+    },
+    {
+      "key": "X970:outbound",
+      "old": true,
+      "official": true,
+      "osm": false,
+      "state": "official",
+      "candidateCount": 1
+    },
+    {
+      "key": "X970:inbound",
+      "state": "empty"
+    }
+  ],
+  "auditedDate": "2026-10-29"
+}

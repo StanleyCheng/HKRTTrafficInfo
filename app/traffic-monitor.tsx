@@ -24,6 +24,7 @@ import { selectedVehicleCameras, type RouteVehicleFeeds, type RouteVehicleState 
 import { useRoutePaths } from './use-route-paths';
 import { transportRoutes, filterTransportFeed, routeVisible, setAllRoutes, busPaths, transportKinds, transportModes, type TransportMode, type TransportRoute, type RouteFocus } from '@/lib/transport-routes';
 import type { BusRouteResponse, BusRouteSelection } from '@/lib/bus-route';
+import { hasBusRoadDisplay } from '@/lib/bus-route-display';
 import { getBusRoute, getBusRoutePaths } from '@/lib/bus-route-client';
 import { retainBusRoute } from '@/lib/bus-route-state';
 import { busVehicleDistanceAtTime } from '@/lib/bus-route-motion';
@@ -290,7 +291,7 @@ export default function TrafficMonitor() {
     return { ...legacy, ...storedRouteVisibility };
   }, [railLines, storedRouteVisibility]);
   const [routeFocus, setRouteFocus] = useState<RouteFocus | null>(null);
-  const [routeNotice, setRouteNotice] = useState<{ code: string; kind: 'partial' | 'approximate' } | null>(null);
+  const [routeNotice, setRouteNotice] = useState<{ code: string; kind: 'partial' | 'approximate' | 'community'; community: boolean } | null>(null);
   const finishRouteFocus = useCallback(() => setRouteFocus(null), []);
   // Restored layer choices persist across launches; unavailable layers stay off.
   const enabledSelection = useSyncExternalStore(layerSelectionStore.subscribe, layerSelectionStore.getSnapshot, layerSelectionStore.getServerSnapshot);
@@ -685,7 +686,7 @@ export default function TrafficMonitor() {
     <div role="status" aria-live="polite">
       {routeLoading && <p><LoaderCircle size={13} className="spin"/>{extra.loadingBusRoute}</p>}
       {routeError && <p className="warning-text">{extra.busRouteError} <button type="button" className="text-button" onClick={() => setBusRouteRetry(value => value + 1)}>{copy.retry}</button></p>}
-      {busRoute?.route && <><p>{busCount ? extra.estimatedBuses(busCount) : extra.noBusPosition}</p><p>{extra.busPositionNote}</p>{busRoute.route.geometry === 'stops' && <p>{extra.busRouteStops}</p>}{busRoute.stale && <p className="warning-text">{extra.stale}</p>}</>}
+      {busRoute?.route && <><p>{busCount ? extra.estimatedBuses(busCount) : extra.noBusPosition}</p><p>{extra.busPositionNote}</p>{[busRoute.route, ...busRoute.reverse.map(direction => direction.route)].some(route => route.geometrySource === 'osm') && <p>{language === 'en' ? 'Some directions use community-mapped OpenStreetMap geometry.' : '部分方向採用 OpenStreetMap 社群繪製路線。'}</p>}{busRoute.route.geometry === 'stops' && hasBusRoadDisplay(busRoute.route) && <p>{extra.busRouteStops}</p>}{[busRoute.route, ...busRoute.reverse.map(direction => direction.route)].some(route => !hasBusRoadDisplay(route)) && <p className="warning-text">{language === 'en' ? 'Road geometry is unavailable for some directions; only matched paths are shown.' : '部分方向未有道路走線資料；地圖只顯示已配對的路線。'}</p>}{busRoute.stale && <p className="warning-text">{extra.stale}</p>}</>}
     </div>
   </section>;
 
@@ -699,22 +700,26 @@ export default function TrafficMonitor() {
       const id = `bus:${kind}:${code}`;
       let points: [number, number][] = [];
       let result: 'complete' | 'partial' | 'approximate' = 'complete';
+      let community = false;
       if (kind === 'mtr-bus') {
         const route = routeCatalogue.find(item => item.id === id);
         points = route?.paths.flatMap(path => path.points) ?? [];
         if (route?.roadCoverage === 'partial') result = 'partial';
+        community = true;
       } else {
         const request = { operator: kind, route: code, stopId: camera.sourceId };
         const loaded = routePaths[id];
         const routes = loaded?.status === 'ready' ? loaded.routes : await getBusRoutePaths(request, signal);
         if (signal.aborted || !routes.length) return 'unavailable';
-        if (routes.some(route => route.geometry === 'stops')) result = 'approximate';
+        if (routes.some(route => !hasBusRoadDisplay(route))) result = 'partial';
+        else if (routes.some(route => route.geometry === 'stops')) result = 'approximate';
+        community = routes.some(route => route.geometrySource === 'osm');
         primeRoutePaths(id, routes);
         setChosenBusRoutes(previous => [...previous.filter(saved => saved.operator !== kind || saved.route !== code), { ...request, name: camera.name, nameEn: camera.nameEn ?? camera.name }]);
         points = busPaths(routes).flatMap(path => path.points);
       }
       if (!points.length) return 'unavailable';
-      setRouteNotice(result === 'complete' ? null : { code, kind: result });
+      setRouteNotice(result === 'complete' && !community ? null : { code, kind: result === 'complete' ? 'community' : result, community });
       layerSelectionStore.write({ ...enabled, [kind]: true });
       setRouteVisibility(previous => ({ ...previous, [id]: true }));
       setBusSelection(null);
@@ -784,7 +789,7 @@ export default function TrafficMonitor() {
         <TrafficMap3D {...mapProps} camera3D={camera3D} onCamera3D={updateCamera3D} onExit3D={switchMapMode}/>
       </Suspense> : <TrafficMap {...mapProps}/>}
       {appBusy && <div className="background-activity" role="status" aria-live="polite" aria-atomic="true"><LoaderCircle size={16} className="spin" aria-hidden="true"/><span>{language === 'en' ? 'Updating data…' : '正在更新資料…'}</span></div>}
-      {routeNotice && <div className="route-geometry-notice" role="status"><span><strong>{routeNotice.code}</strong> · {routeNotice.kind === 'approximate' ? extra.busRouteStops : language === 'en' ? 'Road geometry is unavailable for some directions or variants; only matched paths are shown.' : '部分方向或特別班次未有道路走線資料；地圖只顯示已配對的路線。'}</span><button type="button" onClick={() => setRouteNotice(null)} aria-label={copy.closeControls}><X size={16}/></button></div>}
+      {routeNotice && <div className="route-geometry-notice" role="status"><span><strong>{routeNotice.code}</strong> · {routeNotice.kind === 'approximate' ? extra.busRouteStops : routeNotice.kind === 'partial' ? (language === 'en' ? 'Road geometry is unavailable for some directions or variants; only matched paths are shown.' : '部分方向或特別班次未有道路走線資料；地圖只顯示已配對的路線。') : null}{routeNotice.community && <> {language === 'en' ? 'Community-mapped OpenStreetMap geometry.' : 'OpenStreetMap 社群繪製路線。'}</>}</span><button type="button" onClick={() => setRouteNotice(null)} aria-label={copy.closeControls}><X size={16}/></button></div>}
       <IntelPanel input={intelInput} language={language} onSelect={selectSearchItem}/>
       <TrafficStatus feeds={activeKinds.map(kind => ({ kind, ...states[kind] }))} language={language} flowEnabled={enabled.flow} updated={states.flow.data?.segmentsUpdated} fetched={activeFetched} now={now} loading={activeLoading} error={activeErrors} mapped={segments.length} expected={states.flow.data?.segmentsExpectedCount} onRefresh={refreshAllLayers}/>
       <div className="map-toolbar" role="group" aria-label={copy.openControls}>

@@ -14,6 +14,7 @@ import { ferryDepartures, movingCameras, railHoverText, busKinds, type MapViewpo
 import { stopPlate } from '@/lib/stop-plate';
 import { STOP_LABEL_WIDTH, declutterLabels, stopLabelHeight, type StopLabelItem, type StopLabelPlacement } from '@/lib/stop-labels';
 import type { BusRouteData, BusRouteResponse, BusRouteSelection, BusRouteStop, BusVehicle } from '@/lib/bus-route';
+import { hasBusRoadDisplay } from '@/lib/bus-route-display';
  import { getBusStopArrivals } from '@/lib/bus-route-client';
 import { busVehicleDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '@/lib/bus-route-motion';
 import { markerOffsets, type MarkerPoint } from '@/lib/marker-layout';
@@ -813,11 +814,13 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
     const group = L.layerGroup().addTo(m);
     const points = route.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]);
     const color = layers[route.operator].color;
-    L.polyline(points, { color: '#fff', weight: 8, opacity: .95, interactive: false }).addTo(group);
-    L.polyline(points, { color, weight: 4, opacity: 1, interactive: false, dashArray: route.geometry === 'stops' ? '7 7' : undefined, className: 'bus-route-polyline' }).addTo(group);
+    if (hasBusRoadDisplay(route)) {
+      L.polyline(points, { color: '#fff', weight: 8, opacity: .95, interactive: false }).addTo(group);
+      L.polyline(points, { color, weight: 4, opacity: 1, interactive: false, dashArray: route.geometry === 'stops' ? '7 7' : undefined, className: 'bus-route-polyline' }).addTo(group);
+    }
     // The opposite bound(s) of the same service draw muted, without stops or
     // labels: the rider's own bound keeps the interactive stop catalogue.
-    const reversePoints = (busRoute?.reverse ?? []).map(direction => direction.route.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]));
+    const reversePoints = (busRoute?.reverse ?? []).filter(direction => hasBusRoadDisplay(direction.route)).map(direction => direction.route.coordinates.map(([lng, lat]) => [lat, lng] as [number, number]));
     reversePoints.forEach(reverse => {
       L.polyline(reverse, { color: '#fff', weight: 8, opacity: .55, interactive: false }).addTo(group);
       L.polyline(reverse, { color, weight: 4, opacity: .75, interactive: false, dashArray: '3 9', className: 'bus-route-polyline bus-route-reverse' }).addTo(group);
@@ -887,7 +890,7 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
     if (!route || !busRoute) { clear(); return; }
     // Both bounds of the service carry their own fleet; every vehicle id is
     // prefixed with its direction key, so markers never mix bounds.
-    const directions: { route: BusRouteData; vehicles: BusVehicle[] }[] = [{ route, vehicles: busRoute.vehicles }, ...(busRoute.reverse ?? []).map(direction => ({ route: direction.route, vehicles: direction.vehicles }))];
+    const directions: { route: BusRouteData; vehicles: BusVehicle[] }[] = [{ route, vehicles: busRoute.vehicles }, ...(busRoute.reverse ?? []).map(direction => ({ route: direction.route, vehicles: direction.vehicles }))].filter(direction => hasBusRoadDisplay(direction.route));
     const geometry = new Map(directions.map(direction => [direction.route.key, { coordinates: direction.route.coordinates, distances: routeDistances(direction.route.coordinates) }]));
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let frame: number | undefined;

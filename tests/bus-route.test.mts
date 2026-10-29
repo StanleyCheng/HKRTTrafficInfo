@@ -241,7 +241,7 @@ for (const operator of ['citybus', 'gmb'] as const) test(`${operator} partial st
   const ids = ['900001', '900002', '900003'];
   t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
     const url = String(input);
-    if (url.includes('FeatureServer')) return Response.json({ features: [] });
+    if (url.includes('FeatureServer')) return Response.json({ features: [{ geometry: { paths: [[[114, 22.3], [114.001, 22.3], [114.002, 22.3]]] } }] });
     if (url.includes('/route-stop/') && !url.includes('/eta/')) return Response.json({ data: operator === 'gmb'
       ? { route_stops: ids.map((stop_id, index) => ({ stop_id, stop_seq: index + 1 })) }
       : ids.map((stop, index) => ({ stop, seq: index + 1 })) });

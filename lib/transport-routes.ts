@@ -5,9 +5,11 @@ import { railSegment } from './rail-geometry.ts'
 import { ferryPaths } from './ferry-fairway.ts'
 import { ferryPiers } from './ferry-network.ts'
 import trams from '../data/tram-network.json' with { type: 'json' }
+import { tramTrackPaths } from './tram-track-geometry.ts'
 import { mtrBusStops } from './commuter-catalogue.ts'
 import { mtrBusDirections } from './mtr-bus-geometry.ts'
 import type { BusRouteData, BusRouteSelection } from './bus-route.ts'
+import { hasBusRoadDisplay } from './bus-route-display.ts'
 import type { FerryResponse, FerryVessel, LrtResponse, MtrResponse } from './types.ts'
 
 export const transportModes = ['bus', 'rail', 'ferry', 'tram'] as const
@@ -63,7 +65,9 @@ function networkRoutes(): TransportRoute[] {
   }
   for (const code of new Set(trams.routes.map(route => route.routeId))) {
     const directions = trams.routes.filter(route => route.routeId === code), first = directions[0]
-    routes.push({ id: `tram:${code}`, mode: 'tram', kind: 'tram', code: '', name: first.tc, nameEn: first.en, stopIds: trams.stops.filter(stop => stop.routes.includes(code)).map(stop => stop.id), paths: directions.map(route => ({ id: `tram-${route.id}`, color: layers.tram.color, points: route.points.map(point => [point[0], point[1]]) })) })
+    const paths = tramTrackPaths(code)
+    const roadCoverage = !paths.length ? 'unavailable' : paths.length === directions.length ? 'complete' : 'partial'
+    routes.push({ id: `tram:${code}`, mode: 'tram', kind: 'tram', code: '', name: first.tc, nameEn: first.en, stopIds: trams.stops.filter(stop => stop.routes.includes(code)).map(stop => stop.id), paths, roadCoverage })
   }
   for (const code of new Set(mtrBusStops.map(stop => stop.route))) {
     const stops = mtrBusStops.filter(stop => stop.route === code)
@@ -94,8 +98,8 @@ export function transportRoutes(feeds: Partial<Record<LayerKind, CameraData>>, s
   return [...routes.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.code.localeCompare(b.code, 'en', { numeric: true }) || a.nameEn.localeCompare(b.nameEn))
 }
 
-export function busPaths(routes: Pick<BusRouteData, 'key' | 'operator' | 'coordinates'>[]): MapPath[] {
-  return routes.map(route => ({ id: `catalogue:${route.key}`, color: layers[route.operator].color, points: route.coordinates.map(([lng, lat]) => [lat, lng]) }))
+export function busPaths(routes: (Pick<BusRouteData, 'key' | 'operator' | 'coordinates'> & Partial<Pick<BusRouteData, 'geometry'>>)[]): MapPath[] {
+  return routes.filter(hasBusRoadDisplay).map(route => ({ id: `catalogue:${route.key}`, color: layers[route.operator].color, points: route.coordinates.map(([lng, lat]) => [lat, lng]) }))
 }
 
 export function cameraRouteIds(camera: Camera, routes: TransportRoute[]): string[] {
