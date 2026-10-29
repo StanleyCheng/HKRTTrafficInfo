@@ -1,4 +1,5 @@
 import { validBusSelection } from './bus-selection.ts'
+import { nearbyGroups, type NearbyCategory } from './nearby.ts'
 import type { BusRouteSelection, BusRouteStop } from './bus-route.ts'
 import type { IntelTab } from './intel.ts'
 import { kinds, layerCategories, type Camera, type LayerCategory } from './traffic.ts'
@@ -14,6 +15,7 @@ export type MapSession = {
   openControl: 'search' | 'layers' | 'rail' | 'nearby' | null
   showDetectors: boolean
   showBusStops: boolean
+  showFerryPiers: boolean
   routeLabels: boolean
   transportMode: TransportMode
   layerCategory: LayerCategory
@@ -22,6 +24,7 @@ export type MapSession = {
   chosenBusRoutes: SavedBusRoute[]
   revealedRoute: string | null
   nearbyRadius: number
+  nearbyCategories: NearbyCategory[]
   showNearbyOnMap: boolean
   followLocation: boolean
   routeStop: { key: string; stop: BusRouteStop } | null
@@ -33,7 +36,7 @@ export type MapSession = {
   searchPage: number
 }
 export const sessionStorageKey = 'hk-traffic-session-v1'
-export const defaultSession: MapSession = { version: 1, view: null, mapMode: '2d', camera3D: { pitch: 55, bearing: -20 }, busSelection: null, selectedPlace: null, openControl: null, showDetectors: false, showBusStops: true, routeLabels: true, transportMode: 'bus', layerCategory: 'roads', routeVisibility: {}, routeQuery: '', chosenBusRoutes: [], revealedRoute: null, nearbyRadius: 1000, showNearbyOnMap: false, followLocation: true, routeStop: null, intelOpen: false, intelTab: 'ranked', statusExpanded: false, searchQuery: '', searchScope: 'roads', searchPage: 0 }
+export const defaultSession: MapSession = { version: 1, view: null, mapMode: '2d', camera3D: { pitch: 55, bearing: -20 }, busSelection: null, selectedPlace: null, openControl: null, showDetectors: false, showBusStops: true, showFerryPiers: true, routeLabels: true, transportMode: 'bus', layerCategory: 'roads', routeVisibility: {}, routeQuery: '', chosenBusRoutes: [], revealedRoute: null, nearbyRadius: 1000, nearbyCategories: nearbyGroups.map(group => group.id), showNearbyOnMap: false, followLocation: true, routeStop: null, intelOpen: false, intelTab: 'ranked', statusExpanded: false, searchQuery: '', searchScope: 'roads', searchPage: 0 }
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const numberBetween = (value: unknown, min: number, max: number): value is number => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 const string = (value: unknown, limit = 200): value is string => typeof value === 'string' && value.length <= limit
@@ -69,7 +72,7 @@ export function parseSession(value: unknown): MapSession {
     return [{ operator: route.operator, route: route.route, stopId: route.stopId, name: route.name, nameEn: route.nameEn }]
   })
   if (record(value.routeVisibility)) session.routeVisibility = Object.fromEntries(Object.entries(value.routeVisibility).flatMap(([key, on]) => /^(all:)?(bus|rail|ferry|tram)(:|$)/.test(key) && key.length <= 200 && typeof on === 'boolean' ? [[key, on] as const] : []).slice(0, 5000))
-  for (const key of ['showDetectors', 'showBusStops', 'routeLabels', 'showNearbyOnMap', 'followLocation', 'intelOpen', 'statusExpanded'] as const) if (typeof value[key] === 'boolean') session[key] = value[key]
+  for (const key of ['showDetectors', 'showBusStops', 'showFerryPiers', 'routeLabels', 'showNearbyOnMap', 'followLocation', 'intelOpen', 'statusExpanded'] as const) if (typeof value[key] === 'boolean') session[key] = value[key]
   if (value.intelTab === 'ranked' || value.intelTab === 'roads' || value.intelTab === 'boundary' || value.intelTab === 'weather' || value.intelTab === 'systems' || value.intelTab === 'notes') session.intelTab = value.intelTab
   if (string(value.searchQuery, 1000)) session.searchQuery = value.searchQuery
   if (value.searchScope === 'roads' || value.searchScope === 'locations') session.searchScope = value.searchScope
@@ -82,6 +85,7 @@ export function parseSession(value: unknown): MapSession {
   }
   if (string(value.revealedRoute, 4000)) session.revealedRoute = value.revealedRoute
   if ([500, 1000, 2000].includes(Number(value.nearbyRadius))) session.nearbyRadius = Number(value.nearbyRadius)
+  if (Array.isArray(value.nearbyCategories)) session.nearbyCategories = nearbyGroups.filter(group => (value.nearbyCategories as unknown[]).includes(group.id)).map(group => group.id)
   return session
 }
 

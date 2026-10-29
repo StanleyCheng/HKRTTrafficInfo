@@ -35,6 +35,7 @@ async function create(width, language, mode = '2d', route = false, nearbyOverlay
   const base={ok:true,observedAt,fetchedAt:observedAt,complete:true,stale:false};
   if(kind==='mtr-bus') {calls.bus++; const camera=commuterCatalogue('mtr-bus').find(c=>c.sourceId==='K12-U010');return route.fulfill({json:{...base,cameras:[{...camera,dataUpdated:observedAt,arrivals:[{route:'K12',destination:'八號花園',destinationEn:'Eightland Garden',eta:new Date(at+120000).toISOString(),minutes:2,scheduled:false}]}]}})}
   if(kind==='pedestrian')return route.fulfill({json:{...base,cameras:[],paths:[{id:'fixture-walk',color:'#137f87',points:[[22.282,114.16],[22.283,114.161]]}]}});
+  if(kind==='ferry')return route.fulfill({json:{...base,piers:[{id:'fixture',nameTc:'測試碼頭',nameEn:'Fixture pier',lng:114.16,lat:22.282,calls:[]}],vessels:[{id:'fixture',nameTc:'測試渡輪',nameEn:'Fixture ferry',route:'天星',lng:114.161,lat:22.283,fix:'gps',eta:new Date(at+600000).toISOString(),minutes:10,departAt:at-600000,arriveAt:at+600000,pathLng:[114.16,114.17],pathLat:[22.283,22.283]}]}});
   if(kind==='bus-route'&&url.searchParams.get('stopArrivals')==='1'){calls.arrivals++;return route.fulfill({json:{...base,arrivals:[{route:'1',destination:'終點',destinationEn:'Generation '+calls.arrivals,eta:new Date(at+120000).toISOString(),minutes:2,scheduled:false}]}})}
   if(kind==='bus-route'){calls.route++;return route.fulfill({json:{...base,route:{key:'fixture-route',operator:'kmb',company:'KMB',route:'1',geometry:'road',coordinates:[[114.160,22.282],[114.165,22.288]],stops:[{id:'FIX',seq:1,nameTc:'起點',nameEn:'Origin',lng:114.160,lat:22.282,distance:0},{id:'END',seq:2,nameTc:'終點',nameEn:'Terminus',lng:114.165,lat:22.288,distance:900}]},vehicles:[],reverse:[]}})}
   return route.fulfill({json:{...base,boards:[],trains:[],stops:[],vessels:[],piers:[],warnings:[]}});
@@ -106,6 +107,74 @@ try {
   assert.equal(await page.evaluate(()=>localStorage.getItem('hk-traffic-layers-v1')),layers,'Nearby never changes normal layer choices');
   assert.deepEqual(f.errors,[]);
   console.log(`PASS ${width}px ${language} ${mode}: nearby overlay, radius, independent layers, deduplication, closed-panel polling and persistence`);
+ }
+ for(const mode of ['2d','3d']) for(const [width,language] of [[1440,'en'],[390,'zh']]) {
+  const f=await create(width,language,mode,false,true),{page}=f;
+  const marker=camera=>page.locator(`.camera-marker[data-marker-id="${camera.id}"]`);
+  const centre={lng:114.16,lat:22.282};
+  const taxi=commuterCatalogue('taxi').find(camera=>metresBetween(camera,centre)<500);
+  const tram=commuterCatalogue('tram').find(camera=>metresBetween(camera,centre)<1000);
+  const categories=page.locator('.nearby-categories');
+  const taxiFilter=categories.locator('input[value="taxi"]');
+  const tramFilter=categories.locator('input[value="tram"]');
+  const mapToggle=page.getByRole('switch',{name:language==='en'?'Show nearby on map':'在地圖顯示附近交通'});
+  await categories.waitFor();
+  assert.equal(await categories.locator('input[type="checkbox"]').count(),6);
+  assert.match(await categories.innerText(),language==='en'?/Access \/ stairs/:/樓梯/);
+  await mapToggle.click();
+  await marker(taxi).waitFor({state:'attached'});
+  await marker(tram).waitFor({state:'attached'});
+  await taxiFilter.uncheck();
+  await page.locator('.nearby-taxi').waitFor({state:'detached'});
+  await marker(taxi).waitFor({state:'detached'});
+  await tramFilter.uncheck();
+  await page.locator('.nearby-tram').waitFor({state:'detached'});
+  assert.equal(await marker(tram).count(),1,'An enabled normal layer stays visible when excluded from Nearby');
+  await page.screenshot({path:`${evidence}/nearby-categories-${mode}-${width}.png`});
+  await page.reload({waitUntil:'domcontentloaded'});
+  await categories.waitFor();
+  assert.equal(await taxiFilter.isChecked(),false);
+  assert.equal(await tramFilter.isChecked(),false);
+  assert.equal(await page.locator('.nearby-taxi').count(),0);
+  assert.equal(await marker(taxi).count(),0);
+  await marker(tram).waitFor({state:'attached'});
+  await taxiFilter.check();
+  await page.locator('.nearby-taxi .nearby-place').first().waitFor();
+  await marker(taxi).waitFor({state:'attached'});
+  assert.deepEqual(f.errors,[]);
+  console.log(`PASS ${width}px ${language} ${mode}: Nearby category filtering, independent layers, and persistence`);
+ }
+ for(const mode of ['2d','3d']) for(const [width,language] of [[1440,'en'],[390,'zh']]) {
+  const f=await create(width,language,mode,false,true),{page}=f;
+  await page.getByRole('switch',{name:language==='en'?'Show nearby on map':'在地圖顯示附近交通'}).click();
+  const pier=page.locator('.camera-marker[data-marker-id="ferry-fixture"]');
+  await pier.waitFor({state:'attached'});
+  await closeControls(page);
+  await openLayers(page,'ferry');
+  const ferryLayer=page.locator('.layer-card.ferry [role="switch"]');
+  if(await ferryLayer.getAttribute('aria-checked')!=='true')await ferryLayer.click();
+  const switchName=language==='en'?'Ferry piers':'渡輪碼頭';
+  const pierToggle=page.getByRole('switch',{name:switchName,exact:true});
+  const vessel=page.locator('[data-marker-id="ferry-vessel-fixture"]');
+  await vessel.waitFor({state:'attached'});
+  const pathCount=async()=>page.evaluate(mode=>mode==='2d' ? (()=>{let count=0;window.__map.eachLayer(layer=>{if(layer.options.className==='ferry-route-polyline')count++});return count})() : window.__nativeMap.getSource('hk-transport').serialize().data.features.length,mode);
+  await page.waitForFunction(mode=>mode==='2d' ? (()=>{let count=0;window.__map.eachLayer(layer=>{if(layer.options.className==='ferry-route-polyline')count++});return count>0})() : window.__nativeMap.getSource('hk-transport').serialize().data.features.length>0,mode);
+  const paths=await pathCount();
+  assert.equal(await pierToggle.isChecked(),true);
+  await pierToggle.uncheck();
+  await pier.waitFor({state:'detached'});
+  assert.equal(await vessel.count(),1,'Hiding piers leaves the ferry vessel visible');
+  assert.equal(await pathCount(),paths,'Hiding piers leaves ferry routes visible');
+  await page.screenshot({path:`${evidence}/ferry-piers-${mode}-${width}.png`});
+  await page.reload({waitUntil:'domcontentloaded'});
+  await openLayers(page,'ferry');
+  assert.equal(await pierToggle.isChecked(),false);
+  assert.equal(await pier.count(),0,'Nearby overlay does not restore hidden piers');
+  await vessel.waitFor({state:'attached'});
+  await pierToggle.check();
+  await pier.waitFor({state:'attached'});
+  assert.deepEqual(f.errors,[]);
+  console.log(`PASS ${width}px ${language} ${mode}: ferry pier visibility, vessel and routes, and persistence`);
  }
  for(const width of [1440,390]) {
  const f=await create(width,'en','3d',true),{page}=f;

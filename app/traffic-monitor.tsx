@@ -12,7 +12,7 @@ import ItemDetails from './item-details';
 import NearbyPanel from './nearby-panel';
 import { useSessionField } from './use-session-field';
 import { savedPlace, sessionStore } from '@/lib/session-state';
-import { nearbyKinds, nearbyPlaces } from '@/lib/nearby';
+import { nearbyCategoryKinds, nearbyPlaces } from '@/lib/nearby';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import TrafficSearch from './traffic-search';
 import TrafficStatus from './traffic-status';
@@ -324,8 +324,10 @@ export default function TrafficMonitor() {
   const [openControl, setOpenControl] = useSessionField('openControl');
   const [showNearbyOnMap] = useSessionField('showNearbyOnMap');
   const [nearbyRadius] = useSessionField('nearbyRadius');
-  const mapEnabled = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, enabled[kind] || showNearbyOnMap && nearbyKinds.includes(kind as IntegrationKind)])) as Record<LayerKind, boolean>, [enabled, showNearbyOnMap]);
-  const requested = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, mapEnabled[kind] || openControl === 'nearby' && nearbyKinds.includes(kind as IntegrationKind)])) as Record<LayerKind, boolean>, [mapEnabled, openControl]);
+  const [nearbyCategories] = useSessionField('nearbyCategories');
+  const selectedNearbyKinds = useMemo(() => nearbyCategoryKinds(nearbyCategories), [nearbyCategories]);
+  const mapEnabled = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, enabled[kind] || showNearbyOnMap && selectedNearbyKinds.includes(kind as IntegrationKind)])) as Record<LayerKind, boolean>, [enabled, showNearbyOnMap, selectedNearbyKinds]);
+  const requested = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, mapEnabled[kind] || openControl === 'nearby' && selectedNearbyKinds.includes(kind as IntegrationKind)])) as Record<LayerKind, boolean>, [mapEnabled, openControl, selectedNearbyKinds]);
   const [now, setNow] = useState(() => Date.now());
   const [focusTarget, setFocusTarget] = useState<TrafficSearchItem | null>(null);
   const topbarCollapsed = useSyncExternalStore(topbarFlag.subscribe, topbarFlag.getSnapshot, topbarFlag.getServerSnapshot);
@@ -519,7 +521,7 @@ export default function TrafficMonitor() {
     });
     if (showNearbyOnMap) {
       const seen = new Set(visible.map(camera => camera.id));
-      const feeds = nearbyKinds.filter(kind => layerAvailable(kind) && !viewportNote(kind, viewport)).map(kind => viewStates[kind].data);
+      const feeds = selectedNearbyKinds.filter(kind => layerAvailable(kind) && !viewportNote(kind, viewport)).map(kind => viewStates[kind].data);
       for (const { camera } of nearbyPlaces(feeds, viewport, nearbyRadius, now)) {
         if (seen.has(camera.id)) continue;
         seen.add(camera.id);
@@ -527,7 +529,7 @@ export default function TrafficMonitor() {
       }
     }
     return visible;
-  }, [states, viewStates, displayStates, enabled, showDetectors, flowFresh, viewport, now, showNearbyOnMap, nearbyRadius]);
+  }, [states, viewStates, displayStates, enabled, showDetectors, flowFresh, viewport, now, showNearbyOnMap, nearbyRadius, selectedNearbyKinds]);
   const selected = useMemo(() => {
     if (selectedSnapshot?.positionType === 'vehicle') {
       if (selectedSnapshot.id.startsWith('selected-vehicle:')) return selectedVehicleCameras(selectedVehicleFeeds, now).find(camera => camera.id === selectedSnapshot.id) ?? null;
@@ -818,7 +820,7 @@ export default function TrafficMonitor() {
           <PopoverTrigger asChild><button type="button" className="toolbar-button nearby-toggle" aria-label={language === 'en' ? 'Nearby transport' : '附近交通'} title={language === 'en' ? 'Nearby transport' : '附近交通'}><Radar size={20}/></button></PopoverTrigger>
           <PopoverContent className="map-control-popover nearby-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="nearby-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
             <div className="control-popover-head"><h2 id="nearby-popover-title">{language === 'en' ? 'Nearby transport' : '附近交通'}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
-            <div className="control-popover-body"><NearbyPanel states={displayStates} view={viewport} language={language} now={now} onSelect={camera => selectSearchItem({ camera })} onRefresh={() => nearbyKinds.forEach(kind => void fetchLayer(kind, true))}/></div>
+            <div className="control-popover-body"><NearbyPanel states={displayStates} view={viewport} language={language} now={now} onSelect={camera => selectSearchItem({ camera })} onRefresh={() => selectedNearbyKinds.forEach(kind => void fetchLayer(kind, true))}/></div>
           </PopoverContent>
         </Popover>
         <Popover open={openControl === 'search'} onOpenChange={open => setOpenControl(open ? 'search' : null)}>

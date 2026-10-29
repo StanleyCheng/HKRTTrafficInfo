@@ -21,6 +21,7 @@ export default function TransportLayers({ language, mode, routes, visibility, en
   const copy = labels[language]
   const [query, setQuery] = useSessionField('routeQuery')
   const [showStops, setShowStops] = useSessionField('showBusStops')
+  const [showPiers, setShowPiers] = useSessionField('showFerryPiers')
   const [showLabels, setShowLabels] = useSessionField('routeLabels')
   const choices = routes.filter(route => route.mode === mode && layerAvailable(route.kind))
   const matching = choices.filter(route => `${route.code} ${route.name} ${route.nameEn} ${layers[route.kind].name} ${layers[route.kind].nameEn}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
@@ -30,6 +31,7 @@ export default function TransportLayers({ language, mode, routes, visibility, en
   return <section className="transport-layers" aria-label={copy.transport}>
     <div className="transport-visibility">
       {mode === 'bus' && <label className="transport-switch"><span><strong>{copy.stops}</strong><small>{copy.stopNote}</small></span><input type="checkbox" role="switch" checked={showStops} onChange={event => setShowStops(event.target.checked)} aria-label={copy.stops}/><span className="switch" aria-hidden="true"/></label>}
+      {mode === 'ferry' && <label className="transport-switch"><span><strong>{language === 'en' ? 'Ferry piers' : '渡輪碼頭'}</strong><small>{language === 'en' ? 'Show pier icons on the map' : '在地圖顯示碼頭圖示'}</small></span><input type="checkbox" role="switch" checked={showPiers} onChange={event => setShowPiers(event.target.checked)} aria-label={language === 'en' ? 'Ferry piers' : '渡輪碼頭'}/><span className="switch" aria-hidden="true"/></label>}
       <label className="transport-switch compact"><span>{copy.routeLabels}</span><input type="checkbox" role="switch" checked={showLabels} onChange={event => setShowLabels(event.target.checked)} aria-label={copy.routeLabels}/><span className="switch" aria-hidden="true"/></label>
     </div>
     <p className="transport-scope">{mode === 'bus' ? copy.busNote : copy.otherNote}</p>

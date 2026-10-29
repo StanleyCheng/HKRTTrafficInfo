@@ -134,6 +134,7 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
   // display preference, not a layer: popups, search and feeds stay untouched,
   // and the stops a displayed route draws are a separate surface.
   const [showBusStops] = useSessionField('showBusStops');
+  const [showFerryPiers] = useSessionField('showFerryPiers');
   const routeFocusRef = useRef(false);
   const previousSelection = useRef<string | null>(null);
   const selectRef = useRef(onSelect);
@@ -353,7 +354,7 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
     if (!ready || !L || !m || !group) return;
     // Run the stop-marker switch before any marker work, so hidden stops leave
     // no marker, plate, tooltip or layout slot behind.
-    const visible = showBusStops ? cameras : cameras.filter(camera => !isBusStop(camera));
+    const visible = cameras.filter(camera => (showBusStops || !isBusStop(camera)) && (showFerryPiers || camera.kind !== 'ferry' || camera.positionType !== 'pier'));
     const ids = new Set(visible.map(camera => camera.id));
     markers.current.forEach((marker, id) => { if (!ids.has(id)) { group.removeLayer(marker); markers.current.delete(id); markerData.current.delete(id); if (popupRef.current?.stopId === id) popupRef.current.popup.remove(); } });
     visible.forEach(camera => {
@@ -415,8 +416,8 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
       markerData.current.set(camera.id, { camera, style, labelLines: plate?.lines.length });
     });
     layoutMarkers.current();
-  }, [cameras, ready, language, copy, mapZoom, showBusStops, hoverCapable, setRoutePopupStop]);
-  const snapshotMarkerKey = JSON.stringify(cameras.filter(hasDelayedHover));
+  }, [cameras, ready, language, copy, mapZoom, showBusStops, showFerryPiers, hoverCapable, setRoutePopupStop]);
+  const snapshotMarkerKey = JSON.stringify(cameras.filter(camera => hasDelayedHover(camera) && (showFerryPiers || camera.kind !== 'ferry' || camera.positionType !== 'pier')));
   const fullPopupOpen = Boolean(selected || routePopupStop);
   useEffect(() => {
     const L = library.current, m = map.current;

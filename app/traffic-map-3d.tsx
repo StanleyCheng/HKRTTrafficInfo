@@ -51,6 +51,7 @@ export default function TrafficMap3D(props: Props) {
   const popupContent = useRef<HTMLDivElement | null>(null);
   const [popupElement, setPopupElement] = useState<HTMLDivElement | null>(null);
   const [showBusStops] = useSessionField('showBusStops');
+  const [showFerryPiers] = useSessionField('showFerryPiers');
   const [routeLabels] = useSessionField('routeLabels');
   const [revealedRoute, setRevealedRoute] = useSessionField('revealedRoute');
   const [routeStop, setRouteStop] = useSessionField('routeStop');
@@ -208,7 +209,7 @@ export default function TrafficMap3D(props: Props) {
       id: `route-stop:${route.key}:${stop.seq}`, sourceId: stop.id, kind: route.operator, lat: stop.lat, lng: stop.lng,
       name: stop.nameTc, nameEn: stop.nameEn, routes: [route.route],
     } as Camera)) : [];
-    const visible = [...cameras.filter(camera => !isBusStop(camera) || showBusStops && !routeFocus), ...routeStops];
+    const visible = [...cameras.filter(camera => (!isBusStop(camera) || showBusStops && !routeFocus) && (showFerryPiers || camera.kind !== 'ferry' || camera.positionType !== 'pier')), ...routeStops];
     const ids = new Set(visible.map(camera => camera.id));
     markers.current.forEach((entry, id) => { if (!ids.has(id)) { entry.marker.remove(); markers.current.delete(id); } });
     for (const camera of visible) {
@@ -283,7 +284,7 @@ export default function TrafficMap3D(props: Props) {
     layout.current = runLayout; runLayout();
     m.on('moveend', runLayout); m.on('resize', runLayout);
     return () => { layout.current = () => {}; m.off('moveend', runLayout); m.off('resize', runLayout); };
-  }, [ready, cameras, language, selected?.id, showBusStops, routeFocus, busRoute, routeLabels, setRouteStop]);
+  }, [ready, cameras, language, selected?.id, showBusStops, showFerryPiers, routeFocus, busRoute, routeLabels, setRouteStop]);
 
   useEffect(() => {
     const m = map.current, gl = library.current;
