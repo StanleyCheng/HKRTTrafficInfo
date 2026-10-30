@@ -33,7 +33,7 @@ const endpoints: Record<Exclude<IntegrationKind, CommuterKind>, string> = { cros
 // (16 MTR / 12 LRT station boards per request) need 30-second turns to cycle all
 // 121 MTR and 68 LRT boards inside the feeds' five-minute memory without
 // tripping the upstream rate limit; buses and ferries turn over more slowly.
-export const pollingMs: Record<IntegrationKind, number> = { crossing: 120000, works: 300000, toll: 21600000, boundary: 60000, 'weather-warning': 60000, mtr: 30000, lrt: 30000, kmb: 30000, citybus: 30000, gmb: 30000, nlb: 30000, ferry: 60000, 'mtr-bus': 30000, tram: 86400000, access: 300000, taxi: 86400000 };
+export const pollingMs: Record<IntegrationKind, number> = { crossing: 120000, works: 300000, toll: 21600000, boundary: 60000, 'weather-warning': 60000, mtr: 30000, lrt: 30000, kmb: 30000, citybus: 30000, gmb: 30000, nlb: 30000, ferry: 60000, 'mtr-bus': 30000, tram: 30000, access: 300000, taxi: 86400000 };
 type Envelope = { ok: boolean; complete?: boolean; error?: string; fetchedAt?: string; observedAt?: string | null; capturedAt?: string | null; stale?: boolean };
 type FeaturesResponse = Envelope & { works?: GeoJSON.FeatureCollection; tolls?: GeoJSON.FeatureCollection };
 

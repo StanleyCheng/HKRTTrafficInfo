@@ -42,7 +42,7 @@ export function commuterCatalogue(kind: CommuterKind): Camera[] {
     id: `tram-${stop.id}`, sourceId: stop.id, kind, name: stop.tc, nameEn: stop.en, lng: stop.lng, lat: stop.lat,
     routes: stop.routes,
     rows: trams.routes.filter(route => stop.routes.includes(route.routeId) && route.id.endsWith('-1')).map(route => ({ label: route.tc, labelEn: route.en, value: `HK$${route.fare.toFixed(1)}` })),
-    information: { en: 'Published stops and adult fares. Track routes use OpenStreetMap data matched to the published stop order; they may not reflect diversions. Live departures are not provided by this layer.', zh: '已公布車站及成人車費。軌道路線採用與公布車站次序配對的 OpenStreetMap 資料，未必反映改道情況。此圖層不提供實時開出時間。' },
+    information: { en: 'Arrival estimates from Hong Kong Tramways. Track routes use OpenStreetMap data matched to published stops and may not reflect diversions.', zh: '到站時間由香港電車提供。軌道路線採用與公布車站配對的 OpenStreetMap 資料，未必反映改道情況。' },
   }))
   if (kind === 'access') return access.map(station => ({
     id: `access-${station.id}`, sourceId: station.id, kind, name: station.tc, nameEn: station.en, lng: station.lng, lat: station.lat,

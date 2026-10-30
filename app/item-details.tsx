@@ -8,8 +8,10 @@ import type { BusRouteSelection } from '@/lib/bus-route';
 import SnapshotImage from './snapshot-image';
 import { currentArrivals } from '@/lib/arrival-display';
 import { routesWithoutArrival } from '@/lib/stop-routes';
+import { useTramStop } from './use-tram-stop';
+import { tramRoutes } from '@/lib/tram';
 
-export default function ItemDetails({ camera, language, now, stale, onActivity, activeBusSelection, onShowRoute, routeStatus, status = 'ready', onRetry }: {
+export default function ItemDetails({ camera: suppliedCamera, language, now, stale, onActivity, activeBusSelection, onShowRoute, routeStatus, status = 'ready', onRetry }: {
   camera: Camera;
   language: Language;
   now: number;
@@ -21,6 +23,8 @@ export default function ItemDetails({ camera, language, now, stale, onActivity, 
   status?: 'loading' | 'error' | 'ready';
   onRetry?: () => void;
 }) {
+  const tram = useTramStop(suppliedCamera, onActivity);
+  const camera = tram.camera;
   const copy = messages[language];
   const extra = integrationMessages[language];
   const numberLocale = language === 'en' ? 'en-HK' : 'zh-HK';
@@ -29,6 +33,7 @@ export default function ItemDetails({ camera, language, now, stale, onActivity, 
   const region = language === 'en' ? camera.regionEn || camera.region : camera.region;
   const arrivals = currentArrivals(camera, now);
   const isBusStop = ['kmb', 'citybus', 'gmb', 'nlb', 'mtr-bus'].includes(camera.kind) && camera.positionType !== 'vehicle';
+  const isTramStop = camera.kind === 'tram' && camera.positionType !== 'vehicle';
   const withoutArrival = isBusStop ? routesWithoutArrival(camera.routes ?? [], arrivals.map(call => call.route)) : [];
   const [routePending, setRoutePending] = useState<string | null>(null);
   const [routeFailure, setRouteFailure] = useState<string | null>(null);
@@ -77,12 +82,16 @@ export default function ItemDetails({ camera, language, now, stale, onActivity, 
     {status !== 'ready' && <p className="item-detail-status" role={status === 'error' ? 'alert' : 'status'}>
       {status === 'loading' ? <><LoaderCircle size={13} className="spin"/>{copy.loadingOfficialData}</> : <>{extra.busRouteError}{onRetry && <> <button type="button" className="text-button" onClick={onRetry}>{copy.retry}</button></>}</>}
     </p>}
+    {isTramStop && tram.loading && <p className="item-detail-status" role="status"><LoaderCircle size={13} className="spin"/>{language === 'en' ? 'Loading tram arrivals…' : '正在載入電車到站時間…'}</p>}
+    {isTramStop && tram.failed && <p className="warning-text" role="alert">{language === 'en' ? 'Tram arrivals could not be updated.' : '未能更新電車到站時間。'} <button type="button" className="text-button" onClick={tram.retry}>{copy.retry}</button></p>}
+    {isTramStop && camera.tramEtaNotice && <p className="warning-text">{camera.tramEtaNotice}</p>}
     {status === 'ready' && camera.arrivals && <section className="arrival-board"><h5>{extra.arrivals}</h5>{arrivals.length ? <ul>{arrivals.map((call, index) => {
       const eta = call.eta ? Date.parse(call.eta) : NaN;
       const minutes = Number.isFinite(eta) ? Math.max(0, Math.ceil((eta - now) / 60000)) : call.minutes;
-      return <li key={`${call.route}-${index}`}><span className="arrival-route-choice"><strong className="arrival-route">{call.route}</strong>{isBusStop && routeButton(call.route, call.tracking, language === 'en' ? call.destinationEn || call.destination : call.destination)}</span><span className="arrival-destination">{language === 'en' ? call.destinationEn || call.destination : call.destination}{call.platform && <small>{extra.platform} {call.platform}</small>}<small>{call.timeType ? call.timeType === 'D' ? extra.departure : extra.arrival : call.scheduled ? extra.scheduled : extra.live}{(language === 'en' ? call.remarkEn : call.remark) ? ` · ${language === 'en' ? call.remarkEn : call.remark}` : ''}</small></span><strong className="arrival-minutes">{minutes ?? '—'}<small>{extra.minutes}</small></strong></li>;
+      return <li key={`${call.route}-${index}`}><span className="arrival-route-choice"><strong className="arrival-route">{camera.kind === 'tram' ? (language === 'en' ? 'Tram' : '電車') : call.route}</strong>{(isBusStop || isTramStop && call.tram?.routeId) && routeButton(call.route, call.tracking, language === 'en' ? call.destinationEn || call.destination : call.destination)}</span><span className="arrival-destination">{language === 'en' ? call.destinationEn || call.destination : call.destination}{call.tram && <small>{call.tram.direction === 'eastbound' ? (language === 'en' ? 'Eastbound' : '東行') : (language === 'en' ? 'Westbound' : '西行')}{Number.isFinite(eta) ? ` · ${hkTime(call.eta!, false, language)}` : ''}</small>}{call.platform && <small>{extra.platform} {call.platform}</small>}<small>{call.timeType ? call.timeType === 'D' ? extra.departure : extra.arrival : call.scheduled ? extra.scheduled : extra.live}{(language === 'en' ? call.remarkEn : call.remark) ? ` · ${language === 'en' ? call.remarkEn : call.remark}` : ''}</small></span><strong className="arrival-minutes">{minutes ?? '—'}<small>{extra.minutes}</small></strong></li>;
     })}</ul> : <p>{extra.noArrivals}</p>}</section>}
     {withoutArrival.length > 0 && <section className="arrival-board"><h5>{language === 'en' ? 'Routes at this stop' : '此站路線'}</h5><ul>{withoutArrival.map(route => <li key={route}><strong className="arrival-route">{route}</strong>{routeButton(route)}</li>)}</ul></section>}
+    {isTramStop && <section className="arrival-board tram-stop-routes"><h5>{language === 'en' ? 'Routes at this stop' : '此站路線'}</h5><ul>{tramRoutes.filter(route => camera.routes?.includes(route.routeId)).map(route => <li key={route.routeId}><span>{language === 'en' ? route.en : route.tc}</span>{routeButton(route.routeId, undefined, language === 'en' ? route.en : route.tc)}</li>)}</ul></section>}
     {routeFailure && <p className="warning-text" role="alert">{language === 'en' ? 'Route geometry is unavailable.' : '未能取得路線走線。'}</p>}
     {routeNotice && <p className="warning-text" role="status">{routeNotice === 'approximate' ? extra.busRouteStops : language === 'en' ? 'Road geometry is unavailable for some directions or variants; only matched paths are shown.' : '部分方向或特別班次未有道路走線資料；地圖只顯示已配對的路線。'}</p>}
     <dl>

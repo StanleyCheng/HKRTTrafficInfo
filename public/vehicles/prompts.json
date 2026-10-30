@@ -170,6 +170,17 @@
       ],
       "src": "/vehicles/bus-mtr.webp",
       "representative": true
+    },
+    {
+      "asset": "tram",
+      "original": "exec-6311071e-5f53-45c4-956e-371b549952ab.png",
+      "src": "/vehicles/tram.webp",
+      "sources": [
+        "https://www.hktramways.com/"
+      ],
+      "generator": "built-in image_gen",
+      "generatedAt": "2026-10-30",
+      "prompt": "Cute chunky chibi 3D diecast classic Hong Kong double-decker electric tram. Deep green lower body, cream upper deck and roof, two decks of black windows, narrow tall boxy body, roof trolley pole. Elevated three-quarter view seeing roof and right flank, long axis vertical, front pointing down. Thin pale cream #fff3b0 outline. Transparent background. No tracks, ground, people, logos, text, numbers or watermark. Match the existing miniature Hong Kong transit vehicle set."
     }
   ],
   "fleetNote": "Artwork represents recognizable fleet liveries. Position feeds do not identify exact rolling stock or vessels for each run."

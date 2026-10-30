@@ -5,7 +5,7 @@ export type CommuterKind = 'mtr-bus' | 'tram' | 'access' | 'taxi';
 export type IntegrationKind = 'crossing' | 'works' | 'toll' | 'boundary' | 'weather-warning' | 'mtr' | 'lrt' | 'kmb' | 'citybus' | 'gmb' | 'nlb' | 'ferry' | CommuterKind;
 export type LayerKind = OriginalLayerKind | IntegrationKind;
 export type DetailRow = { label: string; labelEn: string; value: string; valueEn?: string };
-export type Arrival = { route: string; destination: string; destinationEn: string; minutes: number | null; eta?: string; firstFerry?: string; lastFerry?: string; observedAt?: string; timeType?: 'A' | 'D'; platform?: string; scheduled?: boolean; remark?: string; remarkEn?: string; tracking?: BusRouteSelection; mtrLineRef?: string };
+export type Arrival = { route: string; destination: string; destinationEn: string; minutes: number | null; eta?: string; firstFerry?: string; lastFerry?: string; observedAt?: string; timeType?: 'A' | 'D'; platform?: string; scheduled?: boolean; remark?: string; remarkEn?: string; tracking?: BusRouteSelection; mtrLineRef?: string; tram?: { routeId: string | null; direction: 'eastbound' | 'westbound'; vehicleId: string | null } };
 export type MapPath = { id: string; color: string; points: [number, number][]; line?: string };
 export type Language = 'en' | 'zh';
 export type SpeedLevel = 'free' | 'moderate' | 'slow' | 'unknown';
@@ -28,6 +28,8 @@ export type Camera = {
   rainfallMm?: number;
   text?: string; textEn?: string;
   dataUpdated?: string;
+  tramEtaError?: boolean;
+  tramEtaNotice?: string;
   information?: { en: string; zh: string };
   nextStation?: { name: string; nameEn: string };
   // Where a moving vehicle sits along the path it follows, as [lng, lat] pairs with cumulative
@@ -101,7 +103,7 @@ export const staticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === '1';
 export const hostedUrl = process.env.NEXT_PUBLIC_HOSTED_URL || 'https://hkrttrafficinfo.vercel.app/';
 export const layerAvailable = (kind: LayerKind) => !staticExport || !layers[kind].serverOnly;
 export function feedMaxAgeMs(kind: LayerKind): number {
-  if (kind === 'tram' || kind === 'access' || kind === 'taxi') return 24 * 60 * 60000;
+  if (kind === 'access' || kind === 'taxi') return 24 * 60 * 60000;
   if (kind === 'toll') return 12 * 60 * 60000;
   if (kind === 'mtr' || kind === 'lrt') return 300000;
   if (kind === 'works' || originalKinds.includes(kind as OriginalLayerKind)) return 10 * 60000;

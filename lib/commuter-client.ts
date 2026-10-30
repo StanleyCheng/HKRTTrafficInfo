@@ -4,6 +4,7 @@ import { layers, staticExport, type Camera, type CameraData, type CommuterKind, 
 import type { MapViewport } from './integration-client.ts'
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
+let lastTram: Pick<CameraData, 'cameras' | 'observedAt'> | undefined
 async function json(url: string, signal?: AbortSignal): Promise<unknown> {
   const timeout = AbortSignal.timeout(25_000)
   const response = await fetch(url, { cache: 'no-store', signal: signal ? AbortSignal.any([signal, timeout]) : timeout })
@@ -22,7 +23,21 @@ export async function getCommuterData(kind: CommuterKind, view: MapViewport, sig
     const query = new URLSearchParams({ lng: String(view.lng), lat: String(view.lat), zoom: String(view.zoom) })
     const result = responseBody(await json(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/api/mtr-bus?${query}`, signal), kind)
     cameras = result.cameras; observedAt = result.observedAt; stale = result.stale; feedError = result.error
-  } else if (kind === 'tram') paths = tramPaths()
+  } else if (kind === 'tram') {
+    paths = tramPaths()
+    if (!staticExport) {
+      try {
+        const query = new URLSearchParams({ lng: String(view.lng), lat: String(view.lat), zoom: String(view.zoom) })
+        const result = responseBody(await json(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/api/tram?${query}`, signal), kind)
+        cameras = result.cameras; observedAt = result.observedAt; stale = result.stale; feedError = result.error; complete = result.complete
+        lastTram = { cameras, observedAt }
+      } catch {
+        signal?.throwIfAborted()
+        if (lastTram) { cameras = lastTram.cameras; observedAt = lastTram.observedAt ?? null }
+        stale = true; complete = false; feedError = 'Tram arrivals unavailable'
+      }
+    } else cameras = cameras.map(camera => ({ ...camera, information: { en: 'Published tram stops, fares and matched tracks. Live tram arrivals require the hosted app.', zh: '已公布電車站、車費及配對軌道。實時到站時間需使用託管版本。' } }))
+  }
   else if (kind === 'access' && view.zoom >= 15) {
     try {
       const query = new URLSearchParams({ lng: String(view.lng), lat: String(view.lat), zoom: String(view.zoom) })

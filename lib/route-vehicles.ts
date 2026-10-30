@@ -7,8 +7,9 @@ import { mtrBusDirections } from './mtr-bus-geometry.ts'
 import { mtrBusLineRef } from './commuter-catalogue.ts'
 import { busCompany } from './bus-company.ts'
 import { hasBusRoadDisplay } from './bus-route-display.ts'
+import { tramVehicleCameras } from './tram.ts'
 
-export type RouteVehicleSnapshot = { kind: 'bus'; data: BusRouteResponse } | { kind: 'mtr-bus'; data: CameraData }
+export type RouteVehicleSnapshot = { kind: 'bus'; data: BusRouteResponse } | { kind: 'mtr-bus'; data: CameraData } | { kind: 'tram'; data: CameraData }
 export type RouteVehicleState = { status: 'loading' | 'error'; data?: RouteVehicleSnapshot } | { status: 'ready'; data: RouteVehicleSnapshot }
 export type RouteVehicleFeeds = Record<string, RouteVehicleSnapshot>
 const geometryDistances = new WeakMap<BusRouteData, number[]>()
@@ -35,6 +36,7 @@ function camerasOnRoute(route: Pick<BusRouteData, 'key' | 'route' | 'stops' | 'c
 
 export function selectedVehicleCameras(feeds: RouteVehicleFeeds, now: number): Camera[] {
   return Object.entries(feeds).flatMap(([id, snapshot]) => {
+    if (snapshot.kind === 'tram') return tramVehicleCameras(snapshot.data, id, now)
     if (snapshot.kind === 'mtr-bus') return mtrBusVehicleCameras(snapshot.data, id.split(':').at(-1) ?? '', now)
     const { data } = snapshot
     return (data.route ? [{ route: data.route, vehicles: data.vehicles }, ...data.reverse] : []).flatMap(direction => {

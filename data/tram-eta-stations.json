@@ -1,0 +1,898 @@
+{
+  "source": "https://api.hktramways.com/api/v1/home",
+  "retrievedAt": "2026-10-30",
+  "stops": [
+    {
+      "stopId": "99101",
+      "code": "02W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99102",
+      "code": "04W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99103",
+      "code": "06W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99104",
+      "code": "08W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99105",
+      "code": "10W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99106",
+      "code": "12W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99107",
+      "code": "14W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99108",
+      "code": "16W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99109",
+      "code": "18W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99110",
+      "code": "20W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99111",
+      "code": "22W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99112",
+      "code": "24W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99113",
+      "code": "26W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99114",
+      "code": "28W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99115",
+      "code": "30W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99116",
+      "code": "32W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99117",
+      "code": "34W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99118",
+      "code": "36W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99119",
+      "code": "38W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99120",
+      "code": "40W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99121",
+      "code": "42W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99122",
+      "code": "44W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99123",
+      "code": "46W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99124",
+      "code": "48W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99125",
+      "code": "50W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99126",
+      "code": "52W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99127",
+      "code": "54W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99128",
+      "code": "56W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99129",
+      "code": "58W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99130",
+      "code": "60W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99131",
+      "code": "39E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99132",
+      "code": "62W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99133",
+      "code": "64W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99134",
+      "code": "66W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99135",
+      "code": "68W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99136",
+      "code": "70W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99137",
+      "code": "72W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99138",
+      "code": "74W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99139",
+      "code": "76W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99140",
+      "code": "WM",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99141",
+      "code": "78W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99142",
+      "code": "80W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99143",
+      "code": "82W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99144",
+      "code": "84W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99145",
+      "code": "86W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99146",
+      "code": "88W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99147",
+      "code": "90W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99148",
+      "code": "92W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99149",
+      "code": "96W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99150",
+      "code": "98W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99151",
+      "code": "100W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99152",
+      "code": "102W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99153",
+      "code": "104W",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99201",
+      "code": "KTT",
+      "directions": [
+        "westbound",
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99202",
+      "code": "01E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99203",
+      "code": "03E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99204",
+      "code": "05E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99205",
+      "code": "07E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99206",
+      "code": "09E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99207",
+      "code": "11E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99208",
+      "code": "13E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99209",
+      "code": "15E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99210",
+      "code": "17E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99211",
+      "code": "19E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99212",
+      "code": "WMT",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99213",
+      "code": "21E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99214",
+      "code": "23E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99215",
+      "code": "25E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99216",
+      "code": "27E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99217",
+      "code": "29E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99218",
+      "code": "31E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99219",
+      "code": "33E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99220",
+      "code": "35E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99221",
+      "code": "37E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99222",
+      "code": "41E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99223",
+      "code": "43E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99224",
+      "code": "45E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99225",
+      "code": "CBT",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99226",
+      "code": "47E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99227",
+      "code": "49E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99228",
+      "code": "51E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99230",
+      "code": "53E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99231",
+      "code": "55E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99232",
+      "code": "57E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99233",
+      "code": "59E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99234",
+      "code": "61E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99235",
+      "code": "63E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99236",
+      "code": "65E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99237",
+      "code": "69E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99238",
+      "code": "71E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99239",
+      "code": "73E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99240",
+      "code": "75E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99241",
+      "code": "77E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99242",
+      "code": "79E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99243",
+      "code": "81E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99244",
+      "code": "83E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99245",
+      "code": "85E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99246",
+      "code": "87E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99247",
+      "code": "89E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99248",
+      "code": "91E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99249",
+      "code": "95E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99250",
+      "code": "99E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99251",
+      "code": "101E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99252",
+      "code": "93E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99301",
+      "code": "105",
+      "directions": [
+        "westbound",
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99302",
+      "code": "106",
+      "directions": [
+        "westbound",
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99303",
+      "code": "107",
+      "directions": [
+        "westbound",
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99304",
+      "code": "HVT",
+      "directions": [
+        "westbound",
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99305",
+      "code": "110",
+      "directions": [
+        "westbound",
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99306",
+      "code": "112",
+      "directions": [
+        "westbound",
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99307",
+      "code": "108",
+      "directions": [
+        "westbound",
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99308",
+      "code": "109",
+      "directions": [
+        "westbound",
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99309",
+      "code": "111",
+      "directions": [
+        "westbound",
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99310",
+      "code": "SKT",
+      "directions": [
+        "westbound",
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99311",
+      "code": "67E",
+      "directions": [
+        "eastbound"
+      ]
+    },
+    {
+      "stopId": "99312",
+      "code": "NPT",
+      "directions": [
+        "westbound"
+      ]
+    },
+    {
+      "stopId": "99313",
+      "code": "WST",
+      "directions": [
+        "eastbound"
+      ]
+    }
+  ],
+  "destinations": [
+    {
+      "code": "CBT",
+      "tc": "銅鑼灣",
+      "en": "Causeway Bay"
+    },
+    {
+      "code": "HVT",
+      "tc": "跑馬地",
+      "en": "Happy Valley"
+    },
+    {
+      "code": "HVT_B",
+      "tc": "跑馬地",
+      "en": "Happy Valley"
+    },
+    {
+      "code": "HVT_K",
+      "tc": "跑馬地",
+      "en": "Happy Valley"
+    },
+    {
+      "code": "KTT",
+      "tc": "堅尼地城",
+      "en": "Kennedy Town"
+    },
+    {
+      "code": "NPT",
+      "tc": "北角",
+      "en": "North Point"
+    },
+    {
+      "code": "ED",
+      "tc": "西灣河車廠",
+      "en": "Sai Wan Ho Depot"
+    },
+    {
+      "code": "SKT",
+      "tc": "筲箕灣",
+      "en": "Shau Kei Wan"
+    },
+    {
+      "code": "WST",
+      "tc": "石塘咀",
+      "en": "Shek Tong Tsui"
+    },
+    {
+      "code": "WM",
+      "tc": "上環(西港城)",
+      "en": "Western Market"
+    },
+    {
+      "code": "WMT",
+      "tc": "上環(西港城)",
+      "en": "Western Market"
+    },
+    {
+      "code": "WD",
+      "tc": "屈地街車廠",
+      "en": "Whitty Street Depot"
+    }
+  ]
+}

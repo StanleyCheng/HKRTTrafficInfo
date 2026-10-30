@@ -8,7 +8,7 @@ export const railVehicleIcons: Record<string, string> = {
   KTL: 'rail-urban', SIL: 'rail-south', TCL: 'rail-tung-chung', TKL: 'rail-urban',
   TML: 'rail-tuen-ma', TWL: 'rail-urban',
 };
-export const vehicleIconAssets = [...new Set(Object.values(railVehicleIcons)), 'rail-light',
+export const vehicleIconAssets = [...new Set(Object.values(railVehicleIcons)), 'rail-light', 'tram',
   'bus-kmb', 'bus-lwb', 'bus-citybus', 'bus-gmb', 'bus-nlb', 'bus-mtr',
   'ferry-star', 'ferry-sun', 'ferry-hkkf', 'ferry-fortune'];
 
@@ -24,7 +24,7 @@ export function vehicleIcon(camera: Pick<Camera, 'kind'> & Partial<Pick<Camera, 
   const arrival = camera.arrivals?.[0];
   const route = camera.route ?? arrival?.route ?? '';
   const asset = camera.vehicleIcon
-    ?? (camera.kind === 'mtr' ? railVehicleIcons[route]
+    ?? (camera.kind === 'tram' ? 'tram' : camera.kind === 'mtr' ? railVehicleIcons[route]
       : camera.kind === 'lrt' ? 'rail-light'
         : camera.kind === 'kmb' ? `bus-${busCompany(route, camera.company ?? arrival?.tracking?.company ?? '').toLowerCase()}`
           : camera.kind === 'mtr-bus' ? 'bus-mtr'

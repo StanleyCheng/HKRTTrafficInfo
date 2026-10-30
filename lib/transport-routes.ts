@@ -116,8 +116,9 @@ export function filterTransportFeed(kind: LayerKind, data: CameraData | undefine
     if (!cameraRouteIds(camera, choices).some(id => ids.has(id))) return []
     const arrivals = camera.arrivals?.filter(call => kind === 'ferry'
       ? visible.some(route => route.stopIds.includes(camera.sourceId) && Boolean(call.destinationEn && route.nameEn.includes(call.destinationEn) || call.destination && route.name.includes(call.destination)))
-      : visible.some(route => route.code === call.route))
-    const codes = camera.routes?.filter(code => visible.some(route => route.code === code))
+      : kind === 'tram' ? visible.some(route => route.id === `tram:${call.tram?.routeId}`)
+        : visible.some(route => route.code === call.route))
+    const codes = camera.routes?.filter(code => visible.some(route => kind === 'tram' ? route.id === `tram:${code}` : route.code === code))
     const lineColors = kind === 'mtr' ? mtrLineList().filter(line => linesThrough(camera.sourceId).includes(line.code) && visible.some(route => route.code === line.code)).map(line => line.color) : undefined
     return [{ ...camera, arrivals, ...(codes ? { routes: codes, badge: codes.slice(0, 3).join(' · ') } : {}), ...(lineColors ? { color: lineColors[0], lineColors } : {}) }]
   })
