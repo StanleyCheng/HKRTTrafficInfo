@@ -1,3 +1,4 @@
+import { RefreshBackoff } from './refresh-backoff.ts'
 import { viewportAllowed } from "./view-cache.ts"
 import { gmbStop, gmbStopsWithin } from "./gmb-reach.ts"
 import { kmbReachMetres } from "./kmb-reach.ts"
@@ -31,6 +32,7 @@ type EtaRoute = {
   eta?: EtaEntry[] | null
 }
 
+const retries = new RefreshBackoff()
 const remembered = new Map<string, HeldRows<EtaRoute>>()
 
 export function loadGmbPlaces(lng: number, lat: number, _now = Date.now(), zoom = Number.NaN): GmbPlacesResponse {
@@ -62,9 +64,10 @@ export async function loadGmbNear(lng: number, lat: number, now = Date.now(), zo
     await pool(nearest.map((stop) => stop.id), FETCH_LIMIT, async (stopId) => {
       const cached = remembered.get(stopId)
       if (!etaDue(cached, now)) return
+      if (!retries.due(stopId, now)) { missed += 1; return }
       const rows = await fetchStop(stopId, signal)
-      if (rows) remembered.set(stopId, rows)
-      else missed += 1
+      if (rows) { remembered.set(stopId, rows); retries.reset(stopId) }
+      else { missed += 1; retries.fail(stopId, Date.now()) }
     })
     return missed
   }, nearest.map(stop => stop.id).sort().join(","))

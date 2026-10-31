@@ -22,7 +22,7 @@ export async function getCommuterData(kind: CommuterKind, view: MapViewport, sig
   if (kind === 'mtr-bus') {
     const query = new URLSearchParams({ lng: String(view.lng), lat: String(view.lat), zoom: String(view.zoom) })
     const result = responseBody(await json(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/api/mtr-bus?${query}`, signal), kind)
-    cameras = result.cameras; observedAt = result.observedAt; stale = result.stale; feedError = result.error
+    cameras = result.cameras; observedAt = result.observedAt; stale = result.stale; feedError = result.error; complete = result.complete
   } else if (kind === 'tram') {
     paths = tramPaths()
     if (!staticExport) {

@@ -13,9 +13,9 @@ import type { TrafficSearchItem } from '@/lib/traffic-view';
 import { ferryDepartures, movingCameras, railHoverText, busKinds, type MapViewport } from '@/lib/integration-client';
 import { stopPlate } from '@/lib/stop-plate';
 import { STOP_LABEL_WIDTH, declutterLabels, stopLabelHeight, type StopLabelItem, type StopLabelPlacement } from '@/lib/stop-labels';
-import type { BusRouteData, BusRouteResponse, BusRouteSelection, BusRouteStop, BusVehicle } from '@/lib/bus-route';
+import type { BusRouteData, BusRouteResponse, BusRouteSelection, BusVehicle } from '@/lib/bus-route';
 import { hasBusRoadDisplay } from '@/lib/bus-route-display';
- import { getBusStopArrivals } from '@/lib/bus-route-client';
+ import { useBusStopArrivals } from './use-bus-stop-arrivals';
 import { busVehicleDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '@/lib/bus-route-motion';
 import { markerOffsets, type MarkerPoint } from '@/lib/marker-layout';
 import { vehicleIcon, vehicleIconHeadingOffset } from '@/lib/vehicle-icons';
@@ -108,7 +108,6 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
   const markers = useRef(new Map<string, Leaflet.Marker>());
   const markerData = useRef(new Map<string, { camera: Camera; style: string; labelLines?: number }>());
   const [routePopupStop, setRoutePopupStop] = useSessionField('routeStop');
-  const [routePopupData, setRoutePopupData] = useState<{ stop: BusRouteStop; language: Language; camera?: Camera; status: 'loading' | 'error' | 'ready' } | null>(null);
   const [popupElement, setPopupElement] = useState<HTMLDivElement | null>(null);
   const [snapshotHover, setSnapshotHover] = useState<{ camera: Camera; element: HTMLDivElement } | null>(null);
   const [hoverCapable, setHoverCapable] = useState(false);
@@ -600,10 +599,13 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
     document.addEventListener('visibilitychange', run);
     return () => { layoutMarkers.current = () => {}; m.off('moveend', run); m.off('zoomend', run); document.removeEventListener('visibilitychange', run); };
   }, [cameras, ready, language, mapZoom, inactive, routeFocus]);
+  const popupSelection = routePopupStop?.key === busRouteKey && busRoute?.route && busSelection ? { ...busSelection, stopId: routePopupStop.stop.id, stopSeq: routePopupStop.stop.seq } : null;
+  const stopArrivals = useBusStopArrivals(popupSelection, onActivity);
   const routePopupCamera: Camera | null = routePopupStop?.key === busRouteKey && busRoute?.route ? {
-    ...(routePopupData && routePopupData.stop === routePopupStop.stop && routePopupData.language === language ? routePopupData.camera : undefined),
     id: `${busRoute.route.operator}-${routePopupStop.stop.id}`, sourceId: routePopupStop.stop.id, kind: busRoute.route.operator,
     name: routePopupStop.stop.nameTc, nameEn: routePopupStop.stop.nameEn, lat: routePopupStop.stop.lat, lng: routePopupStop.stop.lng,
+    routes: [busRoute.route.route], dataUpdated: stopArrivals.data?.observedAt ?? undefined,
+    arrivals: stopArrivals.data?.arrivals.map(call => ({ ...call, destination: call.destination || busRoute.route?.stops.at(-1)?.nameTc || '', destinationEn: call.destinationEn || busRoute.route?.stops.at(-1)?.nameEn || '' })),
   } : null;
   const popupCamera = selected ?? routePopupCamera;
   const popupId = selected?.id ?? (routePopupCamera ? `route:${busRouteKey}:${routePopupStop!.stop.seq}` : null);
@@ -611,24 +613,8 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
   useEffect(() => { popupCameraRef.current = popupCamera; }, [popupCamera]);
   useEffect(() => {
     if (!routePopupStop || busSelection && !busRoute) return;
-    const controller = new AbortController();
-    queueMicrotask(() => {
-      if (controller.signal.aborted) return;
-      if (routePopupStop.key !== busRouteKey || !busSelection) { setRoutePopupStop(current => current === routePopupStop ? null : current); return; }
-      const stop = routePopupStop.stop;
-      const terminus = busRoute?.route?.stops.at(-1);
-      setRoutePopupData({ stop, language, status: 'loading' });
-      const finish = onActivity();
-      controller.signal.addEventListener('abort', finish, { once: true });
-      void getBusStopArrivals({ ...busSelection, stopId: stop.id, stopSeq: stop.seq }, controller.signal).then(data => {
-        if (controller.signal.aborted) return;
-        if (!data.ok || data.stale || data.error || !data.observedAt) throw new Error('Stop arrivals unavailable');
-        const camera: Camera = { id: `${busSelection.operator}-${stop.id}`, sourceId: stop.id, kind: busSelection.operator, name: stop.nameTc, nameEn: stop.nameEn, lat: stop.lat, lng: stop.lng, dataUpdated: data.observedAt, arrivals: data.arrivals.map(call => ({ ...call, destination: call.destination || terminus?.nameTc || '', destinationEn: call.destinationEn || terminus?.nameEn || terminus?.nameTc || '' })) };
-        setRoutePopupData({ stop, language, camera, status: 'ready' });
-      }).catch(() => { if (!controller.signal.aborted) setRoutePopupData({ stop, language, status: 'error' }); }).finally(() => { controller.signal.removeEventListener('abort', finish); finish(); });
-    });
-    return () => { controller.abort(); };
-  }, [routePopupStop, busRouteKey, busSelection, busRoute, language, setRoutePopupStop, onActivity]);
+    if (routePopupStop.key !== busRouteKey || !busSelection) setRoutePopupStop(current => current === routePopupStop ? null : current);
+  }, [routePopupStop, busRouteKey, busSelection, busRoute, setRoutePopupStop]);
   useEffect(() => {
     const m = map.current;
     if (!ready || !m || !focusTarget) return;
@@ -1161,8 +1147,8 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
     {!ready && !mapError && <div className="map-loading"><LoaderCircle className="spin" size={20}/> {copy.mapLoading}</div>}
     {ready && !loading && !busRoute?.route && cameras.length === 0 && !segments?.length && !paths?.length && (allDisabled || hasDrawableLayers) && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
     {popupElement && popupCamera && createPortal(renderItemDetails(popupCamera, selected ? undefined : {
-      status: routePopupData && routePopupData.stop === routePopupStop?.stop && routePopupData.language === language ? routePopupData.status : 'loading',
-      onRetry: () => setRoutePopupStop(current => current ? { ...current } : null),
+      status: stopArrivals.status,
+      onRetry: stopArrivals.retry,
       onClose: () => setRoutePopupStop(null),
     }), popupElement)}
     {snapshotHover && createPortal(<div onClick={event => {

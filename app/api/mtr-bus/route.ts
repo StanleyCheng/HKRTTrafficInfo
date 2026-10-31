@@ -6,6 +6,6 @@ export const GET = viewCachedGet({
   freshMs: 5_000,
   keepMs: ETA_KEEP_MS,
   load: loadMtrBusNear,
-  missing: () => ({ ok: false, cameras: [], observedAt: null, stale: false, error: 'Map viewport required' }),
-  failed: () => ({ ok: false, cameras: [], observedAt: null, stale: true, error: 'MTR bus schedules unavailable' }),
+  missing: () => ({ ok: false, cameras: [], observedAt: null, stale: false, complete: false, cacheable: false, error: 'Map viewport required' }),
+  failed: () => ({ ok: false, cameras: [], observedAt: null, stale: true, complete: false, cacheable: false, error: 'MTR bus schedules unavailable' }),
 })

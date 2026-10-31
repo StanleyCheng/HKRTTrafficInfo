@@ -264,15 +264,26 @@ try {
     await f.page.waitForTimeout(500);
     assert.equal(await f.page.locator('.item-popup').count(), 0, 'A delayed response cannot reopen a closed popup');
     f.controls.arrivalDelay = 0;
+    // Reopening a healthy board within 30 seconds reuses its observation.
+    // Move past that cache window before introducing an upstream failure.
+    await f.page.evaluate(() => { const realNow = Date.now; Date.now = () => realNow() + 31000; });
     for (const mode of ['error', 'stale']) {
       f.controls.arrivalMode = mode;
       await middle.click();
       await f.page.locator('.item-detail-status[role="alert"]').waitFor();
-      assert.equal(await f.page.locator('.item-popup .arrival-destination').count(), 0, 'Unavailable arrivals must not be presented as fresh');
+      if (mode === 'stale') {
+        const before = f.arrivalRequests.length;
+        await f.page.locator('.item-detail-status').getByRole('button', { name: 'Retry', exact: true }).click();
+        await f.page.waitForTimeout(100);
+        assert.equal(f.arrivalRequests.length, before + 1, 'Explicit retry bypasses the failed-popup cooldown');
+      }
+      assert.equal(await f.page.locator('.item-popup .arrival-destination').count(), 1, 'An unexpired last-good board remains available during failure');
+      assert.ok(await f.page.locator('.item-popup .warning-text').count(), 'Retained arrival data is visibly marked stale');
       assert.equal(await f.page.locator('.item-popup').getByText('No upcoming arrivals reported.', { exact: true }).count(), 0, 'Failure is distinct from an empty live result');
       await closeStopPopup(f.page);
     }
     f.controls.arrivalMode = 'empty'; await middle.click();
+    await f.page.locator('.item-detail-status').getByRole('button', { name: 'Retry', exact: true }).click();
     await f.page.locator('.item-popup').getByText('No upcoming arrivals reported.', { exact: true }).waitFor();
     assert.equal(await f.page.locator('.item-detail-status[role="alert"]').count(), 0);
     assert.equal(await f.page.locator('.bus-route-polyline').count(), 1);

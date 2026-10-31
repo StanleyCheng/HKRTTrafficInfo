@@ -262,7 +262,7 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .item-detail .arrival-destination small, .item-detail .arrival-minutes small { font-size: 12px; color: var(--muted); }
 .item-detail .arrival-minutes { font-size: 20px; }
 .item-detail .arrival-board li { gap: 8px; padding: 8px 0; }
-.item-detail .arrival-route-choice { max-width: 86px; }
+.item-detail .arrival-route-choice { max-width: 100px; }
 .item-detail .bus-route-button { font-size: 12px; }
 .item-detail button, .item-detail .text-button { min-height: 44px; }
 .item-detail .bus-route-status { padding: 10px 0; }
@@ -519,6 +519,7 @@ input { font: inherit; color: inherit; caret-color: var(--primary); }
 .stop-plate.pos-below{left:50%;top:28px;transform:translateX(-50%)}
 .camera-marker:hover .stop-plate.live,.camera-marker:focus-visible .stop-plate.live{border-color:#9fbcc4;background:#f4faf9}
 .arrival-route-choice{display:flex;flex:none;flex-direction:column;align-items:flex-start;gap:5px;max-width:96px}.bus-route-button{min-height:32px;padding:5px 7px;border:1px solid #cbdadd;border-radius:5px;background:#fff;color:#205b61;font-size:10px;line-height:1.25;text-align:left;cursor:pointer;transition:background-color 140ms ease-out,color 140ms ease-out}.bus-route-button:hover{background:#eef6f5}.bus-route-button[aria-pressed=true]{background:#205b61;color:#fff;border-color:#205b61}.bus-route-button:focus-visible{outline:2px solid #137f87;outline-offset:3px}.bus-route-status{margin:18px 0;padding:12px 0;border-block:1px solid #dce5e9;font-size:12px}.bus-route-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px}.bus-route-heading strong{font-size:12px}.bus-route-status p{display:flex;align-items:center;gap:6px;margin:8px 0 0;color:#4a6471;line-height:1.5}.bus-route-status .warning-text{color:#9b471b}.bus-route-stop{pointer-events:none}
+.bus-route-actions{display:flex;flex-wrap:wrap;gap:4px}.arrival-route-choice .bus-route-actions{flex-direction:column;align-items:flex-start}
 .leaflet-tooltip.bus-route-stop-tooltip{padding:0;border:0;border-radius:4px;background:transparent;box-shadow:none}
 .bus-route-stop-tooltip::before{display:none}
 .bus-route-stop-label{display:block;width:max-content;min-height:24px;padding:3px 6px;border:1px solid var(--route-color);border-radius:4px;background:#fff;box-shadow:0 2px 4px #24384718;color:#274957;font:600 10px/1.4 system-ui,sans-serif;white-space:normal;overflow-wrap:anywhere;text-align:left;cursor:pointer}

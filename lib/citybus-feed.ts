@@ -1,3 +1,4 @@
+import { RefreshBackoff } from './refresh-backoff.ts'
 import { viewportAllowed } from "./view-cache.ts"
 import { arrivalPairs } from "./arrival-pairs.ts"
 import { citybusStop, nearestCitybusStops } from "./citybus-network.ts"
@@ -29,6 +30,7 @@ type EtaRow = {
   rmk_tc?: string
 }
 
+const retries = new RefreshBackoff()
 const remembered = new Map<string, HeldRows<EtaRow>>()
 
 export function loadCitybusPlaces(lng: number, lat: number, _now = Date.now(), zoom = Number.NaN): CitybusPlacesResponse {
@@ -63,9 +65,10 @@ export async function loadCitybusNear(lng: number, lat: number, now = Date.now()
       const key = `${pair.stopId}/${pair.route}`
       const cached = remembered.get(key)
       if (!etaDue(cached, now)) return
+      if (!retries.due(key, now)) { missed += 1; return }
       const rows = await fetchEta(pair.stopId, pair.route, signal)
-      if (rows) remembered.set(key, rows)
-      else missed += 1
+      if (rows) { remembered.set(key, rows); retries.reset(key) }
+      else { missed += 1; retries.fail(key, Date.now()) }
     })
     return missed
   }, pairs.map(pair => `${pair.stopId}/${pair.route}`).sort().join(","))

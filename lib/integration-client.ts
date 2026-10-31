@@ -12,13 +12,17 @@ import { ferryVehicleIcon } from './vehicle-icons.ts';
 import { decorateControlPoints } from './control-points.ts';
 import { waitForRequest } from './request-wait.ts';
 import { reconcileTransitIdentities, type TransitIdentitySample } from './transit-identity.ts';
+import { kmbCacheKey } from './kmb-reach.ts';
 
 export type MapViewport = { lng: number; lat: number; zoom: number };
 export const initialViewport: MapViewport = { lng: 114.13, lat: 22.355, zoom: 11 };
 export const busKinds = ['kmb', 'citybus', 'gmb', 'nlb'] as const;
 export function integrationRequestKey(kind: IntegrationKind, view: MapViewport, language: Language): string {
-  if (kind === 'mtr-bus' || kind === 'access') return `${view.lng.toFixed(3)}:${view.lat.toFixed(3)}:${Math.floor(view.zoom)}`;
-  if (busKinds.includes(kind as typeof busKinds[number])) return `${view.lng}:${view.lat}:${view.zoom}`;
+  // Crossing a coverage gate must invalidate an empty gated result, even when
+  // both views occupy the same rounded cache cell.
+  const gate = viewportNote(kind, view) ? 'gated:' : '';
+  if (kind === 'kmb' || kind === 'gmb') return `${gate}${kmbCacheKey(view.lng, view.lat, view.zoom)}`;
+  if (kind === 'mtr-bus' || kind === 'access' || kind === 'citybus' || kind === 'nlb') return `${gate}${view.lng.toFixed(3)}:${view.lat.toFixed(3)}:${Math.floor(view.zoom)}`;
   // Warning names and details are returned in the requested language. Other
   // envelopes carry both languages and can survive a language switch.
   return kind === 'weather-warning' ? language : '';

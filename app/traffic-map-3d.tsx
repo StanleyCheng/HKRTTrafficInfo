@@ -18,7 +18,7 @@ import { markerOffsets } from '@/lib/marker-layout';
 import { vehicleIcon, vehicleIconHeadingOffset } from '@/lib/vehicle-icons';
 import { busVehicleDistanceAtTime, routeDistances, routeHeadingAtDistance, routePointAtDistance } from '@/lib/bus-route-motion';
 import { hasBusRoadDisplay } from '@/lib/bus-route-display';
-import { getBusStopArrivals } from '@/lib/bus-route-client';
+import { useBusStopArrivals } from './use-bus-stop-arrivals';
 import { createLocationMotion, locationTransitionDuration, validLocationFix, type LocationPoint } from '@/lib/location-motion';
 import { vehicleCorrection, vehicleFrame, type VehicleCorrection } from '@/lib/vehicle-motion';
 import type { TrafficMapProps } from './traffic-map';
@@ -57,7 +57,6 @@ export default function TrafficMap3D(props: Props) {
   const [routeLabels] = useSessionField('routeLabels');
   const [revealedRoute, setRevealedRoute] = useSessionField('revealedRoute');
   const [routeStop, setRouteStop] = useSessionField('routeStop');
-  const [routeDetails, setRouteDetails] = useState<{ camera: Camera; language: string; status: 'loading' | 'error' | 'ready' } | null>(null);
   const [locating, setLocating] = useState(false);
   const [following, setFollowing] = useState(false);
   const [locationError, setLocationError] = useState<'denied' | 'timeout' | 'unsupported' | 'unavailable' | null>(null);
@@ -68,9 +67,11 @@ export default function TrafficMap3D(props: Props) {
   const routeFocus = Boolean(routeKey && revealedRoute !== routeKey);
   const stopCamera: Camera | null = routeStop?.key === routeKey && busRoute?.route ? {
     id: `${busRoute.route.operator}-${routeStop.stop.id}`, sourceId: routeStop.stop.id, kind: busRoute.route.operator,
-    name: routeStop.stop.nameTc, nameEn: routeStop.stop.nameEn, lat: routeStop.stop.lat, lng: routeStop.stop.lng,
+    name: routeStop.stop.nameTc, nameEn: routeStop.stop.nameEn, lat: routeStop.stop.lat, lng: routeStop.stop.lng, routes: [busRoute.route.route],
   } : null;
-  const popupCamera = selected ?? (stopCamera && routeDetails?.camera.id === stopCamera.id && routeDetails.language === language ? routeDetails.camera : stopCamera);
+  const popupSelection = stopCamera && routeStop && busSelection ? { ...busSelection, stopId: routeStop.stop.id, stopSeq: routeStop.stop.seq } : null;
+  const stopArrivals = useBusStopArrivals(popupSelection, onActivity);
+  const popupCamera = selected ?? (stopCamera && stopArrivals.data ? { ...stopCamera, arrivals: stopArrivals.data.arrivals, dataUpdated: stopArrivals.data.observedAt ?? undefined } : stopCamera);
   const popupId = selected?.id ?? (stopCamera ? `route:${routeKey}:${routeStop?.stop.seq}` : null);
 
   const stopLocating = useCallback(() => {
@@ -371,35 +372,6 @@ export default function TrafficMap3D(props: Props) {
   }, [ready, busRoute, props.fitBusRoute]);
 
   useEffect(() => {
-    if (!routeStop || !busSelection || routeStop.key !== routeKey || !stopCamera) return;
-    const controller = new AbortController(), camera = stopCamera;
-    let pending = false;
-    const refresh = async () => {
-      if (pending || controller.signal.aborted || document.visibilityState !== 'visible') return;
-      pending = true;
-      const finish = onActivity();
-      controller.signal.addEventListener('abort', finish, { once: true });
-      try {
-        const data = await getBusStopArrivals({ ...busSelection, stopId: routeStop.stop.id, stopSeq: routeStop.stop.seq }, controller.signal);
-        if (controller.signal.aborted) return;
-        if (!data.ok || data.stale || data.error || !data.observedAt) throw new Error('Stop arrivals unavailable');
-        setRouteDetails({ camera: { ...camera, arrivals: data.arrivals, dataUpdated: data.observedAt }, language, status: 'ready' });
-      } catch {
-        if (!controller.signal.aborted) setRouteDetails(previous => previous?.camera.id === camera.id && previous.language === language
-          ? { ...previous, status: 'error' } : { camera, language, status: 'error' });
-      } finally { controller.signal.removeEventListener('abort', finish); finish(); pending = false; }
-    };
-    queueMicrotask(() => { if (!controller.signal.aborted) { setRouteDetails({ camera, language, status: 'loading' }); void refresh(); } });
-    const timer = setInterval(() => void refresh(), 30_000);
-    const resume = () => void refresh();
-    document.addEventListener('visibilitychange', resume);
-    window.addEventListener('online', resume);
-    return () => { controller.abort(); clearInterval(timer); document.removeEventListener('visibilitychange', resume); window.removeEventListener('online', resume); };
-    // camera is derived from this stop and route; feed refreshes should not reset its popup.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeStop, routeKey, busSelection, language, onActivity]);
-
-  useEffect(() => {
     const m = map.current, gl = library.current;
     if (!ready || !m || !gl || !focusTarget) return;
     if (focusTarget.segment) {
@@ -507,8 +479,8 @@ export default function TrafficMap3D(props: Props) {
     {!ready && !error && <div className="map-loading"><LoaderCircle className="spin" size={20}/>{copy.map3DLoading}</div>}
     {ready && !loading && !busRoute?.route && cameras.length === 0 && !segments?.length && !paths?.length && (allDisabled || hasDrawableLayers) && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
     {popupElement && popupCamera && createPortal(renderItemDetails(popupCamera, selected ? undefined : {
-      status: routeDetails?.camera.id === stopCamera?.id && routeDetails?.language === language ? routeDetails.status : 'loading',
-      onRetry: () => setRouteStop(current => current ? { ...current } : null), onClose: () => setRouteStop(null),
+      status: stopArrivals.status,
+      onRetry: stopArrivals.retry, onClose: () => setRouteStop(null),
     }), popupElement)}
   </section>;
 }

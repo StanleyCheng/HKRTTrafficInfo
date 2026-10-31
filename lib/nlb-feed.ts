@@ -1,3 +1,4 @@
+import { RefreshBackoff } from './refresh-backoff.ts'
 import { viewportAllowed } from "./view-cache.ts"
 import { arrivalPairs } from "./arrival-pairs.ts"
 import { nlbArrivalMs } from "./nlb-clock.ts"
@@ -19,6 +20,7 @@ const ETA_ROOT = "https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=estima
 
 type Arrival = { estimatedArrivalTime?: string; generateTime?: string; departed?: string | number; noGPS?: string | number }
 
+const retries = new RefreshBackoff()
 const remembered = new Map<string, HeldRows<Arrival>>()
 
 export function loadNlbPlaces(lng: number, lat: number, _now = Date.now(), zoom = Number.NaN): NlbPlacesResponse {
@@ -55,9 +57,10 @@ export async function loadNlbNear(lng: number, lat: number, now = Date.now(), zo
       const key = `${pair.stopId}/${pair.route}`
       const cached = remembered.get(key)
       if (!etaDue(cached, now)) return
+      if (!retries.due(key, now)) { missed += 1; return }
       const rows = await fetchEta(pair.route, pair.stopId, signal)
-      if (rows) remembered.set(key, rows)
-      else missed += 1
+      if (rows) { remembered.set(key, rows); retries.reset(key) }
+      else { missed += 1; retries.fail(key, Date.now()) }
     })
     return missed
   }, pairs.map(pair => `${pair.stopId}/${pair.route}`).sort().join(","))

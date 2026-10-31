@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getBusRoutePaths } from '@/lib/bus-route-client'
 import { busPaths, routeVisible, type TransportRoute, type RouteVisibility } from '@/lib/transport-routes'
 import type { MapPath, LayerKind } from '@/lib/traffic'
@@ -13,9 +13,12 @@ export function useRoutePaths(routes: TransportRoute[], enabled: Record<LayerKin
   const [retry, setRetry] = useState(0)
   // A stable work list keeps clock ticks and individual completion renders from restarting the queue.
   const work = useMemo(() => routes.filter(route => route.bus && enabled[route.kind] && routeVisible(route, visibility)), [routes, enabled, visibility])
+  const workKey = JSON.stringify(work.map(route => [route.id, route.bus]))
+  const workRef = useRef(work), loadedRef = useRef(loaded)
+  useEffect(() => { workRef.current = work; loadedRef.current = loaded }, [work, loaded])
   useEffect(() => {
     const controller = new AbortController()
-    const queue = work.filter(route => !loaded[route.id] || retry && loaded[route.id].status === 'error')
+    const queue = workRef.current.filter(route => !loadedRef.current[route.id])
     async function worker() {
       while (queue.length && !controller.signal.aborted) {
         const route = queue.shift()
@@ -32,8 +35,6 @@ export function useRoutePaths(routes: TransportRoute[], enabled: Record<LayerKin
     }
     void worker(); void worker()
     return () => controller.abort()
-    // Loaded results are a cache, not an input that restarts outstanding requests.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [work, retry, onActivity])
-  return { loaded, retry: () => setRetry(value => value + 1), prime: (id: string, routes: BusRouteData[]) => setLoaded(previous => ({ ...previous, [id]: ready(routes) })) }
+  }, [workKey, retry, onActivity])
+  return { loaded, retry: () => { setLoaded(previous => Object.fromEntries(Object.entries(previous).filter(([, state]) => state.status !== 'error'))); setRetry(value => value + 1) }, prime: (id: string, routes: BusRouteData[]) => setLoaded(previous => ({ ...previous, [id]: ready(routes) })) }
 }

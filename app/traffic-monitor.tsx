@@ -12,6 +12,7 @@ import ItemDetails from './item-details';
 import NearbyPanel from './nearby-panel';
 import { useSessionField } from './use-session-field';
 import { savedPlace, sessionStore } from '@/lib/session-state';
+import { RefreshBackoff } from '@/lib/refresh-backoff';
 import { nearbyCategory, nearbyCategoryKinds, nearbyPlaces } from '@/lib/nearby';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import TrafficSearch from './traffic-search';
@@ -321,7 +322,9 @@ export default function TrafficMonitor() {
   const [busRouteState, setBusRouteState] = useState<BusRouteState | null>(null);
   const [routeToFit, setRouteToFit] = useState<BusRouteSelection | null>(null);
   const [busRouteRetry, setBusRouteRetry] = useState(0);
-  const busRouteCache = useRef(new Map<string, { promise: Promise<BusRouteState>; pending: boolean }>());
+  const busRouteCache = useRef(new Map<string, { promise: Promise<BusRouteState>; pending: boolean; at: number }>());
+  const busRouteBackoff = useRef(new RefreshBackoff());
+  const busFeedBackoff = useRef(new RefreshBackoff());
   const [showDetectors, setShowDetectors] = useSessionField('showDetectors');
   const [openControl, setOpenControl] = useSessionField('openControl');
   const [showNearbyOnMap] = useSessionField('showNearbyOnMap');
@@ -441,6 +444,10 @@ export default function TrafficMonitor() {
     });
     const refresh = async (kind: IntegrationKind, force = false) => {
       if (!requested[kind] || !layerAvailable(kind) || document.visibilityState !== 'visible') return;
+      const bus = kind === 'kmb' || kind === 'citybus' || kind === 'gmb' || kind === 'nlb' || kind === 'mtr-bus';
+      if (bus && !navigator.onLine) return;
+      if (force) busFeedBackoff.current.reset(kind);
+      if (bus && !busFeedBackoff.current.due(kind)) return;
       const last = integrationLastFetch.current.get(kind);
       const key = integrationRequestKey(kind, viewport, language);
       const pending = integrationPending.current.get(kind);
@@ -460,18 +467,20 @@ export default function TrafficMonitor() {
       try {
         const data = await getIntegrationData(kind, viewport, language, request.controller.signal);
         if (!isCurrent()) return;
-        // A bus feed surfaces total failures as data.stale=true + a
-        // non-parenthetical feedError; partial misses leave data.stale=false
-        // and only set feedError to "Some X (N of M)", which is a soft warning
-        // rendered in the popover rather than a red banner. MTR/LRT derive their
-        // failure flag from !data.complete (which already accounts for staleness).
+        // Stale data always signals a failure. Partial bus misses keep healthy
+        // boards live and use a counted soft warning in the layer popover.
         const partialMiss = Boolean(data.feedError && /\(\d+ of \d+\)/.test(data.feedError))
-        const error = !partialMiss && (Boolean(data.stale) || Boolean(data.feedError) || ((kind === 'mtr' || kind === 'lrt') && !data.complete))
-        if (error) integrationLastFetch.current.set(kind, { key, at: Date.now(), retryAt: Date.now() + 30000 });
+        const error = Boolean(data.stale) || !partialMiss && (Boolean(data.feedError) || ((kind === 'mtr' || kind === 'lrt') && !data.complete))
         const completedAt = Date.now();
+        if (bus) {
+          if (error) busFeedBackoff.current.fail(kind, completedAt);
+          else busFeedBackoff.current.reset(kind);
+        }
+        integrationLastFetch.current.set(kind, { key, at: completedAt, ...(error && !bus ? { retryAt: completedAt + 30000 } : {}) });
         setStates(state => ({ ...state, [kind]: { data: retainTransitIdentities(kind, data, state[kind].data, completedAt), loading: false, error } }));
       } catch {
         if (isCurrent()) {
+          if (bus) busFeedBackoff.current.fail(kind);
           integrationLastFetch.current.set(kind, { key, at: Date.now(), retryAt: Date.now() + 30000 });
           setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false, error: true } }));
         }
@@ -508,14 +517,14 @@ export default function TrafficMonitor() {
   const paths = useMemo(() => [
     ...(['mtr', 'lrt', 'ferry', 'tram', 'access'] as const).flatMap(kind => enabled[kind] ? viewStates[kind].data?.paths ?? [] : []),
     ...routeCatalogue.flatMap(route => {
-      if (!route.bus || !enabled[route.kind] || !routeVisible(route, routeVisibility) || busSelection?.operator === route.kind && busSelection.route === route.code) return [];
+      if (!route.bus || !enabled[route.kind] || !routeVisible(route, routeVisibility) || activeBusSelection?.operator === route.kind && activeBusSelection.route === route.code && busRouteState?.selection === activeBusSelection && busRouteState.data?.route) return [];
       const state = routePaths[route.id];
       if (state?.status === 'ready') return state.paths;
       const snapshot = selectedVehicleFeeds[route.id];
       return snapshot?.kind === 'bus' && snapshot.data.route ? busPaths([snapshot.data.route, ...snapshot.data.reverse.map(direction => direction.route)]) : [];
     }),
     ...routeCatalogue.filter(route => route.kind === 'mtr-bus' && enabled[route.kind] && routeVisible(route, routeVisibility)).flatMap(route => route.paths),
-  ], [enabled, viewStates, routeCatalogue, routeVisibility, routePaths, selectedVehicleFeeds, busSelection]);
+  ], [enabled, viewStates, routeCatalogue, routeVisibility, routePaths, selectedVehicleFeeds, activeBusSelection, busRouteState]);
   const flowFresh = isLiveTrafficDataFresh(states.flow.data?.segmentsUpdated, now);
   const cameras = useMemo(() => {
     const visible = kinds.flatMap(kind => {
@@ -562,8 +571,13 @@ export default function TrafficMonitor() {
     const key = JSON.stringify([selection.operator, selection.company, selection.route, selection.stopId, selection.bound, selection.serviceType, selection.routeId, selection.routeSeq, selection.stopSeq]);
     let disposed = false;
     const refresh = async () => {
-      if (disposed || document.visibilityState !== 'visible') return;
+      if (disposed || document.visibilityState !== 'visible' || !navigator.onLine) return;
       let cached = busRouteCache.current.get(key);
+      if (cached && !cached.pending && (Date.now() - cached.at < 30_000 || !busRouteBackoff.current.due(key))) {
+        const state = await cached.promise;
+        if (!disposed) setBusRouteState(previous => previous?.selection === selection && !previous.loading ? previous : { ...state, selection });
+        return;
+      }
       if (!cached || !cached.pending) {
         const previous = cached;
         const finishActivity = beginActivity();
@@ -576,8 +590,8 @@ export default function TrafficMonitor() {
           return { selection, data: retained?.data ? retainBusRoute(retained.data, { ok: false, vehicles: [], reverse: [], observedAt: null, stale: true }, Date.now()) : undefined, error: true, loading: false };
         });
         void promise.finally(finishActivity);
-        const entry = { promise, pending: true };
-        void promise.then(() => { entry.pending = false; });
+        const entry = { promise, pending: true, at: Date.now() };
+        void promise.then(state => { entry.pending = false; entry.at = Date.now(); if (state.error) busRouteBackoff.current.fail(key); else busRouteBackoff.current.reset(key); });
         busRouteCache.current.set(key, entry);
         cached = entry;
       }
@@ -588,11 +602,12 @@ export default function TrafficMonitor() {
     };
     // Keep the selected route schedule live alongside the transit layers.
     void refresh();
-    const timer = setInterval(() => void refresh(), 30000);
+    const timer = setInterval(() => void refresh(), 5000);
     const visible = () => void refresh();
     document.addEventListener('visibilitychange', visible);
-    window.addEventListener('online', visible);
-    return () => { disposed = true; clearInterval(timer); document.removeEventListener('visibilitychange', visible); window.removeEventListener('online', visible); };
+    const online = () => { busRouteBackoff.current.reset(key); const cached = busRouteCache.current.get(key); if (cached) cached.at = 0; void refresh(); };
+    window.addEventListener('online', online);
+    return () => { disposed = true; clearInterval(timer); document.removeEventListener('visibilitychange', visible); window.removeEventListener('online', online); };
   }, [activeBusSelection, busRouteRetry, beginActivity]);
   const searchItems = useMemo<TrafficSearchItem[]>(() => [
     ...segments.map(segment => ({ camera: cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated), segment })),
@@ -611,14 +626,21 @@ export default function TrafficMonitor() {
   const activeLoading = activeKinds.some(kind => states[kind].loading);
   const activeFetched = activeKinds.flatMap(kind => states[kind].data ? [states[kind].data!.fetchedAt] : []).sort()[0];
 
+  function retryBusRoute() {
+    busRouteBackoff.current.reset();
+    busRouteCache.current.forEach(entry => { if (!entry.pending) entry.at = 0; });
+    setBusRouteRetry(value => value + 1);
+  }
+
   function refreshAllLayers() {
     kinds.forEach(kind => void fetchLayer(kind, true));
-    if (activeBusSelection) setBusRouteRetry(value => value + 1);
+    if (activeBusSelection) retryBusRoute();
     retryPositions();
   }
 
   function toggle(kind: LayerKind) {
     if (!layerAvailable(kind)) return;
+    if (!enabled[kind]) busFeedBackoff.current.reset(kind);
     if (enabled[kind]) setStates(state => ({ ...state, [kind]: { ...state[kind], loading: false } }));
     if (enabled[kind] && busSelection?.operator === kind) setBusSelection(null);
     layerSelectionStore.write({ ...enabled, [kind]: !enabled[kind] });
@@ -693,16 +715,16 @@ export default function TrafficMonitor() {
     <div className="bus-route-heading"><strong>{extra.selectedBusRoute} · {activeBusSelection.route}</strong><button type="button" className="text-button" onClick={() => setBusSelection(null)}>{extra.closeBusRoute}</button></div>
     <div role="status" aria-live="polite">
       {routeLoading && <p><LoaderCircle size={13} className="spin"/>{extra.loadingBusRoute}</p>}
-      {routeError && <p className="warning-text">{extra.busRouteError} <button type="button" className="text-button" onClick={() => setBusRouteRetry(value => value + 1)}>{copy.retry}</button></p>}
+      {routeError && <p className="warning-text">{extra.busRouteError} <button type="button" className="text-button" onClick={() => retryBusRoute()}>{copy.retry}</button></p>}
       {busRoute?.route && <><p>{busCount ? extra.estimatedBuses(busCount) : extra.noBusPosition}</p><p>{extra.busPositionNote}</p>{[busRoute.route, ...busRoute.reverse.map(direction => direction.route)].some(route => route.geometrySource === 'osm') && <p>{language === 'en' ? 'Some directions use community-mapped OpenStreetMap geometry.' : '部分方向採用 OpenStreetMap 社群繪製路線。'}</p>}{busRoute.route.geometry === 'stops' && hasBusRoadDisplay(busRoute.route) && <p>{extra.busRouteStops}</p>}{[busRoute.route, ...busRoute.reverse.map(direction => direction.route)].some(route => !hasBusRoadDisplay(route)) && <p className="warning-text">{language === 'en' ? 'Road geometry is unavailable for some directions; only matched paths are shown.' : '部分方向未有道路走線資料；地圖只顯示已配對的路線。'}</p>}{busRoute.stale && <p className="warning-text">{extra.stale}</p>}</>}
     </div>
   </section>;
 
   function renderItemDetails(camera: Camera, options?: { status: 'loading' | 'error' | 'ready'; onRetry?: () => void; onClose?: () => void }) {
     const relatedRoute = Boolean(activeBusSelection && camera.kind === activeBusSelection.operator && (camera.sourceId === activeBusSelection.stopId || busRoute?.route?.stops.some(stop => stop.id === camera.sourceId)));
-    const stale = isCameraDataStale(camera, now) || (!options && (states[camera.kind].error || isFeedDataStale(camera.kind, states[camera.kind].data, now)));
-    return <ItemDetails camera={camera} language={language} now={now} stale={stale} onActivity={beginActivity} activeBusSelection={activeBusSelection} routeStatus={relatedRoute ? routeStatus : undefined} status={options?.status} onRetry={options?.onRetry} onShowRoute={async (code, tracking, signal) => {
-      if (tracking) { showBusRoute(camera, tracking); options?.onClose?.(); return 'complete'; }
+    const stale = options?.status === 'error' || isCameraDataStale(camera, now) || (!options && (states[camera.kind].error || isFeedDataStale(camera.kind, states[camera.kind].data, now)));
+    const displayRoute = async (code: string, tracking: BusRouteSelection | undefined, signal: AbortSignal, zoomOnly = false): Promise<'complete' | 'partial' | 'approximate' | 'unavailable'> => {
+      if (tracking && !zoomOnly) { showBusRoute(camera, tracking); options?.onClose?.(); return 'complete'; }
       const kind = camera.kind;
       if (kind === 'tram') {
         const route = routeCatalogue.find(route => route.id === `tram:${code}`);
@@ -727,7 +749,7 @@ export default function TrafficMonitor() {
         if (route?.roadCoverage === 'partial') result = 'partial';
         community = true;
       } else {
-        const request = { operator: kind, route: code, stopId: camera.sourceId };
+        const request = { operator: kind, route: code, stopId: camera.sourceId, ...(tracking ? { tracking } : {}) };
         const loaded = routePaths[id];
         const routes = loaded?.status === 'ready' ? loaded.routes : await getBusRoutePaths(request, signal);
         if (signal.aborted || !routes.length) return 'unavailable';
@@ -742,14 +764,15 @@ export default function TrafficMonitor() {
       setRouteNotice(result === 'complete' && !community ? null : { code, kind: result === 'complete' ? 'community' : result, community });
       layerSelectionStore.write({ ...enabled, [kind]: true });
       setRouteVisibility(previous => ({ ...previous, [id]: true }));
-      setBusSelection(null);
+      if (!zoomOnly) setBusSelection(null);
       setRouteFocus({ points });
       sessionStore.update({ followLocation: false, routeStop: null });
       setSelectedSnapshot(null);
       setOpenControl(null);
       options?.onClose?.();
       return result;
-    }}/>;
+    };
+    return <ItemDetails key={camera.id} camera={camera} language={language} now={now} stale={stale} onActivity={beginActivity} activeBusSelection={activeBusSelection} routeStatus={relatedRoute ? routeStatus : undefined} status={options?.status} onRetry={options?.onRetry} onShowRoute={displayRoute} onZoomRoute={(code, tracking, signal) => displayRoute(code, tracking, signal, true)}/>;
   }
 
   function rememberBusRoute(route: TransportRoute, on: boolean) {
@@ -865,7 +888,7 @@ export default function TrafficMonitor() {
               )}
             </div>;
           })}</div>
-              {transportMode && <TransportLayers language={language} mode={transportMode} routes={routeCatalogue} visibility={routeVisibility} enabled={enabled} loaded={routePaths} positions={panelPositions} vehicleFeeds={panelVehicleFeeds} now={now} onRetryPositions={() => { retryPositions(); if (enabled.tram) void fetchLayer('tram', true); if (activeBusSelection) setBusRouteRetry(value => value + 1); }} onRetry={retryRoutePaths}
+              {transportMode && <TransportLayers language={language} mode={transportMode} routes={routeCatalogue} visibility={routeVisibility} enabled={enabled} loaded={routePaths} positions={panelPositions} vehicleFeeds={panelVehicleFeeds} now={now} onRetryPositions={() => { retryPositions(); if (enabled.tram) void fetchLayer('tram', true); if (activeBusSelection) retryBusRoute(); }} onRetry={retryRoutePaths}
                 onAll={(mode, on) => { setRouteVisibility(setAllRoutes(routeVisibility, mode, on)); if (mode === 'bus') setChosenBusRoutes([]); if (on) enableTransport(mode); closeDetails(); }}
                 onToggle={(route, on) => { rememberBusRoute(route, on); setRouteVisibility({ ...routeVisibility, [route.id]: on }); if (on) enableRoute(route); closeDetails(); }}
                 onZoom={route => {

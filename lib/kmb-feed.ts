@@ -1,3 +1,4 @@
+import { RefreshBackoff } from './refresh-backoff.ts'
 import { viewportAllowed } from "./view-cache.ts"
 import { busCompany } from "./bus-company.ts"
 import { refreshKmbCatalogueSoon } from "./kmb-catalogue.ts"
@@ -33,6 +34,7 @@ type EtaRow = {
   rmk_tc?: string
 }
 
+const retries = new RefreshBackoff()
 const remembered = new Map<string, HeldRows<EtaRow>>()
 
 export function loadKmbPlaces(lng: number, lat: number, _now = Date.now(), zoom = Number.NaN): KmbPlacesResponse {
@@ -70,9 +72,10 @@ export async function loadKmbNear(lng: number, lat: number, now = Date.now(), zo
     await pool(nearest.map((stop) => stop.id), FETCH_LIMIT, async (stopId) => {
       const cached = remembered.get(stopId)
       if (!etaDue(cached, now)) return
+      if (!retries.due(stopId, now)) { missed += 1; return }
       const rows = await fetchStop(stopId, signal)
-      if (rows) remembered.set(stopId, rows)
-      else missed += 1
+      if (rows) { remembered.set(stopId, rows); retries.reset(stopId) }
+      else { missed += 1; retries.fail(stopId, Date.now()) }
     })
     return missed
   }, nearest.map(stop => stop.id).sort().join(","))

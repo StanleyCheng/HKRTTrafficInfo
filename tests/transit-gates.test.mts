@@ -21,7 +21,7 @@ test("direct transit makes no upstream calls outside zoom and Lantau gates", asy
   } finally { globalThis.fetch = originalFetch }
 })
 
-test("direct transit shares a five-second budget across pans and retries failed refreshes", async () => {
+test("direct transit shares a five-second healthy budget across pans and respects failed-stop cooldowns", async () => {
   const originalFetch = globalThis.fetch
   const originalNow = Date.now
   let now = Date.now()
@@ -49,8 +49,12 @@ test("direct transit shares a five-second budget across pans and retries failed 
     const spentFailed = calls
     fail = false
     now += 1
+    const cooling = await loadDirectTransit("citybus", 114.18, 22.3, now, 16)
+    assert.equal(calls, spentFailed, "Panning or a new snapshot must not immediately retry failed arrival requests")
+    assert.equal(cooling.stale, true)
+    now += 30_000
     const recovered = await loadDirectTransit("citybus", 114.18, 22.3, now, 16)
-    assert.ok(calls > spentFailed, "A failed result must not occupy the refresh budget")
+    assert.ok(calls > spentFailed, "A due recovery probe retries the failed stops")
     assert.equal(recovered.stale, false)
   } finally { globalThis.fetch = originalFetch; Date.now = originalNow }
 })

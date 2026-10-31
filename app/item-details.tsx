@@ -10,15 +10,17 @@ import { currentArrivals } from '@/lib/arrival-display';
 import { routesWithoutArrival } from '@/lib/stop-routes';
 import { useTramStop } from './use-tram-stop';
 import { tramRoutes } from '@/lib/tram';
+type RouteAction = (route: string, tracking: BusRouteSelection | undefined, signal: AbortSignal) => Promise<'complete' | 'partial' | 'approximate' | 'unavailable'>;
 
-export default function ItemDetails({ camera: suppliedCamera, language, now, stale, onActivity, activeBusSelection, onShowRoute, routeStatus, status = 'ready', onRetry }: {
+export default function ItemDetails({ camera: suppliedCamera, language, now, stale, onActivity, activeBusSelection, onShowRoute, onZoomRoute, routeStatus, status = 'ready', onRetry }: {
   camera: Camera;
   language: Language;
   now: number;
   stale: boolean;
   onActivity: () => () => void;
   activeBusSelection?: BusRouteSelection | null;
-  onShowRoute: (route: string, tracking: BusRouteSelection | undefined, signal: AbortSignal) => Promise<'complete' | 'partial' | 'approximate' | 'unavailable'>;
+  onShowRoute: RouteAction;
+  onZoomRoute: RouteAction;
   routeStatus?: ReactNode;
   status?: 'loading' | 'error' | 'ready';
   onRetry?: () => void;
@@ -36,19 +38,24 @@ export default function ItemDetails({ camera: suppliedCamera, language, now, sta
   const isTramStop = camera.kind === 'tram' && camera.positionType !== 'vehicle';
   const withoutArrival = isBusStop ? routesWithoutArrival(camera.routes ?? [], arrivals.map(call => call.route)) : [];
   const [routePending, setRoutePending] = useState<string | null>(null);
+  const [routeAction, setRouteAction] = useState<'show' | 'zoom'>('show');
   const [routeFailure, setRouteFailure] = useState<string | null>(null);
   const [routeNotice, setRouteNotice] = useState<'partial' | 'approximate' | null>(null);
   const routeRequest = useRef<AbortController | null>(null);
   useEffect(() => () => routeRequest.current?.abort(), []);
-  const showRoute = async (route: string, tracking?: BusRouteSelection) => {
+  const showRoute = async (route: string, tracking?: BusRouteSelection, action: 'show' | 'zoom' = 'show') => {
     routeRequest.current?.abort();
     const request = new AbortController(); routeRequest.current = request;
-    setRoutePending(route); setRouteFailure(null); setRouteNotice(null);
-    try { const result = await onShowRoute(route, tracking, request.signal); if (!request.signal.aborted) { if (result === 'unavailable') setRouteFailure(route); else if (result !== 'complete') setRouteNotice(result); } }
+    setRoutePending(route); setRouteAction(action); setRouteFailure(null); setRouteNotice(null);
+    try { const result = await (action === 'zoom' ? onZoomRoute : onShowRoute)(route, tracking, request.signal); if (!request.signal.aborted) { if (result === 'unavailable') setRouteFailure(route); else if (result !== 'complete') setRouteNotice(result); } }
     catch { if (!request.signal.aborted) setRouteFailure(route); }
     finally { if (!request.signal.aborted) setRoutePending(null); }
   };
-  const routeButton = (route: string, tracking?: BusRouteSelection, destination?: string) => <button type="button" className="bus-route-button" disabled={routePending !== null} aria-pressed={Boolean(tracking && activeBusSelection && JSON.stringify(activeBusSelection) === JSON.stringify(tracking))} aria-label={`${extra.showBusRoute} ${route}${destination ? ` · ${destination}` : ''}`} onClick={() => void showRoute(route, tracking)}>{routePending === route ? extra.loadingBusRoute : extra.showBusRoute}</button>;
+  const zoomLabel = language === 'en' ? 'Zoom to route' : '縮放至路線';
+  const routeButton = (route: string, tracking?: BusRouteSelection, destination?: string) => <span className="bus-route-actions">
+    <button type="button" className="bus-route-button" disabled={routePending !== null} aria-pressed={Boolean(tracking && activeBusSelection && JSON.stringify(activeBusSelection) === JSON.stringify(tracking))} aria-label={`${extra.showBusRoute} ${route}${destination ? ` · ${destination}` : ''}`} onClick={() => void showRoute(route, tracking)}>{routePending === route && routeAction === 'show' ? extra.loadingBusRoute : extra.showBusRoute}</button>
+    {isBusStop && <button type="button" className="bus-route-button" disabled={routePending !== null} aria-label={`${zoomLabel} ${route}${destination ? ` · ${destination}` : ''}`} onClick={() => void showRoute(route, tracking, 'zoom')}>{routePending === route && routeAction === 'zoom' ? extra.loadingBusRoute : zoomLabel}</button>}
+  </span>;
 
   return <div className="detail item-detail">
     <h2 className="item-detail-title" id="item-detail-title">{name}</h2>
@@ -85,10 +92,11 @@ export default function ItemDetails({ camera: suppliedCamera, language, now, sta
     {isTramStop && tram.loading && <p className="item-detail-status" role="status"><LoaderCircle size={13} className="spin"/>{language === 'en' ? 'Loading tram arrivals…' : '正在載入電車到站時間…'}</p>}
     {isTramStop && tram.failed && <p className="warning-text" role="alert">{language === 'en' ? 'Tram arrivals could not be updated.' : '未能更新電車到站時間。'} <button type="button" className="text-button" onClick={tram.retry}>{copy.retry}</button></p>}
     {isTramStop && camera.tramEtaNotice && <p className="warning-text">{camera.tramEtaNotice}</p>}
-    {status === 'ready' && camera.arrivals && <section className="arrival-board"><h5>{extra.arrivals}</h5>{arrivals.length ? <ul>{arrivals.map((call, index) => {
+    {status !== 'loading' && camera.arrivals && (status === 'ready' || arrivals.length > 0) && <section className="arrival-board"><h5>{extra.arrivals}</h5>{arrivals.length ? <ul>{arrivals.map((call, index) => {
       const eta = call.eta ? Date.parse(call.eta) : NaN;
       const minutes = Number.isFinite(eta) ? Math.max(0, Math.ceil((eta - now) / 60000)) : call.minutes;
-      return <li key={`${call.route}-${index}`}><span className="arrival-route-choice"><strong className="arrival-route">{camera.kind === 'tram' ? (language === 'en' ? 'Tram' : '電車') : call.route}</strong>{(isBusStop || isTramStop && call.tram?.routeId) && routeButton(call.route, call.tracking, language === 'en' ? call.destinationEn || call.destination : call.destination)}</span><span className="arrival-destination">{language === 'en' ? call.destinationEn || call.destination : call.destination}{call.tram && <small>{call.tram.direction === 'eastbound' ? (language === 'en' ? 'Eastbound' : '東行') : (language === 'en' ? 'Westbound' : '西行')}{Number.isFinite(eta) ? ` · ${hkTime(call.eta!, false, language)}` : ''}</small>}{call.platform && <small>{extra.platform} {call.platform}</small>}<small>{call.timeType ? call.timeType === 'D' ? extra.departure : extra.arrival : call.scheduled ? extra.scheduled : extra.live}{(language === 'en' ? call.remarkEn : call.remark) ? ` · ${language === 'en' ? call.remarkEn : call.remark}` : ''}</small></span><strong className="arrival-minutes">{minutes ?? '—'}<small>{extra.minutes}</small></strong></li>;
+      const firstRouteCall = !isBusStop || arrivals.findIndex(candidate => candidate.route === call.route && JSON.stringify(candidate.tracking) === JSON.stringify(call.tracking)) === index;
+      return <li key={`${call.route}-${index}`}><span className="arrival-route-choice"><strong className="arrival-route">{camera.kind === 'tram' ? (language === 'en' ? 'Tram' : '電車') : call.route}</strong>{firstRouteCall && (isBusStop || isTramStop && call.tram?.routeId) && routeButton(call.route, call.tracking, language === 'en' ? call.destinationEn || call.destination : call.destination)}</span><span className="arrival-destination">{language === 'en' ? call.destinationEn || call.destination : call.destination}{call.tram && <small>{call.tram.direction === 'eastbound' ? (language === 'en' ? 'Eastbound' : '東行') : (language === 'en' ? 'Westbound' : '西行')}{Number.isFinite(eta) ? ` · ${hkTime(call.eta!, false, language)}` : ''}</small>}{call.platform && <small>{extra.platform} {call.platform}</small>}<small>{call.timeType ? call.timeType === 'D' ? extra.departure : extra.arrival : call.scheduled ? extra.scheduled : extra.live}{(language === 'en' ? call.remarkEn : call.remark) ? ` · ${language === 'en' ? call.remarkEn : call.remark}` : ''}</small></span><strong className="arrival-minutes">{minutes ?? '—'}<small>{extra.minutes}</small></strong></li>;
     })}</ul> : <p>{extra.noArrivals}</p>}</section>}
     {withoutArrival.length > 0 && <section className="arrival-board"><h5>{language === 'en' ? 'Routes at this stop' : '此站路線'}</h5><ul>{withoutArrival.map(route => <li key={route}><strong className="arrival-route">{route}</strong>{routeButton(route)}</li>)}</ul></section>}
     {isTramStop && <section className="arrival-board tram-stop-routes"><h5>{language === 'en' ? 'Routes at this stop' : '此站路線'}</h5><ul>{tramRoutes.filter(route => camera.routes?.includes(route.routeId)).map(route => <li key={route.routeId}><span>{language === 'en' ? route.en : route.tc}</span>{routeButton(route.routeId, undefined, language === 'en' ? route.en : route.tc)}</li>)}</ul></section>}

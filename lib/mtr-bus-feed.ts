@@ -1,3 +1,4 @@
+import { RefreshBackoff } from './refresh-backoff.ts'
 import { commuterCatalogue, metresBetween, mtrBusDestination, mtrBusStops } from './commuter-catalogue.ts'
 import { etaQueue, ETA_REFRESH_TIMEOUT_MS } from './polite-fetch.ts'
 import { ETA_KEEP_MS } from './place-arrivals.ts'
@@ -6,6 +7,7 @@ import type { Arrival, Camera } from './traffic.ts'
 
 type Board = { id: string; arrivals: Arrival[] }
 type RouteSnapshot = { at: number; fetchedAt: number; refreshMs: number; boards: Board[]; alert: boolean }
+const retries = new RefreshBackoff()
 const snapshots = new Map<string, RouteSnapshot>()
 const pending = new Map<string, Promise<RouteSnapshot>>()
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
@@ -41,6 +43,7 @@ async function loadRoute(route: string, signal: AbortSignal, now: number): Promi
   if (held && now - held.fetchedAt < held.refreshMs && now - held.at <= ETA_KEEP_MS) return held
   const existing = pending.get(route)
   if (existing) return existing
+  if (!retries.due(route, now)) throw new Error('MTR bus schedule retry cooling down')
   const task = keepWorkerRequestAlive(etaQueue(async () => {
     const response = await fetch('https://rt.data.gov.hk/v1/transport/mtr/bus/getSchedule', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', signal,
@@ -50,16 +53,18 @@ async function loadRoute(route: string, signal: AbortSignal, now: number): Promi
     const payload: unknown = await response.json()
     const snapshot = parseMtrBusSchedule(payload, route, now)
     snapshots.set(route, snapshot)
+    if (snapshot.alert) retries.fail(route, Date.now())
+    else retries.reset(route)
     return snapshot
-  }, signal).finally(() => pending.delete(route)))
+  }, signal).catch(error => { retries.fail(route, Date.now()); throw error }).finally(() => pending.delete(route)))
   pending.set(route, task)
   return task
 }
 
-export async function loadMtrBusNear(lng: number, lat: number, now = Date.now(), zoom = 13) {
+export async function loadMtrBusNear(lng: number, lat: number, now = Date.now(), zoom = 13): Promise<{ ok: boolean; cameras: Camera[]; observedAt: string | null; stale: boolean; complete: boolean; cacheable: boolean; error?: string }> {
   const places = commuterCatalogue('mtr-bus').filter(stop => metresBetween(stop, { lng, lat }) <= 1800)
     .sort((a, b) => metresBetween(a, { lng, lat }) - metresBetween(b, { lng, lat })).slice(0, 36)
-  if (zoom < 13) return { ok: true, cameras: [] as Camera[], observedAt: null, stale: false }
+  if (zoom < 13) return { ok: true, cameras: [], observedAt: null, stale: false, complete: true, cacheable: true }
   const routes = [...new Set(places.flatMap(stop => stop.routes ?? []))].slice(0, 8)
   const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
   const result = new Map<string, RouteSnapshot>()
@@ -85,7 +90,8 @@ export async function loadMtrBusNear(lng: number, lat: number, now = Date.now(),
   })
   const observed = [...result.values()].map(snapshot => snapshot.at)
   return { ok: true, cameras, observedAt: observed.length ? new Date(Math.min(...observed)).toISOString() : null,
-    stale: missed > 0, error: missed ? 'Some MTR bus schedules are unavailable or carry an operator alert' : undefined,
+    stale: routes.length > 0 && missed === routes.length, complete: missed === 0, cacheable: missed === 0,
+    error: missed ? `MTR bus schedules are unavailable or carry an operator alert (${missed} of ${routes.length})` : undefined,
   }
 }
 
