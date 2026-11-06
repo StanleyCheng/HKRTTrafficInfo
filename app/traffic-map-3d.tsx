@@ -1,4 +1,5 @@
 'use client';
+import { buildingPopupContent } from '@/lib/building-search';
 import { useSessionField } from './use-session-field';
 import { sessionStore } from '@/lib/session-state';
 
@@ -32,7 +33,7 @@ const motionDuration = () => window.matchMedia('(prefers-reduced-motion: reduce)
 // Both renderers consume the same monitor data and renderItemDetails. MapLibre owns
 // this camera, WebGL canvas and GeoJSON geometry; there is no Leaflet bridge here.
 export default function TrafficMap3D(props: Props) {
-  const { routeFocus: requestedFocus, onRouteFocusComplete, language, onActivity, selected, focusTarget, cameras, segments, paths, busRoute, busSelection, transitFeeds, selectedVehicleFeeds, inactive, loading, allDisabled, hasErrors, hasDrawableLayers, renderItemDetails, onExit3D } = props;
+  const { routeFocus: requestedFocus, onRouteFocusComplete, language, onActivity, selected, focusTarget, buildingTarget, cameras, segments, paths, busRoute, busSelection, transitFeeds, selectedVehicleFeeds, inactive, loading, allDisabled, hasErrors, hasDrawableLayers, renderItemDetails, onExit3D } = props;
   const copy = messages[language];
   const callbacks = useRef(props);
   useEffect(() => { callbacks.current = props; });
@@ -373,6 +374,24 @@ export default function TrafficMap3D(props: Props) {
 
   useEffect(() => {
     const m = map.current, gl = library.current;
+    if (!ready || !m || !gl || !buildingTarget) return;
+    const node = document.createElement('button');
+    node.type = 'button'; node.className = 'building-map-pin';
+    node.setAttribute('aria-label', language === 'en' ? buildingTarget.nameEn : buildingTarget.name);
+    node.appendChild(document.createElement('span'));
+    const marker = new gl.Marker({ element: node }).setLngLat([buildingTarget.lng, buildingTarget.lat])
+      .setPopup(new gl.Popup({ maxWidth: '280px', offset: 16, className: 'building-popup' }).setDOMContent(buildingPopupContent(buildingTarget, language))).addTo(m);
+    marker.togglePopup();
+    return () => { marker.remove(); };
+  }, [ready, buildingTarget, language]);
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m || !buildingTarget) return;
+    stopLocating();
+    m.easeTo({ center: [buildingTarget.lng, buildingTarget.lat], zoom: nativeZoom(17), duration: motionDuration() });
+  }, [ready, buildingTarget, stopLocating]);
+  useEffect(() => {
+    const m = map.current, gl = library.current;
     if (!ready || !m || !gl || !focusTarget) return;
     if (focusTarget.segment) {
       const bounds = new gl.LngLatBounds(); focusTarget.segment.path.forEach(([lat, lng]) => bounds.extend([lng, lat]));
@@ -477,7 +496,7 @@ export default function TrafficMap3D(props: Props) {
     {locationError && <div className="map-error location-error" role="alert">{locationErrorText}<button type="button" className="map-retry" onClick={() => setLocationError(null)}>{copy.dismissLocationError}</button></div>}
     {error && <div className="map-error" role="alert">{error === 'unsupported' ? copy.map3DUnsupported : copy.map3DLoadFailed}<div className="map-error-actions"><button type="button" className="map-retry" onClick={onExit3D}>{copy.returnTo2D}</button>{error === 'load' && <button type="button" className="map-retry" onClick={() => { setReady(false); setError(null); setRetry(value => value + 1); }}><RefreshCw size={14}/>{copy.retry}</button>}</div></div>}
     {!ready && !error && <div className="map-loading"><LoaderCircle className="spin" size={20}/>{copy.map3DLoading}</div>}
-    {ready && !loading && !busRoute?.route && cameras.length === 0 && !segments?.length && !paths?.length && (allDisabled || hasDrawableLayers) && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
+    {ready && !loading && !buildingTarget && !busRoute?.route && cameras.length === 0 && !segments?.length && !paths?.length && (allDisabled || hasDrawableLayers) && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
     {popupElement && popupCamera && createPortal(renderItemDetails(popupCamera, selected ? undefined : {
       status: stopArrivals.status,
       onRetry: stopArrivals.retry, onClose: () => setRouteStop(null),

@@ -311,3 +311,14 @@ Nearby includes saved category checkboxes and a **Show nearby on map** switch, i
 Local session state restores view, mode, camera, GPS preference, layers, selected route/place/route-stop detail, label/stop/pier controls, layer category, panels, intelligence tab, search and Nearby radius and categories. Basemap, language, topbar and rail filters retain their persistent stores. No arrival payloads, vehicle trajectories or images are saved. Restoring a route fetches current data while preserving the saved map position. Storage is local to a browser or installed app, without cross-device synchronization.
 
 Refresh fixes reject malformed weather and operator rows, bound bus fallback ages, filter expired displayed arrivals, poll open 3D route-stop details, retry bad ferry bytes before the daily parsed-cache lifetime, and fetch journey-board locations/translations/details concurrently within a producer deadline. Valid empty boards remain valid. Brief failures retain trajectories only until their original expiry. See `docs/commuter-refresh-and-session-2026-10-23.md` for validation and limitations.
+
+
+## Snapshot controls, building search and PWA, 6 November 2026
+
+SnapshotImage now exposes independent auto-enhance and auto-contrast toggles, initially on, and a 1×/2× photo zoom control, initially 1×. A small luminance sample determines bounded exposure and contrast adjustments for each successful refresh. Disabling both restores the original image. The doubled photo scrolls within its viewport, keeping its controls reachable on mobile and in map popups.
+
+The current Search panel adds a Buildings category, persisted with the existing search scope. The government Address Lookup Service returns English/Chinese names and addresses with validated Hong Kong coordinates. Requests are debounced, abort on query replacement/unmount, time out, and use a bounded memory cache. No results and failures have separate messages, and failures provide retry. Selection draws a separate approximate-location pin in either renderer, stops GPS following, and retains the pin when switching renderers. Building results do not enable or masquerade as a traffic layer. They are available in the static build too.
+
+Production includes a scoped webmanifest and service worker, a bilingual offline recovery page, an in-app offline indicator, and an install section in Sources. Offline caching is deliberately limited to the recovery page and app icons. Live feeds, images, tiles and search requests remain network-based. Root and GitHub Pages base paths are supported; development does not register a worker. Keep `public/sw.js` cache version in step when changing cached offline assets. Next.js supplies worker cache headers, and `public/_headers` supplies the equivalent Cloudflare asset headers. GitHub Pages uses registration with `updateViaCache: none`.
+
+See `docs/snapshots-building-search-pwa-2026-11-06.md` for verification.

@@ -28,6 +28,14 @@ An always-visible **Updating data…** indicator covers background feed refreshe
 [![Cloudflare Worker deploy](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/deploy-cloudflare.yml/badge.svg)](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/deploy-cloudflare.yml)
 [![Verify](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/verify.yml/badge.svg)](https://github.com/StanleyCheng/HKRTTrafficInfo/actions/workflows/verify.yml)
 
+## Snapshot photos, building search and installation
+
+Snapshot photos have independent **Auto-enhance** and **Auto-contrast** toggles, both initially on. Exposure and contrast are calculated from a small sample of each new image; switching both off displays the original. The **1× / 2×** button below the photo starts at 1× and doubles both image dimensions at 2×. Scroll inside the photo to inspect it without moving the map. These controls are shared by 2D/3D details and snapshot hover previews.
+
+Open the existing **Search** icon and select **Buildings** to search an English or Chinese building name or address. The [government Address Lookup Service](https://www.als.gov.hk/) supplies bilingual suggestions and coordinates. Selecting a result centres the 2D or 3D map and places an approximate-location pin. A 500 ms debounce, 12-second timeout and bounded 15-minute memory cache limit requests. Searches work in the hosted and static versions; an internet connection is required.
+
+The map is an installable **Progressive Web App** on HTTPS (or localhost). Open **Sources → Install the traffic map** for the browser install action or device instructions. On iPhone/iPad, use Safari **Share → Add to Home Screen**. The standalone app uses the existing app icons and saved browser preferences. Its service worker caches only an offline recovery page and two app icons: traffic feeds, snapshot photos, building queries, application bundles and map tiles are not put into the service-worker cache. An offline reload shows a bilingual reconnect page, while an open map shows an offline status message. The manifest and worker support both the root URL and the GitHub Pages `/HKRTTrafficInfo/` base path. Worker registration is disabled during development.
+
 ## Architecture
 
 ![HKRTTrafficInfo architecture](docs/architecture-light.png)
@@ -74,7 +82,7 @@ The original seven layers fetch official data directly in both modes. New integr
 | --- | --- | --- | --- |
 | Red-light junctions | TD / CSDI feature inventory | Existing browser adapter | Yes |
 | Speed-enforcement housings | TD / CSDI feature inventory | Existing browser adapter | Yes |
-| Snapshots | TD XML inventory and tdcctv JPEGs | Existing browser adapter | Yes |
+| Snapshots (auto-enhance, auto-contrast, 1×/2× photo zoom) | TD XML inventory and tdcctv JPEGs | Existing browser adapter | Yes |
 | Road speeds / smart lampposts | TD speed XML, road network, SLP CSV/XML | Browser adapter | Yes |
 | Incidents | TD special traffic news, ALS geocoding | Existing browser adapter | Yes |
 | Parking vacancy | TD parking data | Existing browser adapter | Yes |

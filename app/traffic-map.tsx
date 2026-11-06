@@ -1,4 +1,5 @@
 'use client';
+import { buildingPopupContent, type BuildingLocation } from '@/lib/building-search';
 import { useSessionField } from './use-session-field';
 import { sessionStore } from '@/lib/session-state';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -95,8 +96,8 @@ function FerryPierPopup({ camera, language, now }: { camera: Camera; language: L
 
 export type Basemap = 'osm' | 'positron';
 type DetailOptions = { status: 'loading' | 'error' | 'ready'; onRetry?: () => void; onClose?: () => void };
-export type TrafficMapProps = { selectedVehicleFeeds?: RouteVehicleFeeds; routeFocus?: RouteFocus | null; onRouteFocusComplete?: () => void; initialView?: MapViewport; autoLocate?: boolean; fitBusRoute?: boolean; busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; hasDrawableLayers: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; renderItemDetails: (camera: Camera, options?: DetailOptions) => ReactNode; onCloseDetails: () => void; onDetailsOpen?: (content: HTMLElement) => void };
-export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRoute, onRouteFocusComplete, initialView, autoLocate = true, fitBusRoute = true, busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, loading, allDisabled, hasErrors, hasDrawableLayers, language, basemap, inactive = false, now, busSelection, renderItemDetails, onCloseDetails, onDetailsOpen }: TrafficMapProps) {
+export type TrafficMapProps = { selectedVehicleFeeds?: RouteVehicleFeeds; routeFocus?: RouteFocus | null; onRouteFocusComplete?: () => void; initialView?: MapViewport; autoLocate?: boolean; fitBusRoute?: boolean; busRoute?: BusRouteResponse; onActivity: () => () => void; cameras: Camera[]; paths?: MapPath[]; transitFeeds?: Partial<Record<'mtr' | 'lrt' | 'ferry', CameraData>>; onViewport?: (view: MapViewport) => void; segments?: FlowSegment[]; selected: Camera | null; selectedSegmentId?: string | null; onSelect: (camera: Camera) => void; onSelectSegment?: (segment: FlowSegment) => void; focusTarget?: TrafficSearchItem | null; buildingTarget?: BuildingLocation | null; loading: boolean; allDisabled: boolean; hasErrors: boolean; hasDrawableLayers: boolean; language: Language; basemap: Basemap; inactive?: boolean; now: number; busSelection?: BusRouteSelection | null; renderItemDetails: (camera: Camera, options?: DetailOptions) => ReactNode; onCloseDetails: () => void; onDetailsOpen?: (content: HTMLElement) => void };
+export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRoute, onRouteFocusComplete, initialView, autoLocate = true, fitBusRoute = true, busRoute, onActivity, cameras, paths, transitFeeds, onViewport, segments, selected, selectedSegmentId, onSelect, onSelectSegment, focusTarget, buildingTarget, loading, allDisabled, hasErrors, hasDrawableLayers, language, basemap, inactive = false, now, busSelection, renderItemDetails, onCloseDetails, onDetailsOpen }: TrafficMapProps) {
   const copy = messages[language];
   const startingView = useRef(initialView);
   const locateOnMount = useRef(autoLocate);
@@ -615,6 +616,19 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
     if (!routePopupStop || busSelection && !busRoute) return;
     if (routePopupStop.key !== busRouteKey || !busSelection) setRoutePopupStop(current => current === routePopupStop ? null : current);
   }, [routePopupStop, busRouteKey, busSelection, busRoute, setRoutePopupStop]);
+  useEffect(() => {
+    const m = map.current, L = library.current;
+    if (!ready || !m || !L || !buildingTarget) return;
+    const marker = L.marker([buildingTarget.lat, buildingTarget.lng], { icon: L.divIcon({ className: 'building-map-pin', html: '<span></span>', iconSize: [24, 24], iconAnchor: [12, 12] }), title: language === 'en' ? buildingTarget.nameEn : buildingTarget.name }).addTo(m);
+    marker.bindPopup(buildingPopupContent(buildingTarget, language), { maxWidth: 280, className: 'building-popup' }).openPopup();
+    return () => { marker.remove(); };
+  }, [ready, buildingTarget, language]);
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m || !buildingTarget) return;
+    stopLocating();
+    m.setView([buildingTarget.lat, buildingTarget.lng], 17, { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches });
+  }, [ready, buildingTarget, stopLocating]);
   useEffect(() => {
     const m = map.current;
     if (!ready || !m || !focusTarget) return;
@@ -1145,7 +1159,7 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
     {locationError && <div className={`map-error location-error${mapError ? ' with-map-error' : ''}`} role="alert">{locationErrorMessage}<button type="button" className="map-retry" onClick={() => setLocationError(null)}>{copy.dismissLocationError}</button></div>}
     {mapError && <div className="map-error" role="alert">{copy.mapLoadFailed}<button type="button" className="map-retry" onClick={() => ready ? setBasemapRetry(value => value + 1) : window.location.reload()}><RefreshCw size={14}/>{copy.retry}</button></div>}
     {!ready && !mapError && <div className="map-loading"><LoaderCircle className="spin" size={20}/> {copy.mapLoading}</div>}
-    {ready && !loading && !busRoute?.route && cameras.length === 0 && !segments?.length && !paths?.length && (allDisabled || hasDrawableLayers) && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
+    {ready && !loading && !buildingTarget && !busRoute?.route && cameras.length === 0 && !segments?.length && !paths?.length && (allDisabled || hasDrawableLayers) && <div className="map-empty"><strong>{allDisabled ? copy.allLayersOff : hasErrors ? copy.cameraLoadFailed : copy.noCameraLocations}</strong>{allDisabled ? copy.turnOnLayer : copy.checkLayers}</div>}
     {popupElement && popupCamera && createPortal(renderItemDetails(popupCamera, selected ? undefined : {
       status: stopArrivals.status,
       onRetry: stopArrivals.retry,

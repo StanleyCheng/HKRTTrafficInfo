@@ -34,7 +34,7 @@ export type MapSession = {
   intelTab: IntelTab
   statusExpanded: boolean
   searchQuery: string
-  searchScope: 'roads' | 'locations'
+  searchScope: 'roads' | 'locations' | 'buildings'
   searchPage: number
 }
 export const sessionStorageKey = 'hk-traffic-session-v1'
@@ -77,7 +77,7 @@ export function parseSession(value: unknown): MapSession {
   for (const key of ['showDetectors', 'showBusStops', 'showFerryPiers', 'showTramStops', 'routeLabels', 'showNearbyOnMap', 'followLocation', 'intelOpen', 'statusExpanded'] as const) if (typeof value[key] === 'boolean') session[key] = value[key]
   if (value.intelTab === 'ranked' || value.intelTab === 'roads' || value.intelTab === 'boundary' || value.intelTab === 'weather' || value.intelTab === 'systems' || value.intelTab === 'notes') session.intelTab = value.intelTab
   if (string(value.searchQuery, 1000)) session.searchQuery = value.searchQuery
-  if (value.searchScope === 'roads' || value.searchScope === 'locations') session.searchScope = value.searchScope
+  if (value.searchScope === 'roads' || value.searchScope === 'locations' || value.searchScope === 'buildings') session.searchScope = value.searchScope
   if (numberBetween(value.searchPage, 0, 10000) && Number.isInteger(value.searchPage)) session.searchPage = value.searchPage
   if (record(value.routeStop) && string(value.routeStop.key, 4000) && record(value.routeStop.stop)) {
     const stop = value.routeStop.stop

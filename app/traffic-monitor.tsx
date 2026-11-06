@@ -16,6 +16,8 @@ import { RefreshBackoff } from '@/lib/refresh-backoff';
 import { nearbyCategory, nearbyCategoryKinds, nearbyPlaces } from '@/lib/nearby';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import TrafficSearch from './traffic-search';
+import PwaControls from './pwa-controls';
+import type { BuildingLocation } from '@/lib/building-search';
 import TrafficStatus from './traffic-status';
 import IntelPanel from './intel-panel';
 import { getIntegrationData, initialViewport, integrationRequestKey, pollingMs, viewportNote, withBoundarySpeeds, movingCameras, retainTransitIdentities, type MapViewport } from '@/lib/integration-client';
@@ -334,6 +336,7 @@ export default function TrafficMonitor() {
   const mapEnabled = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, enabled[kind] || showNearbyOnMap && selectedNearbyKinds.includes(kind as IntegrationKind)])) as Record<LayerKind, boolean>, [enabled, showNearbyOnMap, selectedNearbyKinds]);
   const requested = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, mapEnabled[kind] || openControl === 'nearby' && selectedNearbyKinds.includes(kind as IntegrationKind)])) as Record<LayerKind, boolean>, [mapEnabled, openControl, selectedNearbyKinds]);
   const [now, setNow] = useState(() => Date.now());
+  const [buildingTarget, setBuildingTarget] = useState<BuildingLocation | null>(null);
   const [focusTarget, setFocusTarget] = useState<TrafficSearchItem | null>(null);
   const topbarCollapsed = useSyncExternalStore(topbarFlag.subscribe, topbarFlag.getSnapshot, topbarFlag.getServerSnapshot);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -658,6 +661,7 @@ export default function TrafficMonitor() {
   }, []);
 
   const choose = useCallback((camera: Camera) => {
+    setBuildingTarget(null);
     pendingDetailsFocus.current = Boolean(document.activeElement?.matches(':focus-visible'));
     setSelectedSnapshot(camera);
     sessionStore.update({ routeStop: null });
@@ -802,7 +806,7 @@ export default function TrafficMonitor() {
     selectedVehicleFeeds, routeFocus, onRouteFocusComplete: finishRouteFocus, onActivity: beginActivity, busRoute, fitBusRoute: activeBusSelection === routeToFit, paths, transitFeeds, onViewport: updateViewport, initialView: viewport, autoLocate: followLocation,
     cameras, segments: enabled.flow ? segments : undefined, selected,
     selectedSegmentId: selected?.id.startsWith('flow-segment-') ? selected.id : null,
-    onSelect: choose, onSelectSegment, focusTarget, loading,
+    onSelect: choose, onSelectSegment, focusTarget, buildingTarget, loading,
     allDisabled: kinds.every(kind => !mapEnabled[kind]), hasErrors: errors, hasDrawableLayers,
     language, basemap, now, busSelection: activeBusSelection, renderItemDetails,
     onCloseDetails: closeDetails, onDetailsOpen: focusDetails,
@@ -912,7 +916,7 @@ export default function TrafficMonitor() {
           <PopoverTrigger asChild><button type="button" className="toolbar-button" aria-label={copy.searchTab} title={copy.searchTab}><Search size={20}/></button></PopoverTrigger>
           <PopoverContent className="map-control-popover search-popover" side="left" align="start" sideOffset={10} collisionPadding={16} aria-labelledby="search-popover-title" onCloseAutoFocus={event => { if (selectedSnapshot) event.preventDefault(); }}>
             <div className="control-popover-head"><h2 id="search-popover-title">{copy.searchTab}</h2><button type="button" className="close-button" aria-label={copy.closeControls} onClick={() => setOpenControl(null)}><X size={18}/></button></div>
-            <div className="control-popover-body"><TrafficSearch items={searchItems} language={language} selected={selected} loading={loading} onSelect={selectSearchItem}/></div>
+            <div className="control-popover-body"><TrafficSearch items={searchItems} language={language} selected={selected} loading={loading} onSelect={selectSearchItem} onSelectBuilding={building => { closeDetails(); setFocusTarget(null); setBuildingTarget({ ...building }); sessionStore.update({ routeStop: null, followLocation: false }); setOpenControl(null); }}/></div>
           </PopoverContent>
         </Popover>
         {activeBusSelection && <span className="sr-only" role="status">{extra.selectedBusRoute} {activeBusSelection.route} · {routeLoading ? extra.loadingBusRoute : routeError ? extra.busRouteError : extra.estimatedBuses(busCount)}</span>}
@@ -925,6 +929,7 @@ export default function TrafficMonitor() {
     }}>
       <div className="dialog-head"><h2 id="sources-title">{copy.sourceDialogTitle}</h2><button className="close-button" aria-label={copy.closeSources} onClick={() => dialog.current?.close()}><X size={18}/></button></div>
       <div className="dialog-body">
+        <PwaControls language={language}/>
         {kinds.map(kind => {
           const text = layerText(kind, language);
           const data = states[kind].data;

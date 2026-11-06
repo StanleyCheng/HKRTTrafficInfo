@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import PwaRegistration from './pwa-registration';
 
 // Static export is served under a sub-path; Next does not prefix basePath onto
 // absolute metadata asset URLs, so prefix them explicitly for that build.
@@ -45,7 +46,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-HK">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">{children}<PwaRegistration/></body>
     </html>
   );
 }

@@ -8,15 +8,18 @@ import { hkTime, layerText } from '@/lib/traffic';
 import type { Camera, Language } from '@/lib/traffic';
 import { searchTrafficItems } from '@/lib/traffic-view';
 import type { TrafficSearchItem } from '@/lib/traffic-view';
+import type { BuildingLocation } from '@/lib/building-search';
+import BuildingSearch from './building-search';
 
 const pageSize = 20;
 
-export default function TrafficSearch({ items, language, selected, loading, onSelect }: {
+export default function TrafficSearch({ items, language, selected, loading, onSelect, onSelectBuilding }: {
   items: TrafficSearchItem[];
   language: Language;
   selected: Camera | null;
   loading: boolean;
   onSelect: (item: TrafficSearchItem) => void;
+  onSelectBuilding: (building: BuildingLocation) => void;
 }) {
   const copy = messages[language];
   const [query, setQuery] = useSessionField('searchQuery');
@@ -34,13 +37,15 @@ export default function TrafficSearch({ items, language, selected, loading, onSe
     <div className="search-scope" role="group" aria-label={copy.searchScope}>
       <button type="button" aria-pressed={scope === 'roads'} onClick={() => { setScope('roads'); setPage(0); }}>{copy.searchRoads}</button>
       <button type="button" aria-pressed={scope === 'locations'} onClick={() => { setScope('locations'); setPage(0); }}>{copy.searchLocations}</button>
+      <button type="button" aria-pressed={scope === 'buildings'} onClick={() => { setScope('buildings'); setPage(0); }}>{language === 'en' ? 'Buildings' : '大廈'}</button>
     </div>
-    <label htmlFor="traffic-search-input">{scope === 'roads' ? copy.searchRoadLabel : copy.searchLocationLabel}</label>
+    <label htmlFor="traffic-search-input">{scope === 'buildings' ? (language === 'en' ? 'Building or address · English / 中文' : '大廈或地址 · 中文 / English') : scope === 'roads' ? copy.searchRoadLabel : copy.searchLocationLabel}</label>
     <div className="search-input-wrap">
       <Search size={18} aria-hidden="true"/>
-      <input id="traffic-search-input" type="search" value={query} autoComplete="off" onChange={event => { setQuery(event.target.value); setPage(0); }}/>
+      <input id="traffic-search-input" type="search" value={query} maxLength={200} autoComplete="off" onChange={event => { setQuery(event.target.value); setPage(0); }}/>
       {query && <button type="button" aria-label={copy.clearSearch} onClick={() => { setQuery(''); setPage(0); document.getElementById('traffic-search-input')?.focus(); }}><X size={16}/></button>}
     </div>
+    {scope === 'buildings' ? <BuildingSearch query={query} language={language} onSelect={onSelectBuilding}/> : <>
     <p className="search-count" role="status">{loading && !results.length ? copy.loadingOfficialData : copy.searchResults(results.length.toLocaleString(language === 'en' ? 'en-HK' : 'zh-HK'))}</p>
     {selected && <button type="button" className="selected-search-item" onClick={() => onSelect(items.find(item => item.camera.id === selected.id) ?? { camera: selected })}>
       <span>{copy.selectedLocation}<strong>{language === 'en' ? selected.nameEn || selected.name : selected.name}</strong></span><ArrowRight size={16}/>
@@ -67,5 +72,6 @@ export default function TrafficSearch({ items, language, selected, loading, onSe
       <span>{copy.searchRange(start + 1, Math.min(start + pageSize, results.length), results.length)}</span>
       <button type="button" disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>{copy.nextPage}</button>
     </nav>}
+    </>}
   </div>;
 }
