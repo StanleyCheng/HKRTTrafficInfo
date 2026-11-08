@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { fairLineReads, oldestDue } from "../lib/refresh-slice.ts"
+import { fairLineReads, oldestDue, withPreferredDue } from "../lib/refresh-slice.ts"
 
 const now = 1_000_000
 const items = ["a", "b", "c", "d"]
@@ -25,3 +25,6 @@ const freshAel = fairLineReads(
   3,
 )
 assert.deepEqual(freshAel.map((item) => item.line), ["TWL", "DRL", "TWL"])
+assert.deepEqual(withPreferredDue(["A", "B", "C"], "Z", 4), ["Z", "A", "B", "C"])
+assert.deepEqual(withPreferredDue(["A", "B", "C"], "Z", 3), ["Z", "A", "B"])
+assert.deepEqual(withPreferredDue(["A", "B", "C"], "B", 3), ["B", "A", "C"])

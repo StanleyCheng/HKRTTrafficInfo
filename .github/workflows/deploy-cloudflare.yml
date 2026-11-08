@@ -15,10 +15,9 @@ on:
 permissions:
   contents: read
 
-# One deploy per commit at a time; do not cancel in flight to avoid leaving
-# a half-uploaded Worker bundle behind.
+# Serialize production promotion across commits without interrupting uploads.
 concurrency:
-  group: "cloudflare-deploy-${{ github.event.workflow_run.head_sha }}"
+  group: "cloudflare-production"
   cancel-in-progress: false
 
 jobs:
@@ -56,7 +55,11 @@ jobs:
         run: npm ci
       - name: Build Worker bundle
         run: npm run build
+      - name: Check revision before publishing
+        id: revision
+        run: bash scripts/require-current-main.sh "${{ github.event.workflow_run.head_sha }}"
       - name: Deploy to Cloudflare
+        if: ${{ steps.revision.outputs.eligible == 'true' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

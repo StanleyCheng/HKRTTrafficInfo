@@ -980,7 +980,9 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
     let zooming = m.getContainer().classList.contains('leaflet-zoom-anim');
     const tick = () => {
       const now = Date.now();
-      const next = [...(['mtr', 'lrt', 'ferry'] as const).flatMap(kind => transitFeeds?.[kind] ? movingCameras(kind, transitFeeds[kind]!, now) : []), ...selectedVehicleCameras(selectedVehicleFeeds ?? {}, now)].filter(camera => Number.isFinite(camera.lat) && Number.isFinite(camera.lng));
+      const bounds = m.getBounds().pad(0.2);
+      const next = [...(['mtr', 'lrt', 'ferry'] as const).flatMap(kind => transitFeeds?.[kind] ? movingCameras(kind, transitFeeds[kind]!, now) : []), ...selectedVehicleCameras(selectedVehicleFeeds ?? {}, now)].filter(camera => Number.isFinite(camera.lat) && Number.isFinite(camera.lng) && (bounds.contains([camera.lat, camera.lng]) || popupRef.current?.stopId === camera.id));
+      const hideDestinations = m.getZoom() < 13 || m.getSize().x < 700 && next.length > 18;
       const ids = new Set(next.map(camera => camera.id));
       entries.forEach((entry, id) => { if (!ids.has(id)) { group.removeLayer(entry.marker); entries.delete(id); if (popupRef.current?.stopId === id) popupRef.current.popup.remove(); } });
       next.forEach(camera => {
@@ -991,6 +993,7 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
         const existing = entries.get(camera.id);
         if (existing) {
           const node = existing.marker.getElement();
+          node?.classList.toggle('vehicle-label-hidden', hideDestinations && popupRef.current?.stopId !== camera.id);
           const target = { point: [camera.lng, camera.lat] as [number, number], route: routePosition };
           if (existing.feed !== feed) {
             // Refresh corrections follow the route the vehicle is on: a distance offset walks the
@@ -1046,6 +1049,7 @@ export default function TrafficMap({ selectedVehicleFeeds, routeFocus: focusRout
         const vehicleLabel = rail ? hover : `${name} · ${camera.positionSource === 'gps' ? integrationMessages[language].gps : camera.kind === 'ferry' ? integrationMessages[language].estimatedFerry : messages[language].estimatedPosition}`;
         const node = marker.getElement();
         node?.setAttribute('aria-label', vehicleLabel); node?.setAttribute('aria-haspopup', 'dialog');
+        node?.classList.toggle('vehicle-label-hidden', hideDestinations && popupRef.current?.stopId !== camera.id);
         if (node) node.dataset.markerId = camera.id;
         marker.on('click', () => {
           const latest = entries.get(camera.id);

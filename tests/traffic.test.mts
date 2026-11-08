@@ -12,7 +12,15 @@ import {
 import { parseCsv, parseSegmentRouteNumbers, pickLatestPeriod, popupFields } from '../lib/traffic-parsing.ts';
 import { cameraFromFlowSegment, displayFlowSegments, searchTrafficItems } from '../lib/traffic-view.ts';
 import type { FlowSegment } from '../lib/traffic.ts';
-import { getCameraData } from '../lib/traffic-client.ts';
+import { getCameraData, parseNewsTime } from '../lib/traffic-client.ts';
+
+test('incident publication time remains unknown when source time is invalid', () => {
+  assert.equal(parseNewsTime(undefined), null);
+  assert.equal(parseNewsTime('not a date'), null);
+  assert.equal(parseNewsTime('2026/02/30 上午 11:01:02'), null);
+  assert.equal(parseNewsTime('2026/11/08 下午 11:01:02'), '2026-11-08T23:01:02+08:00');
+  assert.equal(parseNewsTime('2026/11/08 上午 12:01:02'), '2026-11-08T00:01:02+08:00');
+});
 
 test('speedLevel classifies urban-road traffic bands', () => {
   assert.equal(speedLevel(0), 'slow');

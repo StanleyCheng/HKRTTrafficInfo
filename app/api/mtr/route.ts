@@ -9,10 +9,12 @@ export const dynamic = "force-dynamic"
 let pending: Promise<MtrResponse> | null = null
 let cached: { at: number; body: MtrResponse } | null = null
 
-export async function GET() {
+export async function GET(request?: Request) {
   const now = Date.now()
+  const stationParam = request && new URL(request.url).searchParams.get('station')?.toUpperCase()
+  const selectedStation = stationParam && /^[A-Z0-9]{1,8}$/.test(stationParam) ? stationParam : undefined
   if (cached && now - cached.at < ETA_FRESH_MS) return Response.json(cached.body)
-  pending ??= keepWorkerRequestAlive(loadMtrSnapshot(now).then((body) => {
+  pending ??= keepWorkerRequestAlive(loadMtrSnapshot(now, selectedStation).then((body) => {
     if (body.ok && !body.stale) cached = { at: now, body }
     return body
   }).finally(() => {

@@ -298,14 +298,15 @@ async function geocodeRoad(name: string, signal: AbortSignal): Promise<{ lat: nu
   return result;
 }
 
-function parseNewsTime(value: string | undefined): string {
-  if (!value) return new Date().toISOString();
+export function parseNewsTime(value: string | undefined): string | null {
+  if (!value) return null;
   const match = value.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s+([上下]午)?\s*(\d{1,2}):(\d{2}):(\d{2})/);
-  if (!match) return new Date().toISOString();
+  if (!match) return null;
   let hour = Number(match[5]);
+  if (match[4] && (hour < 1 || hour > 12)) return null;
   if (match[4] === '下午' && hour < 12) hour += 12;
   if (match[4] === '上午' && hour === 12) hour = 0;
-  return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}T${String(hour).padStart(2, '0')}:${match[6]}:${match[7]}+08:00`;
+  return officialHongKongTimestamp(`${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`, `${String(hour).padStart(2, '0')}:${match[6]}:${match[7]}`) ?? null;
 }
 
 async function loadIncidents(): Promise<CameraData> {
@@ -343,7 +344,7 @@ async function loadIncidents(): Promise<CameraData> {
         id: cameraId, sourceId: id, kind: 'incident',
         name: text.split('\n')[0].slice(0, 60) || matchedRoad, nameEn: textEn.split('\n')[0].slice(0, 60) || matchedRoad,
         lat: location.lat, lng: location.lng, text, textEn,
-        remarks: matchedRoad ? `≈ ${matchedRoad}` : undefined, dataUpdated: time,
+        remarks: matchedRoad ? `≈ ${matchedRoad}` : undefined, dataUpdated: time ?? undefined,
       });
     }
     notices.push(notice);

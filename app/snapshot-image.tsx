@@ -18,6 +18,14 @@ export default function SnapshotImage({ camera, language, onActivity }: { camera
   const [enhance, setEnhance] = useState(true);
   const [contrast, setContrast] = useState(true);
   const [doubled, setDoubled] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    const timer = setInterval(update, 30000);
+    document.addEventListener('visibilitychange', update);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', update); };
+  }, []);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -99,7 +107,7 @@ export default function SnapshotImage({ camera, language, onActivity }: { camera
     };
   }, [shot?.imageUrl]);
 
-  const stale = Boolean(shot?.updatedAt && Date.parse(shot.fetchedAt) - Date.parse(shot.updatedAt) > 10 * 60000);
+  const stale = Boolean(shot?.updatedAt && now - Date.parse(shot.updatedAt) > 10 * 60000);
   const cameraName = language === 'en' ? camera.nameEn || camera.name : camera.name;
   const en = language === 'en';
   const filter = [enhance ? `brightness(${shot?.adjustments.brightness ?? 1}) saturate(1.08)` : '', contrast ? `contrast(${shot?.adjustments.contrast ?? 1})` : ''].filter(Boolean).join(' ') || 'none';

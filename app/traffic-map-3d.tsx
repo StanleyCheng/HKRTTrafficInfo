@@ -202,8 +202,11 @@ export default function TrafficMap3D(props: Props) {
   useEffect(() => {
     if (!ready || !map.current) return;
     (map.current.getSource('hk-traffic') as MapLibre.GeoJSONSource).setData(trafficLines(segments, props.selectedSegmentId));
+  }, [ready, segments, props.selectedSegmentId]);
+  useEffect(() => {
+    if (!ready || !map.current) return;
     (map.current.getSource('hk-transport') as MapLibre.GeoJSONSource).setData(transportLines(paths, busRoute));
-  }, [ready, segments, paths, busRoute, props.selectedSegmentId]);
+  }, [ready, paths, busRoute]);
 
   useEffect(() => {
     const m = map.current, gl = library.current;
@@ -315,10 +318,16 @@ export default function TrafficMap3D(props: Props) {
           routePosition: { key: direction.route.key, distance, coordinates: direction.route.coordinates, distances },
         });
       }
-      const ids = new Set(moving.map(camera => camera.id));
+      const visibleMoving = moving.filter(camera => {
+        if (!Number.isFinite(camera.lat) || !Number.isFinite(camera.lng)) return false;
+        if (callbacks.current.selected?.id === camera.id) return true;
+        const screen = m.project([camera.lng, camera.lat]);
+        return screen.x >= -80 && screen.y >= -80 && screen.x <= m.getCanvas().clientWidth + 80 && screen.y <= m.getCanvas().clientHeight + 80;
+      });
+      const hideDestinations = m.getZoom() < nativeZoom(13) || m.getCanvas().clientWidth < 700 && visibleMoving.length > 18;
+      const ids = new Set(visibleMoving.map(camera => camera.id));
       vehicles.current.forEach((entry, id) => { if (!ids.has(id)) { entry.marker.remove(); vehicles.current.delete(id); } });
-      for (const camera of moving) {
-        if (!Number.isFinite(camera.lat) || !Number.isFinite(camera.lng)) continue;
+      for (const camera of visibleMoving) {
         const name = language === 'en' ? camera.nameEn || camera.name : camera.name;
         const destination = vehicleDestination(camera, language, name), color = camera.color ?? layers[camera.kind].color;
         const html = vehicleHtml(vehicleIcon(camera), color, destination);
@@ -341,6 +350,7 @@ export default function TrafficMap3D(props: Props) {
         const displayed = vehicleFrame(target, reduced.matches ? undefined : entry.correction, now);
         if (!displayed.active) entry.correction = undefined;
         if (entry.html !== html) { entry.node.innerHTML = html; entry.html = html; }
+        entry.node.classList.toggle('vehicle-label-hidden', hideDestinations && callbacks.current.selected?.id !== camera.id);
         entry.node.setAttribute('aria-label', `${name} · ${camera.estimated ? messages[language].estimatedPosition : layerText(camera.kind, language).name}`);
         entry.node.setAttribute('aria-haspopup', 'dialog');
         const previous = entry.marker.getLngLat();

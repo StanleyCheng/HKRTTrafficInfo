@@ -6,7 +6,7 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const origin = process.argv[2] || 'http://localhost:5173';
 const evidence = process.argv[3] || 'output/playwright/transport-layers';
 await fs.mkdir(evidence, { recursive: true });
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL ?? 'chrome', headless: true });
 const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgQIAI7mY6QAAAABJRU5ErkJggg==', 'base64');
 const results = [];
 try {
@@ -38,6 +38,7 @@ try {
       if (kind === 'route-vehicles') return route.fulfill({ json: emptyRouteVehicles(url) });
       if (kind === 'bus-route-paths') {
         const code = url.searchParams.get('route'); pathRequests.push(code);
+        if (width === 1440 && mode === '2d' && code === '1' && pathRequests.filter(request => request === '1').length === 1) return route.fulfill({ status: 503, body: 'Temporary geometry failure' });
         return route.fulfill({ json: { ok: true, routes: [{ key: `fixture-${code}`, operator: 'kmb', route: code, geometry: 'road', coordinates: code === '1' ? [[114.15, 22.29], [114.17, 22.31]] : [[114.16, 22.29], [114.19, 22.33]], stops: [] }] } });
       }
       if (kind === 'kmb') return route.fulfill({ json: { ...base, stops: (Number(url.searchParams.get('lng')) > 114.22 ? ['3'] : ['1', '2']).map((code, i) => ({ id: `STOP${code}`, nameTc: `巴士站 ${code}`, nameEn: `Bus stop ${code}`, lng: 114.16 + i * .001, lat: 22.3, routes: [code], calls: [] })) } });
@@ -93,7 +94,16 @@ try {
       assert.equal(await page.locator('.map-toolbar > button, .map-toolbar > [data-slot="popover-trigger"]').count(), 3);
       assert.equal(await page.locator('.bus-stops-button,.route-labels-button,.rail-lines-popover').count(), 0);
       await page.waitForFunction(() => document.querySelector('.transport-route-list')?.textContent.match(/KMB|九巴/));
-      await page.waitForFunction(() => document.querySelectorAll('.transport-route-list .transport-route-zoom:not(:disabled)').length >= 28);
+      if (width === 1440 && mode === '2d') {
+        await page.getByRole('button', { name: /Retry.*1/ }).waitFor();
+        await page.evaluate(() => window.dispatchEvent(new Event('online')));
+      }
+      await page.waitForFunction(language => ['1', '2'].every(code => {
+        const label = language === 'en' ? `Show ${code} KMB` : `顯示 ${code} 九巴`;
+        const choice = [...document.querySelectorAll('.transport-route-list input')].find(input => input.getAttribute('aria-label')?.startsWith(label));
+        return choice?.closest('li')?.querySelector('.transport-route-zoom:not(:disabled)');
+      }), language);
+      if (width === 1440 && mode === '2d') assert.equal(pathRequests.filter(code => code === '1').length, 2, 'A failed route recovers on reconnect without manual retry');
       assert.deepEqual([...new Set(pathRequests)].sort(), ['1', '2']);
       const stopSwitch = page.getByRole('switch', { name: language === 'en' ? 'Bus stops' : '巴士站', exact: true });
       await stopSwitch.uncheck();
@@ -159,7 +169,7 @@ try {
       assert.equal(await page.locator('.transport-route-list li').count(), 6);
       assert.deepEqual(errors, []);
       results.push({ name: prefix, ok: true }); console.log('PASS ' + prefix);
-    } catch (error) { results.push({ name: prefix, ok: false, error: error.stack }); console.error('FAIL ' + prefix + '\n' + error.stack); await page.screenshot({ path: `${evidence}/${prefix}-failed.png` }); }
+    } catch (error) { results.push({ name: prefix, ok: false, error: error.stack }); console.error('FAIL ' + prefix + '\n' + error.stack, { pathRequests, zoomable: await page.locator('.transport-route-list .transport-route-zoom:not(:disabled)').count(), errors }); await page.screenshot({ path: `${evidence}/${prefix}-failed.png` }); }
     finally { await context.close(); }
   }
 } finally { await browser.close(); await fs.writeFile(`${evidence}/results.json`, JSON.stringify(results, null, 2)); }

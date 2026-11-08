@@ -29,3 +29,14 @@ jobs:
         run: npm run verify
       - name: Cloudflare Worker build
         run: npm run build
+      - name: Install browser for smoke checks
+        run: npx playwright install --with-deps chromium
+      - name: Check browser journeys
+        run: npm run verify:browser
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-evidence
+          path: outputs/browser-smoke/
+          if-no-files-found: ignore

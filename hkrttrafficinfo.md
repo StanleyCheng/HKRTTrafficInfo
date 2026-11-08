@@ -1,6 +1,10 @@
 # HKRTTrafficInfo — Technical Specification
 
-Engineering handover document. All claims cite repository files; uncertain items are marked [INFERENCE].
+Engineering handover document. Some older sections retain historical architecture notes; the current feed and release behavior is summarized in the November 2026 implementation note below and in `README.md`.
+
+### Review implementation (8 November 2026)
+
+The original traffic feeds now refresh when a layer, Search or selected detail needs them, using source-specific checks while the page is visible and online. Tram requests follow the viewport and zoom gate. Opened MTR and Light Rail stations receive one due slot within the existing bounded provider budget. Incident publication time stays unknown when absent or invalid; retained snapshot age advances on a display clock; Nearby tram cards distinguish live, scheduled and stale arrival information. Route geometry errors retry with backoff and on reconnect. Transport geometry derives from feed data rather than unrelated request status or the display clock, and both renderers limit offscreen vehicle work and dense overview labels. Production workflows serialize each target and skip superseded commits; the Verify workflow adds deterministic Chromium smoke checks. See `docs/review-implementation-2026-11-08.md` for scope and validation.
 
 ## 1. Overview
 
@@ -10,7 +14,7 @@ Live/deployed URLs (`README.md` "Live site"):
 - GitHub Pages static export: `https://stanleycheng.github.io/HKRTTrafficInfo/` (served under the `/HKRTTrafficInfo` sub-path; see `next.config.ts` `basePath`).
 - Vercel: `https://hkrttrafficinfo.vercel.app/` — standard Next.js build, auto-deployed from `main` (`.vercel/project.json` projectName `hkrttrafficinfo`).
 
-i18n: two languages, `zh` (Traditional Chinese, default) and `en`, implemented as a hand-rolled message table `messages: Record<Language, AppMessages>` in `lib/i18n.ts` (~315 lines, typed keys, function-valued formatters). Language choice persists in `localStorage` key `hk-traffic-language-v1` via a `useSyncExternalStore` subscription with cross-tab `storage` events and an in-memory fallback when storage is unavailable (`app/traffic-monitor.tsx` `getLanguageSnapshot`/`subscribeLanguage`). Server snapshot is always `'zh'`; `<html lang>` is `zh-HK` statically (`app/layout.tsx`) and updated client-side on toggle. No next-i18n/library; `next-themes` is a dependency but unused by app code (only referenced inside vendored `components/ui/sonner.tsx`).
+i18n: two languages, `zh` (Traditional Chinese, default) and `en`, implemented in `lib/i18n.ts`. Language choice persists in `localStorage` key `hk-traffic-language-v1` with a cross-tab storage subscription and an in-memory fallback. Server snapshot is `'zh'`; `<html lang>` is `zh-HK` statically (`app/layout.tsx`) and updated client-side on toggle.
 
 The app is also a PWA: `public/site.webmanifest` (name `HK RT Traffic Info`, short name `HK RT Traffic`, `display: standalone`, theme `#08244d`), icons in `public/` (`hkrttrafficinfo-logo.png` is the 1254px source art the rasters are cut from), wired in `app/layout.tsx` metadata (title `HK RT Traffic Info · 香港實時交通資訊`; the in-app brand reads `HK RT Traffic Info` in English and `香港實時交通資訊` in Chinese, compacting to `HK RT Traffic` and `香港實時交通` in the mobile top bar).
 
@@ -18,7 +22,7 @@ The app is also a PWA: `public/site.webmanifest` (name `HK RT Traffic Info`, sho
 
 Every bus route listed in a stop popup has a bilingual Zoom to route action, including routes without arrivals. It loads geometry separately from ETA polling, enables the route and fits its available path in either renderer; the existing Show route action still selects tracked arrival estimates (`app/item-details.tsx`, `app/traffic-monitor.tsx`).
 
-Failed bus-layer, route-position and route-stop requests use bounded exponential delays of 30, 60, 120, 240 and 300 seconds (`lib/refresh-backoff.ts`). Healthy requests remain eligible after 30 seconds; five-second client checks enforce that freshness without doubling the effective interval. Viewport request keys match cache cells or rounded coordinates. Stable route identities prevent successful layer refreshes from restarting pending geometry and vehicle requests. Geometry errors remain cached until explicit retry. Failed upstream stop/route keys cool independently in KMB, Citybus, GMB, NLB and MTR Bus adapters; MTR Bus partial failures retain healthy boards and completeness metadata. Both renderers share `app/use-bus-stop-arrivals.ts`, retaining unexpired arrivals with a stale warning after failures and clearing them after a healthy empty response. Retention preserves the original observation clock and three-minute expiry. Manual retry and reconnect reset client cooldowns; provider/server limits remain in force. Review and reproducible validation: `docs/bus-layer-refresh-review-2026-10-31.md`.
+Failed bus-layer, route-position and route-stop requests use bounded exponential delays of 30, 60, 120, 240 and 300 seconds (`lib/refresh-backoff.ts`). Healthy requests remain eligible after 30 seconds; five-second client checks enforce that freshness without doubling the effective interval. Viewport request keys match cache cells or rounded coordinates. Stable route identities prevent successful layer refreshes from restarting pending geometry and vehicle requests. Geometry failures now retry with bounded backoff and on reconnect. Failed upstream stop/route keys cool independently in KMB, Citybus, GMB, NLB and MTR Bus adapters; MTR Bus partial failures retain healthy boards and completeness metadata. Both renderers share `app/use-bus-stop-arrivals.ts`, retaining unexpired arrivals with a stale warning after failures and clearing them after a healthy empty response. Retention preserves the original observation clock and three-minute expiry. Manual retry and reconnect reset client cooldowns; provider/server limits remain in force. Review and reproducible validation: `docs/bus-layer-refresh-review-2026-10-31.md`.
 
 ### Bus position estimates (15 October 2026)
 
@@ -57,11 +61,11 @@ The Trams category has a persistent Tram stations switch, independent of route p
 ### 2.1 Toolchain versions (`package.json`)
 
 - Runtime: Node `>=22.13.0` (`engines`); `"type": "module"`.
-- Framework: `next` 16.3.4, `react`/`react-dom` 19.2.6.
-- Build: `vinext` 1.0.0-beta.5 (Next.js-on-Vite adapter), `vite` 8.0.13, `@vitejs/plugin-react` 6.0.2, `@vitejs/plugin-rsc` 0.5.26, `react-server-dom-webpack` 19.2.6.
-- Cloudflare: `@cloudflare/vite-plugin` 1.37.1, `wrangler` 4.92.0, `@cloudflare/workers-types` 4.20260515.1.
+- Framework: `next` ^16.4.3, `react`/`react-dom` 19.3.0.
+- Build: `vinext` ^1.1.0 (Next.js-on-Vite adapter), `vite` ^8.3.4, `@vitejs/plugin-react` 6.0.2, `@vitejs/plugin-rsc` 0.5.36, `react-server-dom-webpack` ^19.3.0.
+- Cloudflare: `@cloudflare/vite-plugin` ^1.63.1, `wrangler` 4.92.0, `@cloudflare/workers-types` 4.20260515.1.
 - Styling: `tailwindcss` 4.2.1 via `@tailwindcss/postcss` 4.2.1, `tw-animate-css` ^1.4.0; shadcn new-york style (`components.json`).
-- Lint/types: `eslint` 9.39.4 + `eslint-config-next` 16.3.4, `typescript` 5.9.3.
+- Lint/types: `eslint` 9.39.4 + `eslint-config-next` ^16.4.3, `typescript` 5.9.3.
 - Overrides: `miniflare.sharp` pinned to 0.35.4 (`package.json` `overrides`).
 
 ### 2.2 package.json scripts
@@ -73,13 +77,14 @@ The Trams category has a persistent Tram stations switch, independent of route p
 | `predev` / `prebuild` / `prebuild:static` | `npm run prepare:maplibre` | npm pre-hooks ensuring the MapLibre worker assets exist before dev/build. |
 | `dev` | `node scripts/run-framework.mjs dev` | Platform dispatch (`scripts/run-framework.mjs`): on Windows (`win32`) runs `next dev` directly (to avoid Vinext worker read failures on OneDrive-backed workspaces, per `README.md`); on `managed-linux` runs `vite dev`; otherwise runs `vinext dev`. Non-managed dev gets `--port 5173`. |
 | `build` | `node scripts/run-framework.mjs build` | Same dispatch: `managed-linux` → `scripts/build-verified.sh` (runs `vinext build` under GNU `timeout`, default 3m); Windows/other → `vinext build`. |
-| `build:static` | `node scripts/build-static.mjs` | GitHub Pages static export: if `app/api/` exists it is copied aside to `.api-backup-<pid>` and deleted for the build (dynamic route handlers are incompatible with `output: 'export'`; copy+delete used because OneDrive denies renames), then runs `next build` with `STATIC_EXPORT=1`, always restoring `app/api` on exit/signals. Output to `out/`. Note: `app/api/` does not currently exist, so the script just logs "no app/api directory". |
+| `build:static` | `node scripts/build-static.mjs` | GitHub Pages static export: copies aside and temporarily removes `app/api/` for the export build, then restores it on exit/signals. Output to `out/`. |
 | `start` | `node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0` | Previews the built Cloudflare Worker locally via Wrangler against `dist/server/wrangler.json` (produced by the Vinext build; `dist/` is gitignored and not currently present). `scripts/sites-env.mjs` redirects Wrangler/Miniflare state into `.sites-runtime/` and `chdir`s to the project root. |
-| `lint` | `eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern public/vendor` | ESLint over the repo. |
+| `lint` | `eslint .` with generated-output ignores | ESLint over the repo. |
 | `typecheck` | `tsc --noEmit --pretty false --incremental false` | Type check; `examples/` excluded via `tsconfig.json`. |
-| `test` | `node --experimental-strip-types --test tests/*.test.mts` | Node built-in test runner over `tests/traffic.test.mts`. |
+| `test` | `node --experimental-strip-types --test tests/*.test.mts` | Deterministic Node test suite. |
 | `verify` | `npm run lint && npm run typecheck && npm test` | Full local gate (also run in CI). |
-| `verify:live` | `node --experimental-strip-types scripts/verify-live.mjs http://localhost:5173` | Live acceptance check against a running server — see §6.3. **Targets `/api/cameras/:kind` and `/api/snapshot/:id` routes that no longer exist in the tree** (§4.1). |
+| `verify:browser` | `bash scripts/run-browser-smoke.sh` | Deterministic Chromium startup, layer and refresh-recovery checks; also run in CI. |
+| `verify:live` | `node --experimental-strip-types scripts/verify-live.mjs http://localhost:5173` | Optional live-source check against a running server; depends on public providers. |
 | `db:generate` | `drizzle-kit generate` | Generates SQL migrations into `drizzle/` from `db/schema.ts` (currently a no-op: schema is empty). |
 
 ### 2.3 Key dependencies and roles
@@ -91,17 +96,17 @@ The Trams category has a persistent Tram stations switch, independent of route p
 | `@maplibre/maplibre-gl-leaflet` + `maplibre-gl` | ^0.1.4 / ^6.11.0 | Optional Positron vector basemap inside Leaflet; worker assets served from `public/vendor/maplibre-gl/`. |
 | `fast-xml-parser` | ^5.11.1 | Parses XML upstreams (snapshot inventory, speed feeds, special traffic news, ALS) in both `lib/traffic-client.ts` and `lib/traffic-server.ts`. |
 | `lucide-react` | ^1.31.0 | All UI icons. |
-| shadcn stack (`radix-ui`, `@base-ui/react`, `@shadcn/react`, `cmdk`, `vaul`, `sonner`, etc.) | various | Vendored UI kit in `components/ui/` (55 files). **Only `tooltip` is actually imported by app code** (`app/traffic-monitor.tsx`); the rest is unused registry boilerplate. |
+| `radix-ui` | current lockfile | The map-layer, Nearby and Search popover in `components/ui/popover.tsx`. Other unused UI components were removed. |
 | `drizzle-orm` / `drizzle-kit` | 0.45.2 / 0.31.10 | Optional D1 database access (§2.5); schema empty. |
-| `clsx`, `tailwind-merge`, `class-variance-authority` | — | `lib/utils.ts` `cn()` helper for shadcn components. |
-| `zod`, `react-hook-form`, `@hookform/resolvers`, `recharts`, `date-fns`, `embla-carousel-react`, `react-day-picker`, `input-otp`, `react-resizable-panels` | various | Present only to satisfy vendored `components/ui/` files; unused by app code. |
+| `clsx`, `tailwind-merge` | current lockfile | `lib/utils.ts` `cn()` helper for the popover. |
+| `playwright` | pinned dev dependency | Chromium browser smoke checks in `npm run verify:browser` and the Verify workflow. |
 
 ### 2.4 Config files
 
 - `next.config.ts` — when `STATIC_EXPORT=1`: `output: 'export'`, `basePath: '/HKRTTrafficInfo'`, `assetPrefix: '/HKRTTrafficInfo/'`, `images.unoptimized`, `trailingSlash`, exposes `NEXT_PUBLIC_BASE_PATH`. Otherwise plain config (`agentRules: false`).
 - `vite.config.ts` — Vinext production/dev pipeline: plugins `vinext()`, `sites({ mockAuth: false })` (vendored `build/sites-vite-plugin.ts`, from `@openai/sites-vite-plugin` 0.2.0 — local-auth middleware; disabled), and `cloudflare({ viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] }, inspectorPort: false, config: localBindingConfig })`. `localBindingConfig` points the Worker entry at `vinext/server/fetch-handler`, sets `nodejs_compat`, and wires optional D1/R2 bindings from `.openai/hosting.json` (both currently `null`, with a placeholder database id). Sets Wrangler/Miniflare env vars (`.wrangler/` local state, metrics off). `managed-linux` profile binds `0.0.0.0`/`terminal.local`; macOS seatbelt sandbox switches to polling watch.
 - `tsconfig.json` — strict, bundler resolution, path alias `@/* → ./*`, types `node` + `@cloudflare/workers-types`, excludes `examples/`.
-- `eslint.config.mjs` — `eslint-config-next` core-web-vitals + typescript; relaxed rules for vendored `components/ui/**` and `hooks/use-mobile.ts` (vendored verbatim from shadcn@4.17.0 per comment).
+- `eslint.config.mjs` — `eslint-config-next` core-web-vitals + typescript; the unused vendored UI rule exception was removed.
 - `postcss.config.mjs` — `@tailwindcss/postcss` only.
 - `components.json` — shadcn registry config (new-york, css `app/globals.css`, aliases `@/components`, `@/lib/utils`…).
 - `drizzle.config.ts` — dialect `sqlite`, schema `./db/schema.ts`, out `./drizzle`.
@@ -119,14 +124,14 @@ The database is **scaffolding only**. `db/schema.ts` is intentionally empty (`ex
 
 | Path | Purpose |
 |---|---|
-| `app/` | Next.js app router root. `layout.tsx` (metadata/viewport/lang), `page.tsx` (renders `TrafficMonitor`), `traffic-monitor.tsx` (main client component, 658 lines), `traffic-map.tsx` (Leaflet map), `traffic-search.tsx` (search panel), `traffic-status.tsx` (freshness/legend block), `globals.css` (Tailwind 4 + Leaflet/markercluster/maplibre CSS imports + full app styling, 356 lines). **No `app/api/` directory exists.** |
-| `components/ui/` | 55 vendored shadcn components; only `tooltip.tsx` used by the app. |
+| `app/` | Next.js app router root, client monitor, both map renderers, panels and CSS. `app/api/` contains hosted transit and infrastructure feed handlers. |
+| `components/ui/` | The popover used by the map-layer, Nearby and Search controls. |
 | `lib/` | `traffic.ts` (shared types, layer metadata, speed classification, freshness helpers, upstream URL constants); `traffic-client.ts` (browser data layer — the one actually used); `traffic-server.ts` (server-side mirror, currently unused); `traffic-parsing.ts` (CSV parser, CSDI PopupInfo HTML table parser, HK bounds check, period/route-number helpers); `traffic-view.ts` (stale-segment greying, segment→camera adapter, search); `i18n.ts` (zh/en message table); `utils.ts` (`cn`). |
-| `hooks/` | `use-mobile.ts` — shadcn `useIsMobile` (768px breakpoint); unused by app code. |
+| `hooks/` | The unused shadcn mobile helper was removed. |
 | `db/`, `drizzle/` | Empty drizzle scaffolding + migration journal (§2.5). |
 | `examples/d1/` | D1 reference route (broken import, §2.5). |
 | `scripts/` | Build/dev/deploy helpers (§2.2), `verify-live.mjs` (§6.3), pnpm/install helpers for the Codex "Sites" managed environment (`install-pnpm.sh`, `pnpm-install.mjs`, `install-ci.*`, `sites-env.*`, `execution-profile.mjs`, `build-verified.sh`). |
-| `tests/` | `traffic.test.mts` — unit tests (§6.3). |
+| `tests/` | Deterministic `*.test.mts` suite plus browser regression scripts (§6.3). |
 | `public/` | PWA icons/manifest, `images/layers*.png` (Leaflet assets), `vendor/maplibre-gl/` (generated, gitignored). |
 | `vendor/` | `shadcn-tailwind-4.13.0.css` + LICENSE — a shadcn Tailwind 4 theme CSS. **Not imported anywhere** (grep: no references); dead weight. |
 | `build/` | `sites-vite-plugin.ts` + LICENSE — vendored Vite plugin used by `vite.config.ts`. |
@@ -135,18 +140,11 @@ The database is **scaffolding only**. `db/schema.ts` is intentionally empty (`ex
 
 ## 4. Architecture
 
-### 4.1 Request flow — current tree (important for integrators)
+### 4.1 Request flow
 
-The app has **no server routes**. `app/traffic-monitor.tsx` imports `getCameraData` from `@/lib/traffic-client` (line 8), which fetches every upstream government API **directly from the browser**; the file header states: "Browser-side data layer for the static (GitHub Pages) build… all upstream hosts send CORS allow headers" (`lib/traffic-client.ts:1-3`). A grep for route handlers (`export async function GET/POST`, `NextRequest`) finds matches only in `examples/d1`.
+The original seven layers use the browser adapter in `lib/traffic-client.ts` to request published government sources directly; its per-layer cache and shared pending producers preserve source timestamps. Hosted transit and infrastructure layers use same-origin handlers under `app/api/`, with parsing and bounded provider access in `lib/*-feed.ts`. The GitHub Pages static export omits those handlers and explains unavailable live features in the interface. An opened stop or route can request details independently of the map-wide sample. Provider-specific backoff and the shared ETA queue bound upstream work; `fetchedAt` is separate from the provider observation clock.
 
-Git history shows this was recently changed: commit `a2e2267` ("Rename project to HKRTTrafficInfo…") **deleted** `app/api/cameras/[kind]/route.ts` and `app/api/snapshot/[id]/route.ts`, and git status is clean, so the deletion is committed. The deleted routes (from `git show a2e2267^:...`):
-
-- `GET /api/cameras/[kind]` — validated `kind` against `kinds` (404 otherwise), called `getCameraData(kind)` from `lib/traffic-server.ts`, returned JSON with `Cache-Control: no-store`, 502 with the upstream error message on failure.
-- `GET /api/snapshot/[id]` — proxied snapshot JPEGs: id validated against `/^[A-Z0-9_-]{2,30}$/` (400), looked up in the snapshot inventory (404), enforced an HTTPS host allowlist (`tdcctv.data.one.gov.hk` only, also after redirects), capped the stream at 10 MB via `TransformStream`, passed through `Last-Modified`, and added `X-Snapshot-Fetched-At` and `X-Content-Type-Options: nosniff`.
-
-`lib/traffic-server.ts` (493 lines) is the server-side mirror those routes used and is **still in the tree but imported by nothing** (grep confirms). It differs from the client by: a manual redirect allowlist (`allowedRedirectHosts`, max 3 redirects), and an exported `officialFetch`. `scripts/build-static.mjs` still contains the machinery to move `app/api` aside during static export, and `scripts/verify-live.mjs` still targets `/api/cameras/:kind` and `/api/snapshot/:id` — i.e. **the repo is mid-cutover from a proxied architecture to browser-direct fetching, and README's "Local same-origin routes remove browser CORS limitations" paragraph is stale**.
-
-Rendering model: the page is a full client component tree (`'use client'` at `traffic-monitor.tsx`, `traffic-map.tsx`, `traffic-status.tsx`, `traffic-search.tsx`). `app/page.tsx` and `app/layout.tsx` are server components, but all data fetching and interactivity happen client-side after hydration. Production builds: (a) `next build` static export → GitHub Pages; (b) plain `next build` → Vercel; (c) `vinext build` → Cloudflare Worker (`dist/server/wrangler.json`, entry `vinext/server/fetch-handler`) for local preview via `npm start`. Vinext's RSC environment (`rsc` + `ssr` child) is configured in `vite.config.ts`.
+The client monitor keeps enabled layers, source data, request status, selected details and viewport state. It derives route catalogues and geometry from feed data and visibility; the Leaflet and MapLibre renderers receive shared paths and camera observations. The two renderers update transport geometry only when their relevant inputs change. See `README.md` for the hosted/static capability table and `docs/review-implementation-2026-11-08.md` for the latest review-driven changes.
 
 ### 4.2 Caching
 
@@ -154,7 +152,7 @@ In-memory per-layer cache in `lib/traffic-client.ts` (identical pattern in `lib/
 
 ### 4.3 State management
 
-Pure React state in `app/traffic-monitor.tsx`: `enabled` (per-layer on/off; defaults flow+incident on, rest off), `states: Record<LayerKind, LayerState>` (`data`/`loading`/`error`), `selectedSnapshot` (selected camera or `flow-segment-*` id), `showDetectors`, mobile panel state. Preferences (language, basemap, topbar/sidebar collapsed) use the `useSyncExternalStore` + localStorage pattern described in §1 (`hk-traffic-language-v1`, `hk-traffic-basemap-v1`, `hk-traffic-topbar-v1`, `hk-traffic-sidebar-v1`). Client polling (all gated on `document.visibilityState === 'visible'`): flow every 120 s, all other layers every 300 s, all layers refetched on visibility regain (`traffic-monitor.tsx` effect). Snapshot images refresh every 120 s plus on selection/visibility (`SnapshotImage`, 55 s fetch timeout). A 30 s `now` tick drives freshness re-evaluation.
+Pure React state in `app/traffic-monitor.tsx`: `enabled` (per-layer on/off; defaults flow+incident+MTR when hosted), `states: Record<LayerKind, LayerState>` (`data`/`loading`/`error`), `selectedSnapshot`, and map/panel preferences. Original feeds load on demand from enabled layers, Search and selected details. While visible and online, flow and incidents check every 120 s, parking every 180 s, rainfall every 600 s, and camera/snapshot inventories every 300 s; provider caches can satisfy a check without an upstream request. Tram request identity follows the viewport and zoom coverage gate. An opened MTR/Light Rail station takes one due slot in its feed's bounded refresh slice. Route geometry failures use bounded retry and reconnect recovery. Snapshot images refresh every 120 s plus on selection/visibility (`SnapshotImage`, 55 s fetch timeout), while the display clock continues to age a retained photo after failure.
 
 ### 4.4 Theming
 
@@ -273,34 +271,31 @@ All seven layers share the same pipeline: `TrafficMonitor.fetchLayer(kind)` → 
 
 ### 6.2 CORS approach
 
-Current tree: none needed — the browser calls upstream hosts directly and the code comment asserts "all upstream hosts send CORS allow headers" (`lib/traffic-client.ts:3`). Previous architecture: same-origin proxy routes under `app/api/` (deleted, §4.1). An integrator merging server-side layers from another repo must decide which model wins; the static GitHub Pages deployment cannot support same-origin server routes.
+The original seven layers request published sources from the browser using `lib/traffic-client.ts`. Hosted transit and infrastructure integrations use same-origin `app/api/` handlers. The GitHub Pages export omits these handlers and exposes the supported static features and hosted-only notices described in `README.md`.
 
 ### 6.3 Testing / validation
 
-- `npm test` → `tests/traffic.test.mts`: 10 unit tests over pure functions — `speedLevel` bands (urban/major/invalid), `officialHongKongTimestamp` validation, `isLiveTrafficDataFresh` expiry/future tolerance, CSV/popup/route-number parsers, `pickLatestPeriod`, `displayFlowSegments` ageing to unknown, `searchTrafficItems` bilingual matching. No fixtures of live data.
-- `npm run verify` = lint + typecheck + tests (run in CI before deploy).
-- `npm run verify:live` → `scripts/verify-live.mjs` (header: "Independent acceptance check against live official inventories, never fixtures"). Compares the running app's `/api/cameras/{redlight,speed,snapshot,flow}` responses against independent official inventories — TD CSVs `https://www.td.gov.hk/datagovhk_td/junctions-with-rlc/resources/junctions_with_rlc.csv` and `https://www.td.gov.hk/datagovhk_td/locations-of-sec/resources/locations_of_sec.csv`, the snapshot XML, and `irnAvgSpeed-all.xml` (with ≤1 publication-interval skew tolerance); validates segment colour classification against HKeMobility WFS `https://www.hkemobility.gov.hk/api/drss/layer/map?service=WFS&version=1.0.0&request=GetFeature&typeName=DRSS%3AVW_IRN_AVG_SPEED_MAP&outputFormat=application%2Fjson&srsName=EPSG%3A4326&maxFeatures=5000` (≥90% of valid segments must match); fetches a real JPEG via `/api/snapshot/H106F` (JPEG magic bytes, `Last-Modified`, `X-Snapshot-Fetched-At`); checks 404/400 rejection of invalid routes. **As noted in §4.1 these routes no longer exist, so this script cannot pass against the current app** — it documents the intended contract for the proxy architecture. README records the last verified counts (2026-09-20): 230 red-light, 164 speed housings, 1 013 snapshots, 4 524 feed segments / 4 505 matched / 4 411 colour-matched.
-- `.vercel/README.txt` present (deployment metadata).
+- `npm run verify` runs ESLint, TypeScript and the deterministic `tests/*.test.mts` suite. It is the first CI release gate.
+- `npm run verify:browser` starts the local app and uses pinned Playwright/Chromium with intercepted feed fixtures for startup, desktop/mobile 2D/3D route controls, refresh recovery and geometry reconnect. It is the second CI gate; failures upload screenshots under `outputs/browser-smoke/`.
+- `npm run verify:live` is an optional independent check against current official providers and a running hosted app. Provider availability and publication timing can affect its outcome.
+- `npm run build`, `next build` and `npm run build:static` validate Worker, hosted Next.js and reduced static outputs respectively. Local verification results for this change are in `docs/review-implementation-2026-11-08.md`.
 
 ### 6.4 Deployment targets
 
-1. **GitHub Pages** — `.github/workflows/deploy-pages.yml`: after `Verify` succeeds on `main` (or on dispatch) → `npm ci` → `npm run build:static` → upload `out/` → `actions/deploy-pages`. Serves the reduced static export at https://stanleycheng.github.io/HKRTTrafficInfo/; the 18 `app/api` routes are omitted, so route-dependent layers degrade to their static-mode notice.
-2. **Vercel** — `.github/workflows/deploy-vercel.yml`, triggered by `workflow_run` on a successful `Verify`, running `vercel deploy --prod` (plain `next build`), project linked in `.vercel/project.json`.
-3. **Cloudflare Worker** — `.github/workflows/deploy-cloudflare.yml`, also triggered by `workflow_run` on a successful `Verify`, publishing the Vinext build (`npm run build` → `dist/server/wrangler.json`). `npm start` previews it locally with Wrangler `--local`.
+1. **GitHub Pages** — `.github/workflows/deploy-pages.yml` builds and uploads the reduced static export after a successful `Verify`, with a manual dispatch for intentional rollback.
+2. **Vercel** — `.github/workflows/deploy-vercel.yml` builds and publishes the hosted Next.js app after successful `Verify`.
+3. **Cloudflare Worker** — `.github/workflows/deploy-cloudflare.yml` publishes the Vinext Worker bundle after successful `Verify`.
+
+Each automatic target has a target-wide concurrency group and checks the verified commit against current `main` before publication, skipping superseded runs. A failed Verify run triggers no automatic deployment.
 
 ## 7. Known issues and limitations
 
-1. **Stale README / mid-cutover architecture**: README's "Local same-origin routes remove browser CORS limitations… Successful inventories are cached in memory for five minutes; manual reloads respect that server-side cache" describes the deleted `app/api/` proxy. Current app fetches upstream from the browser with a client-side cache of the same TTLs (§4.1, §4.2).
-2. **`verify:live` is broken against the current app** — it requires `/api/cameras/:kind` and `/api/snapshot/:id` (§6.3).
-3. **`lib/traffic-server.ts` is dead code** in the current tree (no importers) but is the ready-made server layer for re-introducing Worker/Next API routes.
-4. **`scripts/build-static.mjs` app/api handling is currently inert** (no `app/api` directory) but will matter again if routes are restored.
-5. **`examples/d1` is broken**: its route imports the deleted `examples/d1/db/schema.ts` (§2.5); excluded from typecheck so the breakage is invisible to `npm run verify`.
-6. **Unused weight**: 54 of 55 `components/ui/` files, `hooks/use-mobile.ts`, most form/chart/carousel dependencies, and `vendor/shadcn-tailwind-4.13.0.css` are unused by the app.
-7. **Upstream source limitations** (README "Source limitations", mirrored in UI notes): enforcement layers list published junctions/housings, not operational cameras or live feeds; speed housings exclude government tunnels/control areas; snapshots are periodically updated stills and individual cameras may serve an HTTP-200 "No Service" JPEG (availability cannot be inferred from HTTP status); incidents carry no official coordinates — pins are ALS-geocoded approximations; rainfall markers sit at curated district reference points, not gauges.
-8. **Road segments lack district metadata**, so district search applies only to layers that publish it (README "Interface"; `searchTrafficItems` in `lib/traffic-view.ts`).
-9. **Dev-server divergence on Windows**: `npm run dev` uses Next.js directly (Vinext worker read failures on OneDrive-backed workspaces, README), while production builds use Vinext — behaviour differences between dev and prod are possible.
-10. **Snapshot image trust**: since the proxy deletion, image URLs from the XML inventory are fetched unvalidated by the browser (the deleted route enforced a host allowlist and 10 MB cap).
-
+1. **Release measurements remain outstanding.** The local browser gate uses deterministic fixtures; production provider latency, frame time, physical-device gestures and deployed-target smoke checks have not been measured for this review implementation.
+2. **Optional database scaffold.** D1 schema and binding examples remain as an unused extension point; see §2.5 before adopting them.
+3. **Source limits.** Enforcement layers list published junctions/housings rather than operational cameras. Snapshots are still images and HTTP 200 can carry a “No Service” JPEG. Incident pins are approximate ALS geocodes because the official notice lacks coordinates. Rainfall markers represent districts, not sensor positions.
+4. **Geometry coverage.** Unmatched or ambiguous transit routes remain explicitly unavailable rather than being shown as accurate paths. ETA-derived vehicle positions are estimates rather than GPS.
+5. **Search geography.** Road segments lack district metadata, so district filtering applies only to records that publish it.
+6. **Runtime variation.** Windows local development uses Next.js while the Worker build uses Vinext; both build targets require validation for changes to shared behavior.
 
 ## Commuter layers and session restoration, 23 October 2026
 

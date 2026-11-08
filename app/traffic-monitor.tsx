@@ -301,7 +301,7 @@ export default function TrafficMonitor() {
   const enabled = useMemo<Record<LayerKind, boolean>>(() => Object.keys(enabledSelection).length
     ? Object.fromEntries(kinds.map(kind => [kind, enabledSelection[kind] === true && layerAvailable(kind)])) as Record<LayerKind, boolean>
     : defaultEnabled(), [enabledSelection]);
-  const [states, setStates] = useState<Record<LayerKind, LayerState>>(() => Object.fromEntries(kinds.map(kind => [kind, { loading: originalKinds.includes(kind as OriginalLayerKind) || (kind === 'mtr' && layerAvailable(kind)), error: false }])) as Record<LayerKind, LayerState>);
+  const [states, setStates] = useState<Record<LayerKind, LayerState>>(() => Object.fromEntries(kinds.map(kind => [kind, { loading: (kind === 'flow' || kind === 'incident' || kind === 'mtr') && layerAvailable(kind), error: false }])) as Record<LayerKind, LayerState>);
   const [pendingActivity, setPendingActivity] = useState(0);
   const mounted = useRef(false);
   const lifecycle = useRef(0);
@@ -335,6 +335,7 @@ export default function TrafficMonitor() {
   const selectedNearbyKinds = useMemo(() => nearbyCategoryKinds(nearbyCategories), [nearbyCategories]);
   const mapEnabled = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, enabled[kind] || showNearbyOnMap && selectedNearbyKinds.includes(kind as IntegrationKind)])) as Record<LayerKind, boolean>, [enabled, showNearbyOnMap, selectedNearbyKinds]);
   const requested = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, mapEnabled[kind] || openControl === 'nearby' && selectedNearbyKinds.includes(kind as IntegrationKind)])) as Record<LayerKind, boolean>, [mapEnabled, openControl, selectedNearbyKinds]);
+  const originalRequested = useMemo(() => Object.fromEntries(originalKinds.map(kind => [kind, enabled[kind] || openControl === 'search' || selectedSnapshot?.kind === kind])) as Record<OriginalLayerKind, boolean>, [enabled, openControl, selectedSnapshot]);
   const [now, setNow] = useState(() => Date.now());
   const [buildingTarget, setBuildingTarget] = useState<BuildingLocation | null>(null);
   const [focusTarget, setFocusTarget] = useState<TrafficSearchItem | null>(null);
@@ -342,8 +343,10 @@ export default function TrafficMonitor() {
   const dialog = useRef<HTMLDialogElement>(null);
   const inflight = useRef(new Set<LayerKind>());
   const originalRetryAt = useRef(new Map<LayerKind, number>());
+  const originalLastAttempt = useRef(new Map<LayerKind, number>());
   const refreshIntegration = useRef<(kind: IntegrationKind) => Promise<void>>(async () => {});
-  const integrationContext = useRef({ enabled, viewport, language });
+  const selectedStation = selectedSnapshot && (selectedSnapshot.kind === 'mtr' || selectedSnapshot.kind === 'lrt') && selectedSnapshot.positionType !== 'vehicle' ? selectedSnapshot.sourceId : undefined;
+  const integrationContext = useRef({ enabled, viewport, language, selectedStation });
   const integrationPending = useRef(new Map<IntegrationKind, { key: string; controller: AbortController }>());
   const integrationLastFetch = useRef(new Map<IntegrationKind, { key: string; at: number; retryAt?: number }>());
 
@@ -385,8 +388,10 @@ export default function TrafficMonitor() {
   const fetchLayer = useCallback(async (kind: LayerKind, force = false) => {
     if (!layerAvailable(kind)) return;
     if (integrationKinds.includes(kind as IntegrationKind)) return refreshIntegration.current(kind as IntegrationKind);
+    if (!navigator.onLine) return;
     if (inflight.current.has(kind)) return;
     inflight.current.add(kind);
+    originalLastAttempt.current.set(kind, Date.now());
     originalRetryAt.current.delete(kind);
     const finishActivity = beginActivity();
     setStates(state => ({ ...state, [kind]: { ...state[kind], loading: true, error: false } }));
@@ -406,38 +411,32 @@ export default function TrafficMonitor() {
   }, [beginActivity]);
 
   useEffect(() => {
-    originalKinds.forEach(kind => fetchLayer(kind));
-    const flowInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') fetchLayer('flow');
-    }, 120000);
-    const otherInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') originalKinds.filter(kind => kind !== 'flow').forEach(kind => fetchLayer(kind));
-    }, 300000);
-    // Failed updates recover on a short, bounded cadence while keeping their
-    // last data visible, instead of waiting for the normal multi-minute poll.
-    const retryInterval = setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      originalRetryAt.current.forEach((at, kind) => {
-        if (integrationContext.current.enabled[kind] && Date.now() >= at) void fetchLayer(kind, true);
+    const cadence: Record<OriginalLayerKind, number> = { flow: 120000, incident: 120000, parking: 180000, rainfall: 600000, redlight: 300000, speed: 300000, snapshot: 300000 };
+    const refreshDue = () => {
+      if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+      const current = Date.now();
+      originalKinds.forEach(kind => {
+        if (!originalRequested[kind]) return;
+        const retryAt = originalRetryAt.current.get(kind);
+        if (retryAt !== undefined) {
+          if (current >= retryAt) void fetchLayer(kind, true);
+        } else if (current - (originalLastAttempt.current.get(kind) ?? 0) >= cadence[kind]) void fetchLayer(kind);
       });
-    }, 30000);
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') originalKinds.forEach(kind => fetchLayer(kind));
     };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    const onOnline = () => originalKinds.forEach(kind => void fetchLayer(kind, true));
+    refreshDue();
+    const timer = setInterval(refreshDue, 30000);
+    document.addEventListener('visibilitychange', refreshDue);
+    const onOnline = () => originalKinds.forEach(kind => { if (originalRequested[kind]) void fetchLayer(kind, true); });
     window.addEventListener('online', onOnline);
     return () => {
-      clearInterval(flowInterval);
-      clearInterval(otherInterval);
-      clearInterval(retryInterval);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshDue);
       window.removeEventListener('online', onOnline);
     };
-  }, [fetchLayer]);
+  }, [fetchLayer, originalRequested]);
 
   useEffect(() => {
-    integrationContext.current = { enabled: requested, viewport, language };
+    integrationContext.current = { enabled: requested, viewport, language, selectedStation };
     integrationKinds.forEach(kind => {
       if (pollingMs[kind] > 0 && (!requested[kind] || !layerAvailable(kind))) {
         integrationPending.current.get(kind)?.controller.abort();
@@ -452,7 +451,7 @@ export default function TrafficMonitor() {
       if (force) busFeedBackoff.current.reset(kind);
       if (bus && !busFeedBackoff.current.due(kind)) return;
       const last = integrationLastFetch.current.get(kind);
-      const key = integrationRequestKey(kind, viewport, language);
+      const key = integrationRequestKey(kind, viewport, language) + ((kind === 'mtr' || kind === 'lrt') && selectedStation ? `:station:${selectedStation}` : '');
       const pending = integrationPending.current.get(kind);
       if (pending && pending.key === key) return;
       if (!force && last?.key === key && Date.now() < (last.retryAt ?? last.at + pollingMs[kind])) return;
@@ -462,17 +461,17 @@ export default function TrafficMonitor() {
       const finishActivity = beginActivity();
       const isCurrent = () => {
         const current = integrationContext.current;
-        const currentKey = integrationRequestKey(kind, current.viewport, current.language);
+        const currentKey = integrationRequestKey(kind, current.viewport, current.language) + ((kind === 'mtr' || kind === 'lrt') && current.selectedStation ? `:station:${current.selectedStation}` : '');
         return mounted.current && integrationPending.current.get(kind) === request && current.enabled[kind] && currentKey === key;
       };
       integrationLastFetch.current.set(kind, { key, at: Date.now() });
       setStates(state => ({ ...state, [kind]: { ...state[kind], loading: true } }));
       try {
-        const data = await getIntegrationData(kind, viewport, language, request.controller.signal);
+        const data = await getIntegrationData(kind, viewport, language, request.controller.signal, selectedStation);
         if (!isCurrent()) return;
         // Stale data always signals a failure. Partial bus misses keep healthy
         // boards live and use a counted soft warning in the layer popover.
-        const partialMiss = Boolean(data.feedError && /\(\d+ of \d+\)/.test(data.feedError))
+        const partialMiss = Boolean(data.partial && data.partial.missed > 0 && data.partial.missed < data.partial.total)
         const error = Boolean(data.stale) || !partialMiss && (Boolean(data.feedError) || ((kind === 'mtr' || kind === 'lrt') && !data.complete))
         const completedAt = Date.now();
         if (bus) {
@@ -500,34 +499,39 @@ export default function TrafficMonitor() {
     const onOnline = () => integrationKinds.forEach(kind => void refresh(kind, true));
     window.addEventListener('online', onOnline);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refreshAll); window.removeEventListener('online', onOnline); };
-  }, [requested, language, viewport, beginActivity]);
+  }, [requested, language, viewport, beginActivity, selectedStation]);
 
   const segments = useMemo(() => displayFlowSegments(states.flow.data?.segments, states.flow.data?.segmentsUpdated, now), [states.flow.data, now]);
   const boundaryData = useMemo(() => withBoundarySpeeds(states.boundary.data, segments), [states.boundary.data, segments]);
   const displayStates = useMemo(() => ({ ...states, boundary: { ...states.boundary, data: boundaryData } }), [states, boundaryData]);
   const intelInput = useMemo(() => ({ states: Object.fromEntries(kinds.filter(kind => enabled[kind] && layerAvailable(kind)).map(kind => [kind, displayStates[kind]])), segments: enabled.flow ? segments : [], now }), [displayStates, enabled, segments, now]);
   const activeBusSelection = busSelection && enabled[busSelection.operator] && routeVisible({ id: `bus:${busSelection.operator}:${busSelection.route}`, mode: 'bus' }, routeVisibility) ? busSelection : null;
-  const routeFeeds = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, displayStates[kind].data])), [displayStates]);
+  const { mtr: mtrState, lrt: lrtState, ferry: ferryState, tram: tramState, kmb: kmbState, citybus: citybusState, gmb: gmbState, nlb: nlbState, 'mtr-bus': mtrBusState, access: accessState } = states;
+  const routeFeeds = useMemo(() => ({
+    mtr: mtrState.data, lrt: lrtState.data, ferry: ferryState.data, tram: tramState.data,
+    kmb: kmbState.data, citybus: citybusState.data, gmb: gmbState.data,
+    nlb: nlbState.data, 'mtr-bus': mtrBusState.data, access: accessState.data,
+  }), [mtrState.data, lrtState.data, ferryState.data, tramState.data, kmbState.data, citybusState.data, gmbState.data, nlbState.data, mtrBusState.data, accessState.data]);
   const routeCatalogue = useMemo(() => transportRoutes(routeFeeds, chosenBusRoutes), [routeFeeds, chosenBusRoutes]);
   const { loaded: routePaths, retry: retryRoutePaths, prime: primeRoutePaths } = useRoutePaths(routeCatalogue, enabled, routeVisibility, beginActivity);
-  const { states: positionStates, snapshots: busVehicleFeeds, retry: retryPositions } = useRouteVehicles(routeCatalogue, enabled, routeVisibility, routePaths, routeFeeds, beginActivity, activeBusSelection, now);
+  const { states: positionStates, snapshots: busVehicleFeeds, fallbackPaths, retry: retryPositions } = useRouteVehicles(routeCatalogue, enabled, routeVisibility, routePaths, routeFeeds, beginActivity, activeBusSelection, now);
   const selectedVehicleFeeds = useMemo<RouteVehicleFeeds>(() => {
     const data = routeFeeds.tram;
     return { ...busVehicleFeeds, ...(enabled.tram && data ? Object.fromEntries(routeCatalogue.filter(route => route.kind === 'tram' && routeVisible(route, routeVisibility)).map(route => [route.id, { kind: 'tram', data }])) : {}) };
   }, [busVehicleFeeds, routeFeeds.tram, enabled.tram, routeCatalogue, routeVisibility]);
-  const viewStates = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, { ...displayStates[kind], data: filterTransportFeed(kind, displayStates[kind].data, routeCatalogue, routeVisibility) }])) as Record<LayerKind, LayerState>, [displayStates, routeCatalogue, routeVisibility]);
+  const filteredFeeds = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, filterTransportFeed(kind, routeFeeds[kind as keyof typeof routeFeeds], routeCatalogue, routeVisibility)])) as Partial<Record<LayerKind, CameraData>>, [routeFeeds, routeCatalogue, routeVisibility]);
+  const viewStates = useMemo(() => Object.fromEntries(kinds.map(kind => [kind, { ...displayStates[kind], data: kind === 'boundary' ? boundaryData : filteredFeeds[kind] ?? displayStates[kind].data }])) as Record<LayerKind, LayerState>, [displayStates, filteredFeeds, boundaryData]);
   const transitFeeds = useMemo(() => ({ mtr: enabled.mtr ? viewStates.mtr.data : undefined, lrt: enabled.lrt ? viewStates.lrt.data : undefined, ferry: enabled.ferry ? viewStates.ferry.data : undefined }), [enabled, viewStates]);
   const paths = useMemo(() => [
-    ...(['mtr', 'lrt', 'ferry', 'tram', 'access'] as const).flatMap(kind => enabled[kind] ? viewStates[kind].data?.paths ?? [] : []),
+    ...(['mtr', 'lrt', 'ferry', 'tram', 'access'] as const).flatMap(kind => enabled[kind] ? filteredFeeds[kind]?.paths ?? [] : []),
     ...routeCatalogue.flatMap(route => {
       if (!route.bus || !enabled[route.kind] || !routeVisible(route, routeVisibility) || activeBusSelection?.operator === route.kind && activeBusSelection.route === route.code && busRouteState?.selection === activeBusSelection && busRouteState.data?.route) return [];
       const state = routePaths[route.id];
       if (state?.status === 'ready') return state.paths;
-      const snapshot = selectedVehicleFeeds[route.id];
-      return snapshot?.kind === 'bus' && snapshot.data.route ? busPaths([snapshot.data.route, ...snapshot.data.reverse.map(direction => direction.route)]) : [];
+      return fallbackPaths[route.id] ?? [];
     }),
     ...routeCatalogue.filter(route => route.kind === 'mtr-bus' && enabled[route.kind] && routeVisible(route, routeVisibility)).flatMap(route => route.paths),
-  ], [enabled, viewStates, routeCatalogue, routeVisibility, routePaths, selectedVehicleFeeds, activeBusSelection, busRouteState]);
+  ], [enabled, filteredFeeds, routeCatalogue, routeVisibility, routePaths, fallbackPaths, activeBusSelection, busRouteState]);
   const flowFresh = isLiveTrafficDataFresh(states.flow.data?.segmentsUpdated, now);
   const cameras = useMemo(() => {
     const visible = kinds.flatMap(kind => {
@@ -616,7 +620,7 @@ export default function TrafficMonitor() {
     ...segments.map(segment => ({ camera: cameraFromFlowSegment(segment, states.flow.data?.segmentsUpdated), segment })),
     ...kinds.filter(kind => kind !== 'flow' && layerAvailable(kind) && !viewportNote(kind, viewport)).flatMap(kind => (viewStates[kind].data?.cameras ?? []).map(camera => ({ camera }))),
   ], [segments, states, viewStates, viewport]);
-  const loading = kinds.some(kind => (originalKinds.includes(kind as OriginalLayerKind) || mapEnabled[kind]) && states[kind].loading);
+  const loading = kinds.some(kind => (originalKinds.includes(kind as OriginalLayerKind) ? originalRequested[kind as OriginalLayerKind] : mapEnabled[kind]) && states[kind].loading);
   const appBusy = pendingActivity > 0 || loading;
   const errors = kinds.some(kind => mapEnabled[kind] && states[kind].error);
   // Map content is genuinely expected only while an enabled layer can still
@@ -636,7 +640,7 @@ export default function TrafficMonitor() {
   }
 
   function refreshAllLayers() {
-    kinds.forEach(kind => void fetchLayer(kind, true));
+    kinds.filter(kind => originalKinds.includes(kind as OriginalLayerKind) ? originalRequested[kind as OriginalLayerKind] : requested[kind]).forEach(kind => void fetchLayer(kind, true));
     if (activeBusSelection) retryBusRoute();
     retryPositions();
   }
@@ -881,7 +885,7 @@ export default function TrafficMonitor() {
                   <ul>{state.data.notices.map(notice => <li key={notice.id}>
                     <span className="notice-text">{language === 'en' ? notice.textEn || notice.text : notice.text || notice.textEn}</span>
                     <span className="notice-meta">
-                      <time>{hkTime(notice.time, false, language)}</time>
+                      {notice.time && <time dateTime={notice.time}>{hkTime(notice.time, false, language)}</time>}
                       {notice.cameraId
                         ? <button className="text-button" onClick={() => { const target = state.data?.cameras.find(camera => camera.id === notice.cameraId); if (target) selectSearchItem({ camera: target }); }}>{copy.incidentViewOnMap}</button>
                         : <em>{copy.incidentNoLocation}</em>}

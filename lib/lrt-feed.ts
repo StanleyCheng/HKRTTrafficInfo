@@ -1,7 +1,7 @@
 import { carryArrivalClock, estimateTrains, type TrainObservation } from "./mtr-estimate.ts"
 import { lrtPoint, lrtRoutes, lrtStation, lrtStationId } from "./lrt-network.ts"
 import { pool } from "./pool.ts"
-import { oldestDue } from "./refresh-slice.ts"
+import { oldestDue, withPreferredDue } from "./refresh-slice.ts"
 import { ETA_FRESH_MS } from "./place-arrivals.ts"
 import { etaQueue, takeEtaTurn, ETA_REFRESH_TIMEOUT_MS } from "./polite-fetch.ts"
 import { parseHongKongTime } from "./mtr-schedule.ts"
@@ -31,16 +31,19 @@ const remembered = new Map<string, Remembered>()
 const attempted = new Map<string, number>()
 
 // Station positions stay in the network file. These calls only refresh arrival minutes.
-export async function loadLrtSnapshot(now = Date.now()): Promise<LrtResponse> {
-  return takeEtaTurn("lrt", () => collectLrtSnapshot(now))
+export async function loadLrtSnapshot(now = Date.now(), selectedStation?: string): Promise<LrtResponse> {
+  return takeEtaTurn("lrt", () => collectLrtSnapshot(now, selectedStation))
 }
 
-async function collectLrtSnapshot(now: number): Promise<LrtResponse> {
+async function collectLrtSnapshot(now: number, selectedStation?: string): Promise<LrtResponse> {
   let missed = 0
   const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
   const stations = lrtRoutes().flatMap((route) => route.stations)
   const ids = [...new Set(stations)]
-  const due = oldestDue(ids, (stationId) => attempted.get(stationId) ?? remembered.get(stationId)?.at ?? null, now, ETA_FRESH_MS, REFRESH_SLICE)
+  const lastRead = (stationId: string) => attempted.get(stationId) ?? remembered.get(stationId)?.at ?? null
+  const preferred = selectedStation && ids.includes(selectedStation) && (lastRead(selectedStation) === null || now - lastRead(selectedStation)! >= ETA_FRESH_MS) ? selectedStation : null
+  const background = oldestDue(ids, lastRead, now, ETA_FRESH_MS, REFRESH_SLICE)
+  const due = withPreferredDue(background, preferred, REFRESH_SLICE)
   await pool(due, FETCH_LIMIT, async (stationId) => {
     attempted.set(stationId, now)
     const result = await fetchStation(stationId, signal)

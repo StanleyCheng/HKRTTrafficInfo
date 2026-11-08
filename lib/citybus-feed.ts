@@ -106,6 +106,7 @@ export async function loadCitybusNear(lng: number, lat: number, now = Date.now()
   return {
     ok: !totalFailure,
     ...(error ? { error } : {}),
+    ...(missed ? { partial: { missed, total: pairs.length } } : {}),
     observedAt: latest > 0 ? new Date(latest).toISOString() : null,
     stale: totalFailure,
     stops,

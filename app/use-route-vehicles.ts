@@ -4,8 +4,8 @@ import { getRouteVehicles, type RouteVehicleRequest } from '@/lib/bus-route-clie
 import { RefreshBackoff } from '@/lib/refresh-backoff'
 import { retainBusRoute } from '@/lib/bus-route-state'
 import { seedBusRoute, type RouteVehicleFeeds, type RouteVehicleState, type RouteVehicleSnapshot } from '@/lib/route-vehicles'
-import { routeVisible, type TransportRoute, type RouteVisibility } from '@/lib/transport-routes'
-import type { CameraData, LayerKind } from '@/lib/traffic'
+import { busPaths, routeVisible, type TransportRoute, type RouteVisibility } from '@/lib/transport-routes'
+import type { CameraData, LayerKind, MapPath } from '@/lib/traffic'
 import type { BusRouteSelection } from '@/lib/bus-route'
 import type { PathState } from './use-route-paths'
 
@@ -70,5 +70,11 @@ export function useRouteVehicles(routes: TransportRoute[], enabled: Record<Layer
     else if (snapshot?.kind === 'bus' && snapshot.data.stale && seed) snapshot = { kind: 'bus', data: retainBusRoute(seed, snapshot.data, now) }
     return snapshot ? [[route.id, snapshot]] : []
   })), [work, states, geometry, feeds, now])
-  return { states, snapshots, retry: () => { backoff.current.reset(); cache.current.forEach(entry => { entry.at = 0 }); setRetry(value => value + 1) } }
+  const fallbackPaths = useMemo<Record<string, MapPath[]>>(() => Object.fromEntries(Object.entries(states).flatMap(([id, state]) => {
+    const snapshot = state.data
+    return snapshot?.kind === 'bus' && snapshot.data.route
+      ? [[id, busPaths([snapshot.data.route, ...snapshot.data.reverse.map(direction => direction.route)])]]
+      : []
+  })), [states])
+  return { states, snapshots, fallbackPaths, retry: () => { backoff.current.reset(); cache.current.forEach(entry => { entry.at = 0 }); setRetry(value => value + 1) } }
 }

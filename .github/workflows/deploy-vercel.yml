@@ -13,10 +13,10 @@ on:
 permissions:
   contents: read
 
-# One deploy per commit at a time; do not cancel in flight to avoid orphan
-# builds left half-uploaded on Vercel.
+# Serialize production promotion across commits. A queued newer revision may
+# replace an older pending run; a running upload is allowed to finish.
 concurrency:
-  group: "vercel-deploy-${{ github.event.workflow_run.head_sha }}"
+  group: "vercel-production"
   cancel-in-progress: false
 
 jobs:
@@ -37,7 +37,11 @@ jobs:
           cache: "npm"
       - name: Install dependencies
         run: npm ci
+      - name: Check revision before publishing
+        id: revision
+        run: bash scripts/require-current-main.sh "${{ github.event.workflow_run.head_sha }}"
       - name: Deploy to Vercel (production)
+        if: ${{ steps.revision.outputs.eligible == 'true' }}
         shell: bash
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then

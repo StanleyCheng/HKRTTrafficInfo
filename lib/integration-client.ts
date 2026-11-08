@@ -23,6 +23,7 @@ export function integrationRequestKey(kind: IntegrationKind, view: MapViewport, 
   const gate = viewportNote(kind, view) ? 'gated:' : '';
   if (kind === 'kmb' || kind === 'gmb') return `${gate}${kmbCacheKey(view.lng, view.lat, view.zoom)}`;
   if (kind === 'mtr-bus' || kind === 'access' || kind === 'citybus' || kind === 'nlb') return `${gate}${view.lng.toFixed(3)}:${view.lat.toFixed(3)}:${Math.floor(view.zoom)}`;
+  if (kind === 'tram') return `${view.zoom >= 13 ? 'near' : 'overview'}:${view.lng.toFixed(2)}:${view.lat.toFixed(2)}`;
   // Warning names and details are returned in the requested language. Other
   // envelopes carry both languages and can survive a language switch.
   return kind === 'weather-warning' ? language : '';
@@ -38,7 +39,7 @@ const endpoints: Record<Exclude<IntegrationKind, CommuterKind>, string> = { cros
 // 121 MTR and 68 LRT boards inside the feeds' five-minute memory without
 // tripping the upstream rate limit; buses and ferries turn over more slowly.
 export const pollingMs: Record<IntegrationKind, number> = { crossing: 120000, works: 300000, toll: 21600000, boundary: 60000, 'weather-warning': 60000, mtr: 30000, lrt: 30000, kmb: 30000, citybus: 30000, gmb: 30000, nlb: 30000, ferry: 60000, 'mtr-bus': 30000, tram: 30000, access: 300000, taxi: 86400000 };
-type Envelope = { ok: boolean; complete?: boolean; error?: string; fetchedAt?: string; observedAt?: string | null; capturedAt?: string | null; stale?: boolean };
+type Envelope = { ok: boolean; complete?: boolean; error?: string; partial?: { missed: number; total: number }; fetchedAt?: string; observedAt?: string | null; capturedAt?: string | null; stale?: boolean };
 type FeaturesResponse = Envelope & { works?: GeoJSON.FeatureCollection; tolls?: GeoJSON.FeatureCollection };
 
 async function json(url: string, signal?: AbortSignal): Promise<unknown> {
@@ -47,7 +48,7 @@ async function json(url: string, signal?: AbortSignal): Promise<unknown> {
   if (!response.ok) throw new Error(`Feed HTTP ${response.status}`);
   return response.json();
 }
-export async function getIntegrationData(kind: IntegrationKind, view: MapViewport, language: Language, signal?: AbortSignal): Promise<CameraData> {
+export async function getIntegrationData(kind: IntegrationKind, view: MapViewport, language: Language, signal?: AbortSignal, selectedStation?: string): Promise<CameraData> {
   signal?.throwIfAborted();
   const note = viewportNote(kind, view);
   if (note) return { ...base(kind, { ok: true }), feedNote: note };
@@ -71,6 +72,7 @@ export async function getIntegrationData(kind: IntegrationKind, view: MapViewpor
     } else throw new Error('Hosted feed required');
   } else {
     const query = new URLSearchParams({ lng: String(view.lng), lat: String(view.lat), zoom: String(view.zoom), lang: language === 'en' ? 'en' : 'tc' });
+    if ((kind === 'mtr' || kind === 'lrt') && selectedStation) query.set('station', selectedStation);
     payload = await json(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/api/${endpoints[kind]}?${query}`, signal) as Envelope;
   }
   if (!payload.ok) throw new Error(payload.error || 'Feed unavailable');
@@ -78,7 +80,7 @@ export async function getIntegrationData(kind: IntegrationKind, view: MapViewpor
 }
 function base(kind: IntegrationKind, payload: Envelope): CameraData {
   const fetchedAt = validDate(payload.fetchedAt) ?? new Date().toISOString();
-  return { cameras: [], count: 0, expectedCount: 0, fetchedAt, observedAt: validDate(payload.observedAt ?? payload.capturedAt), sourceLastModified: null, source: layers[kind].source, complete: payload.complete !== false && !payload.stale, stale: Boolean(payload.stale), feedError: payload.error, payload };
+  return { cameras: [], count: 0, expectedCount: 0, fetchedAt, observedAt: validDate(payload.observedAt ?? payload.capturedAt), sourceLastModified: null, source: layers[kind].source, complete: payload.complete !== false && !payload.stale, stale: Boolean(payload.stale), feedError: payload.error, partial: payload.partial, payload };
 }
 function validDate(value: string | null | undefined) { return value && Number.isFinite(Date.parse(value)) ? value : null; }
 const text = (value: unknown) => typeof value === 'string' || typeof value === 'number' ? String(value) : '';

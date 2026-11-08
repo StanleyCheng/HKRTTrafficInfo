@@ -226,6 +226,7 @@ export type KmbResponse = {
   stale?: boolean
   fetchedAt?: string
   error?: string
+  partial?: { missed: number; total: number }
   observedAt: string | null
   stops: KmbStopBoard[]
   cacheable?: boolean
@@ -294,6 +295,7 @@ export type CitybusResponse = {
   stale?: boolean
   fetchedAt?: string
   error?: string
+  partial?: { missed: number; total: number }
   observedAt: string | null
   stops: CitybusStopBoard[]
   cacheable?: boolean

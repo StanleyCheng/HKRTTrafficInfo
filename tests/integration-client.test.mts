@@ -175,6 +175,9 @@ test("localized warnings invalidate the request key while bilingual transit does
     assert.equal(integrationRequestKey(kind, view, "en"), integrationRequestKey(kind, view, "zh"))
   }
   assert.notEqual(integrationRequestKey("kmb", view, "en"), integrationRequestKey("kmb", { ...view, lng: 114.19 }, "en"))
+  assert.notEqual(integrationRequestKey("tram", { ...view, zoom: 12 }, "en"), integrationRequestKey("tram", { ...view, zoom: 13 }, "en"))
+  assert.notEqual(integrationRequestKey("tram", view, "en"), integrationRequestKey("tram", { ...view, lng: 114.23 }, "en"))
+  assert.equal(integrationRequestKey("tram", view, "en"), integrationRequestKey("tram", { ...view, lng: 114.1801 }, "en"))
 })
 
 test("malformed success envelopes cannot replace retained integration inventories", () => {
@@ -193,6 +196,13 @@ test("bus stops keep their own retained clock even when neighbours refresh", () 
   const data = normalizeIntegration("citybus", payload)
   assert.equal(data.cameras[0].dataUpdated, retained)
   assert.equal(data.cameras[1].dataUpdated, undefined)
+})
+
+test("partial bus refresh counts stay structured across normalization", () => {
+  const payload: CitybusResponse = { ok: true, observedAt: null, stops: [], partial: { missed: 2, total: 5 }, error: "Wording can change" }
+  const data = normalizeIntegration("citybus", payload)
+  assert.deepEqual(data.partial, { missed: 2, total: 5 })
+  assert.equal(data.feedError, "Wording can change")
 })
 
 test("a fresh global rail snapshot cannot revive expired or malformed trains", () => {

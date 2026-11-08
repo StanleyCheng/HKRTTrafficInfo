@@ -19,10 +19,9 @@ permissions:
   pages: write
   id-token: write
 
-# One deploy per commit at a time; do not cancel in flight so a half-uploaded
-# artifact never becomes the live site.
+# Serialize production promotion across commits without interrupting uploads.
 concurrency:
-  group: "pages-${{ github.event.workflow_run.head_sha || github.sha }}"
+  group: "pages-production"
   cancel-in-progress: false
 
 jobs:
@@ -63,6 +62,15 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 1
+      - name: Check revision before publishing
+        id: revision
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        run: bash scripts/require-current-main.sh "${{ github.event.workflow_run.head_sha }}"
       - name: Deploy to GitHub Pages
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.revision.outputs.eligible == 'true' }}
         id: deployment
         uses: actions/deploy-pages@v4

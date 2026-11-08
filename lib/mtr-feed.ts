@@ -1,7 +1,7 @@
 import { openFeedCache } from "./feed-cache.ts"
 import { carryArrivalClock, estimateTrains, type TrainObservation } from "./mtr-estimate.ts"
 import { pool } from "./pool.ts"
-import { fairLineReads } from "./refresh-slice.ts"
+import { fairLineReads, withPreferredDue } from "./refresh-slice.ts"
 import { ETA_FRESH_MS } from "./place-arrivals.ts"
 import { etaQueue, takeEtaTurn, ETA_REFRESH_TIMEOUT_MS } from "./polite-fetch.ts"
 import { fetchUpstream } from "./upstream.ts"
@@ -29,23 +29,27 @@ type SavedMemory = { stations: { key: string; at: number; board: MtrBoard; obser
 // so each refresh reads 16. The shared book is which stations we already know.
 // The next 16 are chosen so every line, including Tsuen Wan, is read before a
 // line that was just read gets another turn.
-export async function loadMtrSnapshot(now = Date.now()): Promise<MtrResponse> {
-  return takeEtaTurn("mtr", () => collectMtrSnapshot(now))
+export async function loadMtrSnapshot(now = Date.now(), selectedStation?: string): Promise<MtrResponse> {
+  return takeEtaTurn("mtr", () => collectMtrSnapshot(now, selectedStation))
 }
 
-async function collectMtrSnapshot(now: number): Promise<MtrResponse> {
+async function collectMtrSnapshot(now: number, selectedStation?: string): Promise<MtrResponse> {
   if (now >= blockedUntil) failures = 0
   let missed = 0
   await readSharedMemory(now)
   if (now >= blockedUntil) {
     const signal = AbortSignal.timeout(ETA_REFRESH_TIMEOUT_MS)
-    const due = fairLineReads(
-      mtrQueries(),
-      (pair) => attempted.get(`${pair.line}-${pair.station}`) ?? remembered.get(`${pair.line}-${pair.station}`)?.at ?? null,
+    const queries = mtrQueries()
+    const lastRead = (pair: { line: string; station: string }) => attempted.get(`${pair.line}-${pair.station}`) ?? remembered.get(`${pair.line}-${pair.station}`)?.at ?? null
+    const preferred = queries.find(pair => pair.station === selectedStation && (lastRead(pair) === null || now - lastRead(pair)! >= ETA_FRESH_MS))
+    const background = fairLineReads(
+      queries,
+      lastRead,
       now,
       ETA_FRESH_MS,
       REFRESH_SLICE,
     )
+    const due = withPreferredDue(background, preferred, REFRESH_SLICE)
     await pool(due, FETCH_LIMIT, async (pair) => {
       const key = `${pair.line}-${pair.station}`
       const previous = remembered.get(key)

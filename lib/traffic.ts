@@ -42,7 +42,7 @@ export type Camera = {
   positionSource?: 'gps' | 'timetable';
   intel?: { score: number; urgent: boolean; tone: 'red' | 'amber' | 'green' | 'none' };
 };
-export type IncidentNotice = { id: string; text: string; textEn: string; time: string; located: boolean; cameraId?: string };
+export type IncidentNotice = { id: string; text: string; textEn: string; time: string | null; located: boolean; cameraId?: string };
 // A road network segment from the official Road Network (2nd Generation) CENTERLINE,
 // joined with the Transport Department's processed per-segment live speed (irnAvgSpeed-all.xml).
 export type FlowSegment = {
@@ -65,7 +65,7 @@ export type CameraData = {
   segmentsUpdated?: string;      // flow layer only: timestamp of the segment speed data
   segmentsExpectedCount?: number;
   segmentsComplete?: boolean;
-  stale?: boolean; observedAt?: string | null; paths?: MapPath[]; payload?: unknown; feedNote?: string; feedError?: string;
+  stale?: boolean; observedAt?: string | null; paths?: MapPath[]; payload?: unknown; feedNote?: string; feedError?: string; partial?: { missed: number; total: number };
 };
 export const originalKinds: OriginalLayerKind[] = ['flow', 'incident', 'redlight', 'speed', 'snapshot', 'parking', 'rainfall'];
 export const commuterKinds: CommuterKind[] = ['mtr-bus', 'tram', 'access', 'taxi'];

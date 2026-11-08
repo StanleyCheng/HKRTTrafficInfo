@@ -54,5 +54,6 @@ export async function loadTramNear(lng: number, lat: number, now: number, zoom: 
   return { ok: true, cameras, paths: tramPaths(), observedAt: loaded.map(camera => camera.dataUpdated).filter((at): at is string => Boolean(at)).sort().at(0) ?? null,
     stale: loaded.length > 0 && missed === loaded.length, complete: missed === 0,
     ...(missed ? { error: `Tram ETA unavailable (${missed} of ${loaded.length})` } : {}),
+    ...(missed ? { partial: { missed, total: loaded.length } } : {}),
   }
 }

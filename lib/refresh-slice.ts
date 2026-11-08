@@ -59,3 +59,10 @@ export function oldestDue<T>(
   due.sort((left, right) => (fetchedAt(left) ?? 0) - (fetchedAt(right) ?? 0))
   return due.slice(0, Math.max(0, limit))
 }
+
+/** Reserve one existing provider-budget slot for an opened station. */
+export function withPreferredDue<T>(due: T[], preferred: T | null | undefined, limit: number): T[] {
+  if (!preferred || limit <= 0) return due
+  if (due.includes(preferred)) return [preferred, ...due.filter(item => item !== preferred)]
+  return [preferred, ...due.slice(0, limit - 1)]
+}

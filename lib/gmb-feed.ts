@@ -102,6 +102,7 @@ export async function loadGmbNear(lng: number, lat: number, now = Date.now(), zo
   return {
     ok: !totalFailure,
     ...(error ? { error } : {}),
+    ...(missed ? { partial: { missed, total } } : {}),
     observedAt: latest > 0 ? new Date(latest).toISOString() : null,
     stale: totalFailure,
     stops,

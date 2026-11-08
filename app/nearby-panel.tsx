@@ -46,10 +46,10 @@ export default function NearbyPanel({ states, view, language, now, onSelect, onR
           const arrival = nextArrivalText(camera, now)
           const source = states[camera.kind]
           const stale = source.error || source.data?.stale || isCameraDataStale(camera, now)
-          const published = camera.kind === 'tram' || camera.kind === 'access' || camera.kind === 'taxi'
+          const published = camera.kind === 'access' || camera.kind === 'taxi' || camera.kind === 'tram' && !arrival
           return <li key={camera.id}><button type="button" className="nearby-place" onClick={() => onSelect(camera)}>
-            <span className="nearby-place-main"><strong>{language === 'en' ? camera.nameEn || camera.name : camera.name}</strong><small>{layerText(camera.kind, language).short} · {Math.round(metres / 10) * 10} m</small><span className={stale ? 'warning-text' : ''}>{published ? copy.published : stale ? extra.stale : arrival ? `${arrival.route} · ${arrival.scheduled ? copy.scheduled : extra.live}` : copy.noDepartures}</span></span>
-            {arrival && <span className="nearby-departure">{arrival.minutes}<small>{copy.minutes}</small></span>}
+            <span className="nearby-place-main"><strong>{language === 'en' ? camera.nameEn || camera.name : camera.name}</strong><small>{layerText(camera.kind, language).short} · {Math.round(metres / 10) * 10} m</small><span className={stale ? 'warning-text' : ''}>{stale ? extra.stale : published ? copy.published : arrival ? `${arrival.route} · ${arrival.scheduled ? copy.scheduled : extra.live}` : copy.noDepartures}</span></span>
+            {arrival && !stale && <span className="nearby-departure">{arrival.minutes}<small>{copy.minutes}</small></span>}
           </button></li>
         })}</ul>
         {places.length > 6 && <button type="button" className="nearby-more" onClick={() => setExpanded(previous => previous.includes(group.id) ? previous.filter(id => id !== group.id) : [...previous, group.id])}>{expanded.includes(group.id) ? copy.less : copy.more}</button>}

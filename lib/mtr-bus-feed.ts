@@ -61,7 +61,7 @@ async function loadRoute(route: string, signal: AbortSignal, now: number): Promi
   return task
 }
 
-export async function loadMtrBusNear(lng: number, lat: number, now = Date.now(), zoom = 13): Promise<{ ok: boolean; cameras: Camera[]; observedAt: string | null; stale: boolean; complete: boolean; cacheable: boolean; error?: string }> {
+export async function loadMtrBusNear(lng: number, lat: number, now = Date.now(), zoom = 13): Promise<{ ok: boolean; cameras: Camera[]; observedAt: string | null; stale: boolean; complete: boolean; cacheable: boolean; error?: string; partial?: { missed: number; total: number } }> {
   const places = commuterCatalogue('mtr-bus').filter(stop => metresBetween(stop, { lng, lat }) <= 1800)
     .sort((a, b) => metresBetween(a, { lng, lat }) - metresBetween(b, { lng, lat })).slice(0, 36)
   if (zoom < 13) return { ok: true, cameras: [], observedAt: null, stale: false, complete: true, cacheable: true }
@@ -92,6 +92,7 @@ export async function loadMtrBusNear(lng: number, lat: number, now = Date.now(),
   return { ok: true, cameras, observedAt: observed.length ? new Date(Math.min(...observed)).toISOString() : null,
     stale: routes.length > 0 && missed === routes.length, complete: missed === 0, cacheable: missed === 0,
     error: missed ? `MTR bus schedules are unavailable or carry an operator alert (${missed} of ${routes.length})` : undefined,
+    ...(missed ? { partial: { missed, total: routes.length } } : {}),
   }
 }
 

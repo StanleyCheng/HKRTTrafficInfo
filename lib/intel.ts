@@ -32,7 +32,7 @@ export function intelBoard(input: IntelInput, language: Language): Record<IntelT
     items.push({ id: `fault-${kind}`, kind: 'fault', title: layerText(kind, language).name, detail: state.data ? m.stale : m.fault, score, urgent: score >= 500000, tone: score >= 500000 ? 'red' : 'amber' });
   }
   const incident = input.states.incident?.data;
-  const notices = [...(incident?.notices ?? [])].sort((a, b) => b.time.localeCompare(a.time));
+  const notices = [...(incident?.notices ?? [])].sort((a, b) => (b.time ?? '').localeCompare(a.time ?? '') || a.id.localeCompare(b.id));
   notices.forEach((notice, index) => items.push({ id: notice.id, kind: 'incident', title: language === 'en' ? notice.textEn || notice.text : notice.text || notice.textEn, detail: '', score: 800000 - index, urgent: true, tone: 'red', camera: incident?.cameras.find(camera => camera.id === notice.cameraId) }));
   const roads = new Map<string, { segment: FlowSegment; lengthKm: number }>();
   for (const segment of input.segments) {
