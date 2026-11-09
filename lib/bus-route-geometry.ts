@@ -72,14 +72,15 @@ export async function busRoadGeometry(selection: BusRouteSelection, stops: BusRo
   const body = JSON.parse(new TextDecoder().decode(response.body)) as { exceededTransferLimit?: boolean; features?: { geometry?: { paths?: number[][][] } }[] }
   if (body.exceededTransferLimit || !Array.isArray(body.features)) return null
   // The CSDI direction numbering is independent of operator bounds. Match the whole ordered stop list.
-  // Citybus's operator stop list and TD route geometry can diverge. Keep the
-  // entire directional match close to published stops and reject road gaps.
-  const candidates = body.features.map((feature) => selection.operator === 'citybus'
+  // Both KMB loops and Citybus variants can pass the same stop more than once.
+  // Match the full ordered stop sequence instead of greedily choosing the
+  // closest occurrence of each stop, which can jump ahead on a circular route.
+  const candidates = body.features.map((feature) => selection.operator === 'citybus' || selection.operator === 'kmb'
     ? matchCitybusOfficialGeometry(feature.geometry?.paths ?? [], stops)
     : matchBusGeometry(feature.geometry?.paths ?? [], stops)).filter((shape): shape is Shape => shape != null)
   candidates.sort((a, b) => a.score - b.score)
   // A route number can include special services with identical stops but
   // different streets. Their geometry is ambiguous without variant metadata.
-  if (selection.operator === 'citybus' && candidates[0] && candidates.some(candidate => !sameCitybusAlignment(candidates[0].coordinates, candidate.coordinates))) return null
+  if ((selection.operator === 'citybus' || selection.operator === 'kmb') && candidates[0] && candidates.some(candidate => !sameCitybusAlignment(candidates[0].coordinates, candidate.coordinates))) return null
   return candidates[0] ?? null
 }

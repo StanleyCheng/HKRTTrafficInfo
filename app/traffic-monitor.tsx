@@ -717,7 +717,7 @@ export default function TrafficMonitor() {
     panelPositions[id] = routeLoading ? { status: 'loading', data } : routeError || !data ? { status: 'error', data } : { status: 'ready', data };
     if (data) panelVehicleFeeds[id] = data;
   }
-  const busCount = busRoute ? [busRoute.vehicles, ...busRoute.reverse.map(direction => direction.vehicles)].flat().filter(vehicle => busVehicleDistanceAtTime(vehicle, now) !== null).length : 0;
+  const busCount = busRoute ? [{ route: busRoute.route, vehicles: busRoute.vehicles }, ...busRoute.reverse].filter(direction => direction.route && hasBusRoadDisplay(direction.route)).flatMap(direction => direction.vehicles).filter(vehicle => busVehicleDistanceAtTime(vehicle, now) !== null).length : 0;
   const routeControlLabel = activeBusSelection ? `${copy.mapLayers} · ${extra.selectedBusRoute} ${activeBusSelection.route}${routeLoading ? ` · ${extra.loadingBusRoute}` : routeError ? ` · ${extra.busRouteError}` : ''}` : copy.mapLayers;
   const routeStatus = activeBusSelection && <section className="bus-route-status" aria-label={`${extra.selectedBusRoute} ${activeBusSelection.route}`}>
     <div className="bus-route-heading"><strong>{extra.selectedBusRoute} · {activeBusSelection.route}</strong><button type="button" className="text-button" onClick={() => setBusSelection(null)}>{extra.closeBusRoute}</button></div>

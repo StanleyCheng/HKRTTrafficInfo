@@ -11,6 +11,7 @@ import { nlbRouteIds, nlbStop } from './nlb-network.ts'
 import { waitForRequest } from './request-wait.ts'
 import { routeDistances } from './bus-route-motion.ts'
 import { busRoadGeometry } from './bus-route-geometry.ts'
+import { hasBusRoadDisplay } from './bus-route-display.ts'
 import { citybusOsmGeometry } from './citybus-osm-geometry.ts'
 import { inferBusVehicles } from './bus-estimate.ts'
 export { inferBusVehicles } from './bus-estimate.ts'
@@ -227,7 +228,7 @@ async function loadDirection(selection: BusRouteSelection, now: number, requireS
   const route: BusRouteData = { selection, key, operator: selection.operator, company: selection.company, route: selection.route, stops, coordinates, geometry: road ? 'road' : 'stops', ...(road && 'source' in road && road.source === 'osm' ? { geometrySource: 'osm' as const } : {}) }
   return {
     route,
-    vehicles: selection.operator === 'citybus' && !road ? [] : inferBusVehicles(stops, etaResult.etas, now, key),
+    vehicles: hasBusRoadDisplay(route) ? inferBusVehicles(stops, etaResult.etas, now, key) : [],
     observed: Math.max(0, ...etaResult.etas.map((eta) => Number.isFinite(eta.observed) ? eta.observed : 0)),
     failed: etaResult.failed,
   }

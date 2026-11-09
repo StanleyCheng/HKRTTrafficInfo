@@ -1,5 +1,5 @@
 import type { BusRouteData } from './bus-route.ts'
 
-// Citybus stop-to-stop coordinates are useful for listing and fitting stops,
-// but they do not describe the route taken on the road.
-export const hasBusRoadDisplay = (route: Pick<BusRouteData, 'operator'> & Partial<Pick<BusRouteData, 'geometry'>>) => route.operator !== 'citybus' || route.geometry !== 'stops'
+// KMB and Citybus stop-to-stop coordinates are useful for stop ordering,
+// but they do not describe the road taken between those stops.
+export const hasBusRoadDisplay = (route: Pick<BusRouteData, 'operator'> & Partial<Pick<BusRouteData, 'geometry'>>) => route.operator !== 'kmb' && route.operator !== 'citybus' || route.geometry === 'road'

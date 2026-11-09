@@ -360,6 +360,19 @@ try {
       await f.context.close();
     }
   });
+  await test('KMB stop-only geometry keeps stops but draws no straight road line in either map', async () => {
+    for (const mode of ['2d', '3d']) {
+      const f = await create(); f.controls.mode = 'approximate';
+      if (mode === '3d') { await f.page.getByTestId('map-mode-toggle').click(); await f.page.locator('.maplibregl-canvas').waitFor(); }
+      await f.page.locator(mode === '2d' ? '.camera-marker[title$="kmb fixture stop"] .marker-displacement' : '.camera-marker[aria-label$="kmb fixture stop"] .marker-displacement').click();
+      await f.page.locator(`${mode === '2d' ? '.item-popup' : '.native-item-popup'} .bus-route-button[aria-label^="Show route 1 ·"]`).first().click();
+      await f.page.locator(mode === '2d' ? '.bus-route-stop' : '.native-marker[data-marker-id^="route-stop:"]').first().waitFor();
+      assert.equal(await f.page.locator('.bus-route-polyline, .bus-route-marker, .vehicle-marker[data-marker-id^="bus-vehicle:"]').count(), 0);
+      await openLayers(f.page, 'bus');
+      await f.page.getByText('Road geometry is unavailable for some directions; only matched paths are shown.', { exact: true }).waitFor();
+      await f.context.close();
+    }
+  });
   await test('Citybus layer picker reports missing road geometry without drawing a line', async () => {
     for (const mode of ['2d', '3d']) {
       const f = await create({ initialMode: 'approximate' });

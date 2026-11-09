@@ -48,7 +48,7 @@ test('bus routes are scoped by operator, stops shared with selected routes remai
   assert.deepEqual(filtered.cameras.map(camera => camera.sourceId), ['A'])
   assert.deepEqual(filtered.cameras[0].arrivals, [])
   assert.deepEqual(filtered.cameras[0].routes, ['1'])
-  assert.deepEqual(busPaths([{ key: 'one', operator: 'kmb', coordinates: [[114.1, 22.3], [114.2, 22.4]] }])[0].points, [[22.3, 114.1], [22.4, 114.2]])
+  assert.deepEqual(busPaths([{ key: 'one', operator: 'kmb', geometry: 'road', coordinates: [[114.1, 22.3], [114.2, 22.4]] }])[0].points, [[22.3, 114.1], [22.4, 114.2]])
 })
 
 test('saved route preferences survive reload and reject malformed records; old rail popovers migrate to Layers', () => {

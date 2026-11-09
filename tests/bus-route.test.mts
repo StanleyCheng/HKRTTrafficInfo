@@ -194,7 +194,7 @@ test('slow traffic, bunched services and onward movement do not remove or freeze
   assert.ok(slow.every(bus => busVehicleDistanceAtTime(bus, now) !== null))
 })
 
-test('one stale KMB row cannot remove fresh buses or the opposite direction', async (t) => {
+test('one stale KMB row preserves the opposite direction without inventing road positions', async (t) => {
   t.mock.method(Date, 'now', () => now)
   t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
     const url = String(input)
@@ -207,8 +207,9 @@ test('one stale KMB row cannot remove fresh buses or the opposite direction', as
   })
   const result = await loadBusRoute({ operator: 'kmb', route: '115', stopId: 'EE3EA981F3D6485D', bound: 'O', serviceType: '1' }, now)
   assert.equal(result.stale, true, 'Partial failure remains visible')
-  assert.equal(result.vehicles.length, 1)
-  assert.equal(result.reverse[0].vehicles.length, 1)
+  assert.equal(result.vehicles.length, 0, 'stop-only geometry cannot place a bus on a road')
+  assert.equal(result.reverse[0].vehicles.length, 0)
+  assert.equal(result.reverse[0].route.stops.length, 2, 'the healthy opposite stop sequence remains available')
   assert.equal(result.reverse[0].stale, false, 'The healthy opposite direction is independent')
 })
 
